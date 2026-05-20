@@ -1,0 +1,341 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentHub WebSocket Messages",
+  "description": "WebSocket 双向消息协议定义，Server→Client 和 Client→Server 的所有消息类型",
+  "definitions": {
+
+    "------------------------------------------------------------": {
+      "description": "========== BASE TYPE =========="
+    },
+
+    "AgentRole": {
+      "type": "string",
+      "enum": ["Human", "PM", "Planner", "Coder", "Reviewer", "System"],
+      "description": "发送者角色"
+    },
+
+    "MessageType": {
+      "type": "string",
+      "enum": [
+        "chat_stream",
+        "task_update",
+        "code_diff",
+        "system_status",
+        "vfs_update",
+        "agent_typing",
+        "deployment_status",
+        "error"
+      ],
+      "description": "服务端推送消息类型"
+    },
+
+    "ClientAction": {
+      "type": "string",
+      "enum": ["send_message", "accept_code", "reject_code", "deploy"],
+      "description": "客户端请求动作类型"
+    },
+
+    "BaseMessage": {
+      "type": "object",
+      "required": ["type", "agent_role", "timestamp", "stream_id"],
+      "properties": {
+        "type": { "$ref": "#/definitions/MessageType" },
+        "agent_role": { "$ref": "#/definitions/AgentRole" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "stream_id": {
+          "type": "string",
+          "description": "用于追踪同一消息的多个 chunk，同一条消息的所有 chunk 使用相同的 stream_id"
+        }
+      }
+    },
+
+    "------------------------------------------------------------": {
+      "description": "========== SERVER → CLIENT =========="
+    },
+
+    "ChatStreamMessage": {
+      "description": "流式文字输出消息，每个 chunk 是一段文本（非逐 token）",
+      "allOf": [
+        { "$ref": "#/definitions/BaseMessage" },
+        {
+          "type": "object",
+          "required": ["type", "message_id", "content_chunk", "is_final"],
+          "properties": {
+            "type": { "const": "chat_stream" },
+            "message_id": {
+              "type": "string",
+              "description": "消息唯一 ID，用于前端去重和定位"
+            },
+            "content_chunk": {
+              "type": "string",
+              "description": "本帧的文本内容，按句子/换行/100字符切分"
+            },
+            "is_final": {
+              "type": "boolean",
+              "default": false,
+              "description": "是否为最后一帧，true 时表示该消息发送完毕"
+            }
+          }
+        }
+      ]
+    },
+
+    "TaskItem": {
+      "type": "object",
+      "required": ["id", "title", "status", "assignee"],
+      "properties": {
+        "id": { "type": "string", "description": "任务唯一 ID，如 task-001" },
+        "title": { "type": "string", "description": "任务标题" },
+        "description": { "type": "string", "description": "任务详细描述" },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "doing", "done", "rejected"],
+          "description": "pending=待处理, doing=进行中, done=已完成, rejected=已拒绝"
+        },
+        "assignee": {
+          "type": "string",
+          "enum": ["Human", "PM", "Planner", "Coder", "Reviewer"],
+          "description": "任务负责人"
+        },
+        "priority": {
+          "type": "integer",
+          "description": "优先级，数字越大优先级越高"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "依赖的任务 ID 列表"
+        }
+      }
+    },
+
+    "TaskUpdateMessage": {
+      "description": "任务列表更新消息，由 Planner 输出时触发",
+      "allOf": [
+        { "$ref": "#/definitions/BaseMessage" },
+        {
+          "type": "object",
+          "required": ["tasks"],
+          "properties": {
+            "type": { "const": "task_update" },
+            "tasks": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/TaskItem" },
+              "description": "完整的任务列表（全量替换，非增量）"
+            }
+          }
+        }
+      ]
+    },
+
+    "CodeDiffMessage": {
+      "description": "代码 Diff 卡片消息，由 Reviewer APPROVE 后触发",
+      "allOf": [
+        { "$ref": "#/definitions/BaseMessage" },
+        {
+          "type": "object",
+          "required": ["diff_id", "file_path", "old_content", "new_content", "diff_summary", "status"],
+          "properties": {
+            "type": { "const": "code_diff" },
+            "diff_id": { "type": "string", "description": "Diff 唯一 ID" },
+            "file_path": { "type": "string", "description": "文件路径，如 /src/index.html" },
+            "old_content": {
+              "type": "string",
+              "description": "修改前内容（新建文件时为空字符串）"
+            },
+            "new_content": {
+              "type": "string",
+              "description": "修改后内容（完整文件内容）"
+            },
+            "diff_summary": {
+              "type": "string",
+              "description": "一句话描述变更内容"
+            },
+            "status": {
+              "type": "string",
+              "enum": ["pending", "accepted", "rejected"],
+              "description": "pending=待用户验收, accepted=已接受, rejected=已拒绝"
+            }
+          }
+        }
+      ]
+    },
+
+    "SystemStatusMessage": {
+      "description": "系统状态通知消息",
+      "allOf": [
+        { "$ref": "#/definitions/BaseMessage" },
+        {
+          "type": "object",
+          "required": ["status", "message"],
+          "properties": {
+            "type": { "const": "system_status" },
+            "status": {
+              "type": "string",
+              "enum": ["connected", "disconnected", "phase_changed", "agent_joined", "agent_left"],
+              "description": "状态类型"
+            },
+            "message": { "type": "string", "description": "状态描述" },
+            "phase": {
+              "type": "string",
+              "enum": ["requirement", "planning", "coding", "review", "done"],
+              "description": "当前阶段（phase_changed 时携带）"
+            }
+          }
+        }
+      ]
+    },
+
+    "VFSUpdateMessage": {
+      "description": "VFS 文件变更消息",
+      "allOf": [
+        { "$ref": "#/definitions/BaseMessage" },
+        {
+          "type": "object",
+          "required": ["action", "file_path"],
+          "properties": {
+            "type": { "const": "vfs_update" },
+            "action": {
+              "type": "string",
+              "enum": ["create", "update", "delete", "accepted", "rejected"],
+              "description": "文件操作类型"
+            },
+            "file_path": { "type": "string", "description": "文件路径" },
+            "version": { "type": "integer", "description": "文件当前版本号（update 时携带）" },
+            "diff_id": { "type": "string", "description": "关联的 diff_id（accepted/rejected 时携带）" }
+          }
+        }
+      ]
+    },
+
+    "AgentTypingMessage": {
+      "description": "Agent 正在输入提示（用于前端显示 typing 状态）",
+      "allOf": [
+        { "$ref": "#/definitions/BaseMessage" },
+        {
+          "type": "object",
+          "required": ["is_typing"],
+          "properties": {
+            "type": { "const": "agent_typing" },
+            "is_typing": {
+              "type": "boolean",
+              "description": "true=Agent 正在输入, false=停止输入"
+            },
+            "message": {
+              "type": "string",
+              "description": "可选的提示文案，如 'PM 正在思考...'"
+            }
+          }
+        }
+      ]
+    },
+
+    "ErrorMessage": {
+      "description": "错误消息",
+      "allOf": [
+        { "$ref": "#/definitions/BaseMessage" },
+        {
+          "type": "object",
+          "required": ["error_code", "error_message"],
+          "properties": {
+            "type": { "const": "error" },
+            "error_code": {
+              "type": "string",
+              "enum": ["llm_timeout", "vfs_conflict", "invalid_request", "session_not_found", "unknown"]
+            },
+            "error_message": { "type": "string", "description": "错误描述" },
+            "diff_id": { "type": "string", "description": "关联的 diff_id（vfs_conflict 时携带）" }
+          }
+        }
+      ]
+    },
+
+    "------------------------------------------------------------": {
+      "description": "========== CLIENT → SERVER =========="
+    },
+
+    "SendMessage": {
+      "type": "object",
+      "required": ["action", "session_id", "content"],
+      "properties": {
+        "action": { "const": "send_message" },
+        "session_id": { "type": "string", "description": "会话 ID" },
+        "content": { "type": "string", "description": "消息内容" },
+        "mentioned_agents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "@ 提及的 Agent 角色列表（P2 群聊功能，MVP 可省略）"
+        },
+        "parent_message_id": {
+          "type": "string",
+          "description": "回复引用的消息 ID（实现回复功能时使用）"
+        }
+      }
+    },
+
+    "AcceptCode": {
+      "type": "object",
+      "required": ["action", "diff_id"],
+      "properties": {
+        "action": { "const": "accept_code" },
+        "diff_id": { "type": "string", "description": "要接受的 Diff ID" }
+      }
+    },
+
+    "RejectCode": {
+      "type": "object",
+      "required": ["action", "diff_id"],
+      "properties": {
+        "action": { "const": "reject_code" },
+        "diff_id": { "type": "string", "description": "要拒绝的 Diff ID" },
+        "reason": {
+          "type": "string",
+          "description": "拒绝原因（可选，用户可在前端输入）"
+        }
+      }
+    },
+
+    "DeployCommand": {
+      "type": "object",
+      "required": ["action", "project_id"],
+      "properties": {
+        "action": { "const": "deploy" },
+        "project_id": { "type": "string", "description": "项目 ID" },
+        "deploy_type": {
+          "type": "string",
+          "enum": ["preview", "static", "container"],
+          "default": "preview",
+          "description": "部署类型"
+        }
+      }
+    },
+
+    "ClientMessage": {
+      "description": "客户端请求消息的联合类型",
+      "oneOf": [
+        { "$ref": "#/definitions/SendMessage" },
+        { "$ref": "#/definitions/AcceptCode" },
+        { "$ref": "#/definitions/RejectCode" },
+        { "$ref": "#/definitions/DeployCommand" }
+      ]
+    },
+
+    "------------------------------------------------------------": {
+      "description": "========== SERVER → CLIENT 联合类型 =========="
+    },
+
+    "ServerMessage": {
+      "description": "服务端推送消息的联合类型",
+      "oneOf": [
+        { "$ref": "#/definitions/ChatStreamMessage" },
+        { "$ref": "#/definitions/TaskUpdateMessage" },
+        { "$ref": "#/definitions/CodeDiffMessage" },
+        { "$ref": "#/definitions/SystemStatusMessage" },
+        { "$ref": "#/definitions/VFSUpdateMessage" },
+        { "$ref": "#/definitions/AgentTypingMessage" },
+        { "$ref": "#/definitions/ErrorMessage" }
+      ]
+    }
+
+  }
+}

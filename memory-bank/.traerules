@@ -1,0 +1,196 @@
+# AgentHub AI 编程规范与全局指令
+
+> 本文件是 AI 助手的全局行为准则，定义代码生成规范、架构约束和错误处理原则。
+> 所有 AI 助手在参与本项目时必须严格遵守。
+> 语言：强制中文（代码注释、提交信息使用中文；变量/函数/API 路径使用英文）。
+
+---
+
+## 0. 全局准则
+
+- **语言强制**：与用户对话时强制使用中文。代码注释和提交信息使用中文，但变量命名、函数命名、API 路径必须使用符合语义的英文。
+- **架构认知**：本项目是一个全栈 Monorepo 架构。前端位于 `frontend/`，后端位于 `backend/`，公共契约位于 `shared/`。在修改跨端逻辑时，必须同时考虑两端的影响。
+- **行动前置条件**：在生成任何涉及前后端通信的代码前，必须优先阅读 `shared/schemas/ws_messages.json` 和 `shared/index.ts`，严格按照定义的字段结构进行编码，禁止自行臆造字段名。
+- **代码输出约束**：只输出被修改或新增的代码块，不要重复输出无需修改的上下文本。使用清晰的注释标注插入或替换的位置。
+- **安全红线**：Coder Agent 生成的代码绝对不能直接写入物理文件。必须以 Diff 形式推给前端，只有用户点击 Accept 后才能更新 VFS 并落盘。
+
+---
+
+## 1. 前端开发规范（Vue 3）
+
+### 1.1 框架限制
+
+- 本项目使用 **Vue 3 (Composition API + `<script setup>`)**。禁止使用 Options API。
+- 所有组件必须使用 `<script setup lang="ts">` 语法。
+- 组件文件名使用 PascalCase（如 `ChatWindow.vue`），Composable 文件名使用 `use` 前缀 + camelCase（如 `useWebSocket.ts`）。
+
+### 1.2 TypeScript 规范
+
+- 强制使用 TypeScript，禁止使用 `any` 或 `@ts-ignore`。
+- 所有 WebSocket 相关的数据结构必须从 `shared/index.ts` 导入类型。
+- 禁止省略类型注解（函数参数、返回值必须标注类型）。
+
+### 1.3 样式规范（Element Plus）
+
+- 使用 **Element Plus** 组件库进行 UI 开发。禁止手写原始 CSS（自定义样式除外，但应尽量避免）。
+- 样式常量（如颜色、间距）定义在 `src/styles/variables.css` 中。
+- 组件的 scoped style 优先于全局样式。
+
+### 1.4 状态管理（Pinia）
+
+- 涉及跨组件通信的状态（如会话列表、当前消息、Agent 连接状态）必须使用 **Pinia**，统一定义在 `src/stores/` 下。
+- 每个 store 尽量保持单一职责：
+  - `chat.ts`：会话与消息状态
+  - `project.ts`：项目和 VFS 状态
+  - `agent.ts`：Agent 连接状态
+- 禁止引入 Redux、Vuex 或 MobX。
+
+### 1.5 组件化与 Composables
+
+- 业务逻辑（如 WebSocket 连接管理、消息拼接）必须抽离为 Composables，放在 `src/composables/` 下。
+- 组件只负责 UI 渲染和事件触发，业务逻辑调用 composable。
+- Composables 必须使用 `use` 前缀（如 `useWebSocket`、`useVFS`）。
+- 每个 composable 的职责单一，不应超过 200 行（若超过，考虑拆分）。
+
+### 1.6 路由规范
+
+- 路由配置在 `src/router/index.ts` 中。
+- 路由路径使用 kebab-case：`/chat-sessions`、`/project-detail`。
+- 必须设置路由守卫：未登录用户重定向到 `/chat`。
+
+### 1.7 API 调用
+
+- 所有 REST API 调用通过 `src/api/index.ts` 中的 Axios 实例。
+- 每个 API 模块对应一个 service 文件（如 `chatService.ts`、`projectService.ts`）。
+- 统一错误处理：Axios 拦截器处理 401/403/500 等状态码，弹出 Element Plus Message 提示。
+
+---
+
+## 2. 后端开发规范（FastAPI）
+
+### 2.1 异步优先
+
+- 所有 I/O 密集型操作（LLM API 调用、数据库操作、Redis 操作）必须使用 `async/await`。
+- 严禁在路由中写入阻塞事件循环的代码。
+- 使用 `asyncio.gather` 实现并发操作。
+
+### 2.2 数据校验（Pydantic V2）
+
+- 必须使用 **Pydantic V2** 处理数据验证。
+- 所有入参和出参模型定义在 `backend/app/schemas/` 目录下。
+- WebSocket 消息解析使用 `model_validate_json`，严格校验消息格式。
+- 确保后端 Pydantic 模型与 `shared/schemas/ws_messages.json` 完全对齐。
+
+### 2.3 状态机与编排（LangGraph）
+
+- Agent 之间的流转必须基于 **LangGraph** 状态机实现。
+- 节点（Nodes）和边（Edges）的定义必须清晰解耦，放在 `backend/app/agents/` 目录下：
+  - `state.py`：AgentState TypedDict 定义
+  - `nodes.py`：PM/Planner/Coder/Reviewer 节点实现
+  - `edges.py`：流转边定义
+  - `graph.py`：LangGraph 图组装
+- 严禁将复杂的 Agent 逻辑堆砌在 FastAPI 的 routers 中。
+
+### 2.4 Agent 适配器
+
+- AI Provider 接入使用适配器模式，统一接口定义在 `backend/app/agents/adapters/base.py`。
+- 当前只实现 `ClaudeAdapter`（MVP），预留 `OpenAIAdapter`、`OllamaAdapter` 扩展位。
+- 适配器接口：
+  ```python
+  class AgentAdapter(ABC):
+      @abstractmethod
+      async def stream_generate(
+          self,
+          messages: list[dict],
+          system_prompt: str,
+          **kwargs
+      ) -> AsyncIterator[str]:
+          """流式生成，返回 token 迭代器"""
+          ...
+  ```
+
+### 2.5 VFS 安全
+
+- `VFSService` 是所有 VFS 操作的唯一入口。
+- `apply_diff()` 仅更新 Redis，不写磁盘。
+- `accept_diff()` 才触发磁盘写入。
+- 每次 Accept 前必须验证 `old_content` 与 Redis 中的一致性，防止并发冲突。
+
+### 2.6 WebSocket 规范
+
+- 每个 WebSocket 连接对应一个 `session_id`。
+- 后端必须捕获 `WebSocketDisconnect` 异常，清理对应的 LangGraph 状态。
+- 使用 `async for message in websocket.iter_text()` 遍历消息。
+- 消息解析失败时推送 `error` 类型消息，不断开连接。
+
+---
+
+## 3. 数据库与 Redis 规范
+
+### 3.1 数据库操作
+
+- 使用 **SQLAlchemy 2.0**（异步模式）操作 PostgreSQL。
+- 数据库会话（Session）使用上下文管理器 `async with` 管理，确保自动 commit/rollback。
+- 迁移通过 **Alembic** 进行，所有表结构变更必须通过新迁移文件。
+- 禁止手动写 SQL（除 Alembic 迁移文件和种子数据 SQL）。
+
+### 3.2 Redis 操作
+
+- 使用 `redis.asyncio`（`aioredis`）进行异步 Redis 操作。
+- Redis Key 命名规范：`{entity}:{id}`，如 `files:proj_001`、`graph_state:session_001`。
+- 大 Hash（VFS 文件内容）使用 `HGET`/`HSET`，避免 `GET`/`SET` 存储 JSON。
+
+---
+
+## 4. 错误处理与调试
+
+### 4.1 前端错误处理
+
+- 所有 Axios 请求通过拦截器统一处理错误。
+- WebSocket 断连时顶部显示 Element Plus `ElMessage` 提示，并自动重连（最多 5 次，间隔 3 秒）。
+- 使用 `try/catch` 包装所有 async 操作，catch 中打印错误日志。
+
+### 4.2 后端错误处理
+
+- REST API 异常通过 FastAPI 的 `HTTPException` 统一处理。
+- WebSocket 异常必须捕获 `WebSocketDisconnect`，清理状态机。
+- LLM API 超时：捕获 `httpx.TimeoutException`，推送 `error` 消息（`error_code: llm_timeout`）。
+
+### 4.3 日志规范
+
+- 使用 Python 标准库 `logging`，配置 `structlog` 进行结构化日志。
+- 日志级别：`DEBUG`（开发）、`INFO`（正常）、`WARNING`（警告）、`ERROR`（错误）。
+- 敏感信息（API Key、用户密码）禁止打印到日志。
+
+---
+
+## 5. 测试规范
+
+### 5.1 前端测试
+
+- 使用 **Vitest** 进行单元测试。
+- Composables 的测试文件放在同目录下：`useWebSocket.test.ts`。
+- 组件测试使用 **Vue Test Utils**。
+
+### 5.2 后端测试
+
+- 使用 **pytest** + **pytest-asyncio** 进行异步测试。
+- API 测试使用 **TestClient**（同步）或 **httpx.AsyncClient**（异步）。
+- 数据库测试使用 `pytest-django` 或手动创建/销毁测试数据库。
+
+---
+
+## 6. 代码审查规范
+
+- 所有代码必须经过 lint 检查（ESLint + Prettier 前端；Ruff + Black 后端）。
+- 提交前运行 `pnpm lint` 和 `python -m ruff check .`。
+- 禁止提交有 lint 错误的代码。
+
+---
+
+## 7. 环境与部署
+
+- 所有环境变量通过 `.env` 文件管理，不硬编码在代码中。
+- 前端环境变量以 `VITE_` 前缀开头（如 `VITE_API_BASE_URL`）。
+- 后端使用 `pydantic-settings` 加载环境变量。
+- 生产环境必须通过 `.env.production` 或 CI/CD 环境变量注入。
