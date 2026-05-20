@@ -178,6 +178,9 @@ ehthumbs.db:*.log
 
 # -------- AgentHub Specific --------
 
+# Memory bank (planning docs, design docs)
+memory-bank/
+
 # VFS output directory (generated at runtime)
 tmp/
 
