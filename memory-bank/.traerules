@@ -129,7 +129,7 @@
 
 ### 3.1 数据库操作
 
-- 使用 **SQLAlchemy 2.0**（异步模式）操作 PostgreSQL。
+- 使用 **SQLAlchemy 2.0**（异步模式）操作 MySQL。
 - 数据库会话（Session）使用上下文管理器 `async with` 管理，确保自动 commit/rollback。
 - 迁移通过 **Alembic** 进行，所有表结构变更必须通过新迁移文件。
 - 禁止手动写 SQL（除 Alembic 迁移文件和种子数据 SQL）。

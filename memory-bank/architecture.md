@@ -1,7 +1,9 @@
 # AgentHub 系统架构与运行规范
 
-> 本文件是 `实施计划.md` 的架构子文档，详细定义系统技术栈、核心流程和运行规范。
-> 语言：强制中文（变量/函数/API 路径除外）。
+> 状态：`future-reference`
+>
+> 本文件保留为后续阶段的架构参考资料，主要服务于 P1/P2/P3 的多 Agent、VFS 和运行规范设计。
+> 当前阶段如与 OpenSpec 冲突，以 `openspec/specs/*` 为准。
 
 ---
 
@@ -17,9 +19,9 @@
 | 组合式函数 | VueUse | 常用工具 composable 集合 |
 | 后端框架 | FastAPI | 异步优先，类型安全 |
 | Agent 编排 | LangGraph | 基于状态机的多 Agent 协作 |
-| 数据库 | PostgreSQL 16 + Redis 7 | 结构化存储 + VFS 内存缓存 |
+| 数据库 | MySQL 8.0 + Redis 7 | 结构化存储 + VFS 内存缓存 |
 | 实时通信 | WebSocket | 全双工流式消息 |
-| ORM | SQLAlchemy 2.0 (asyncio) + asyncpg | 异步数据库操作 |
+| ORM | SQLAlchemy 2.0 (asyncio) + aiomysql | 异步数据库操作 |
 | AI Provider | Anthropic Claude API (MVP) | 适配器模式预留扩展位 |
 | 数据库迁移 | Alembic | 版本化的数据库迁移管理 |
 
@@ -32,7 +34,7 @@
 | 前端 Dev Server | `http://localhost:5173` | Vite 开发服务器 |
 | 后端 API | `http://localhost:8000` | FastAPI 应用 |
 | 后端 Swagger | `http://localhost:8000/docs` | 自动生成的 API 文档 |
-| PostgreSQL | `localhost:5432` | Docker 容器 |
+| MySQL | `localhost:3306` | Docker 容器 |
 | Redis | `localhost:6379` | Docker 容器 |
 | VFS 预览服务 | `/api/preview/{project_id}/<path>` | 后端代理路由 |
 
@@ -140,7 +142,7 @@
 
 ### 6.3 数据库连接
 
-- **开发环境**：通过 `docker-compose.yml` 启动的 PostgreSQL + Redis 容器
+- **开发环境**：通过 `docker-compose.yml` 启动的 MySQL + Redis 容器
 - **连接字符串**：通过 `DATABASE_URL` / `REDIS_URL` 环境变量注入
 - **禁止硬编码**：任何连接信息必须来自环境变量
 
@@ -201,16 +203,16 @@
 ### 10.1 开发环境
 
 ```
-docker-compose up -d postgres redis
+docker-compose up -d mysql redis
 ```
 
-启动 PostgreSQL 16 和 Redis 7 容器，数据持久化到 `./docker/data/` 目录。
+启动 MySQL 8.0 和 Redis 7 容器，数据持久化到 `./docker/data/` 目录。
 
 ### 10.2 生产环境（未来）
 
 - 前端：构建 Docker 镜像，Nginx 托管静态文件
 - 后端：Uvicorn 运行 FastAPI 应用，Gunicorn 多 worker
-- 数据库：云托管 PostgreSQL 或 Docker
+- 数据库：云托管 MySQL 或 Docker
 
 ---
 
@@ -221,5 +223,5 @@ docker-compose up -d postgres redis
 | Node.js | 18+ |
 | Python | 3.11+ |
 | pnpm | 8+ |
-| PostgreSQL | 16+ |
+| MySQL | 8.0+ |
 | Redis | 7+ |

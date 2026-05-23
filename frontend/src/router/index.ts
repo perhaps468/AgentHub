@@ -1,15 +1,25 @@
-import { createRouter, createWebHistory } from 'vue-router'
-import HelloWorld from '../views/HelloWorld.vue'
-
-const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: '/',
-      name: 'hello-world',
-      component: HelloWorld,
+import { createRouter,createWebHashHistory } from "vue-router";
+export default createRouter({
+    history:createWebHashHistory(),
+    routes:[
+        {
+            path:'/login',
+            alias: ['/Login'],
+            component:()=>import('../components/Login.vue')
+        },{
+            path:'/zhu',
+            component:()=>import('../components/zhu.vue')
+        }, {
+            path: '/',
+            redirect:'/zhu'
+           
     },
-  ],
-})
+    ],
+      scrollBehavior(){
+        return{
+            left:0,
+            top:0
+        }
+    }
 
-export default router
+})
