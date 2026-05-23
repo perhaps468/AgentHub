@@ -13,8 +13,10 @@ import type {
   CreateSessionPayload,
   UpdateSessionPayload,
   ChatMessage,
+  StreamingMessage,
 } from '@/types/agenthub'
 import type { ConnectionState } from '@/utils/ws-client'
+import { useChatStreamState } from '@/utils/useChatStreamState'
 
 export const useSessionStore = defineStore(
   'session',
@@ -29,10 +31,17 @@ export const useSessionStore = defineStore(
     const isLoadingList = ref(false)
     const isLoadingMessages = ref(false)
 
+    const streamState = useChatStreamState()
+
     // ── Getters ──────────────────────────────────────────────
     const currentMessages = computed(() => {
       if (!currentSessionId.value) return []
       return messageMap.value[currentSessionId.value] ?? []
+    })
+
+    const currentStreamingMessages = computed(() => {
+      if (!currentSessionId.value) return []
+      return streamState.getStreamingMessages.value(currentSessionId.value)
     })
 
     const currentPageInfo = computed(() => {
@@ -137,9 +146,22 @@ export const useSessionStore = defineStore(
       messageMap.value[sessionId].push(msg)
     }
 
+    function mergeOrUpdateMessage(sessionId: string, msg: ChatMessage) {
+      if (!messageMap.value[sessionId]) {
+        messageMap.value[sessionId] = []
+      }
+      const existingIndex = messageMap.value[sessionId].findIndex((m) => m.id === msg.id)
+      if (existingIndex !== -1) {
+        messageMap.value[sessionId][existingIndex] = msg
+      } else {
+        messageMap.value[sessionId].push(msg)
+      }
+    }
+
     function clearMessages(sessionId: string) {
       delete messageMap.value[sessionId]
       delete messagePageMap.value[sessionId]
+      streamState.clearSession(sessionId)
     }
 
     function setConnectionState(state: ConnectionState) {
@@ -160,8 +182,10 @@ export const useSessionStore = defineStore(
       connectionState,
       isLoadingList,
       isLoadingMessages,
+      streamState,
       // getters
       currentMessages,
+      currentStreamingMessages,
       currentPageInfo,
       // actions
       fetchSessionList,
@@ -172,6 +196,7 @@ export const useSessionStore = defineStore(
       fetchMessages,
       appendMessage,
       appendHumanMessage,
+      mergeOrUpdateMessage,
       clearMessages,
       setConnectionState,
       setCurrentSessionId,

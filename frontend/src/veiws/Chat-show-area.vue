@@ -57,8 +57,10 @@ const newMsgCount = ref(0)
 
 // Map ChatMessage (backend format) → MessageRecord (Msg component format)
 const msgRecord = computed(() => {
-  const messages: ChatMessage[] = sessionStore.messageMap[props.targetId] ?? []
-  return messages.map((m) => {
+  const historicalMessages: ChatMessage[] = sessionStore.messageMap[props.targetId] ?? []
+  const streamingMessages = sessionStore.currentStreamingMessages
+  
+  const historicalRecords = historicalMessages.map((m) => {
     const isHuman = m.sender_type === 'human'
     const senderId = isHuman ? userInfoStore.userId : `agent_${m.sender_role ?? 'default'}`
     return {
@@ -82,8 +84,44 @@ const msgRecord = computed(() => {
       source: 'User',
       createTime: m.created_at,
       updateTime: m.created_at,
+      deliveryStatus: m.delivery_status,
+      isStreaming: false,
     }
   })
+
+  const streamingRecords = streamingMessages
+    .filter((s) => !s.message_id || !historicalMessages.some((m) => m.id === s.message_id))
+    .map((s) => {
+      const senderId = `agent_${s.sender_role ?? 'default'}`
+      const displayContent = s.ui_status === 'thinking' 
+        ? `${s.sender_role || 'AI'} 正在思考...` 
+        : s.content
+      
+      return {
+        id: s.message_id || s.stream_id,
+        fromId: senderId,
+        toId: props.targetId,
+        fromInfo: {
+          id: senderId,
+          name: agentStore.agent?.name ?? s.sender_role ?? 'AI助手',
+          avatar: null,
+          type: 'Agent',
+          badge: null,
+        },
+        message: displayContent,
+        referenceMsg: null,
+        atUser: null,
+        isShowTime: false,
+        type: 'text',
+        source: 'Agent',
+        createTime: s.created_at,
+        updateTime: s.created_at,
+        isStreaming: true,
+        streamStatus: s.ui_status,
+      }
+    })
+
+  return [...historicalRecords, ...streamingRecords]
 })
 
 watch(

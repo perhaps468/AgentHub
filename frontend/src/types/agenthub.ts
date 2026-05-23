@@ -1,7 +1,10 @@
 export type SidebarMode = 'conversations' | 'agents'
+export type SidebarPanel = 'messages' | 'agents'
 export type ConversationMode = 'single' | 'group'
+export type ConversationKind = 'legacy-group' | 'group' | 'single-agent' | 'private'
 export type SenderType = 'human' | 'agent' | 'system'
 export type PreviewType = 'empty' | 'code' | 'web' | 'ppt' | 'file'
+export type AgentPlatform = 'claude-code' | 'codex' | 'opencode' | 'custom'
 
 export interface AgentProfile {
   id: string
@@ -13,6 +16,24 @@ export interface AgentProfile {
   status?: 'online' | 'offline'
   role?: string
   model?: string
+}
+
+export interface SidebarAgent {
+  id: string
+  name: string
+  avatar: string
+  capabilityTags: string[]
+  description?: string
+  platform?: AgentPlatform
+  isCustom?: boolean
+}
+
+export interface SidebarUser {
+  id: string
+  name: string
+  avatar: string
+  email?: string
+  bio?: string
 }
 
 export interface PersonProfile {
@@ -101,10 +122,23 @@ export interface ChatMessage {
   content: string
   content_type: 'text'
   created_at: string
+  delivery_status?: 'completed' | 'interrupted'
   reference?: MessageReference | null
   codeArtifact?: MessageCodeArtifact | null
   fileArtifact?: MessageFileArtifact | null
   previewArtifact?: MessagePreviewArtifact | null
+}
+
+export interface StreamingMessage {
+  stream_id: string
+  message_id?: string
+  session_id: string
+  sender_type: SenderType
+  sender_role: string | null
+  content: string
+  ui_status: 'thinking' | 'streaming' | 'done' | 'syncing_interrupted'
+  is_ephemeral: boolean
+  created_at: string
 }
 
 export interface PaginatedResponse<T> {

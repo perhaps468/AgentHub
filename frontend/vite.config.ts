@@ -9,12 +9,13 @@ export default defineConfig({
   server: {
     proxy: {
       '/ws': {
-        target: 'http://127.0.0.1:8088',
+        target: 'https://department-quality-rand-hearts.trycloudflare.com',
         ws: true,
+        changeOrigin: true,
         rewrite: (path: string) => path.replace(/^\/ws/, ''),
       },
       '/api': {
-        target: 'http://127.0.0.1:8088',
+        target: 'https://department-quality-rand-hearts.trycloudflare.com',
         changeOrigin: true,
       },
     },
