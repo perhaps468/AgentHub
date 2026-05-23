@@ -107,7 +107,11 @@ export type ErrorCode =
   | 'vfs_conflict'
   | 'invalid_request'
   | 'session_not_found'
-  | 'unknown';
+  | 'unknown'
+  | 'provider_not_configured'
+  | 'provider_request_failed'
+  | 'provider_response_invalid'
+  | 'agent_busy';
 
 export interface ErrorMessage extends BaseMessage {
   type: 'error';
@@ -219,6 +223,7 @@ export interface Message {
   sender_role?: AgentRole;
   content: string;
   content_type: ContentType;
+  delivery_status?: 'completed' | 'interrupted';
   metadata: Record<string, unknown>;
   is_pinned: boolean;
   parent_message_id?: string;

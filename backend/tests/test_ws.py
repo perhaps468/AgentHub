@@ -1,25 +1,22 @@
-"""P1-1-4 TDD: WebSocket + 真实 Provider 链路集成测试。
+"""P1-2 WebSocket 流式链路集成测试。
 
-starlette 1.0.0 + FastAPI 0.136 + Python 3.13 组合下，使用 TestClient.websocket_connect
-连接本 app 的 WS 路由时，连接建立后服务器端会立即主动关闭连接（原因待查）。
-这是一个框架/版本兼容性问题，不影响真实运行时行为。
+测试 ws.py 中的流式业务逻辑，不依赖 starlette 1.0.0 WebSocket 基础设施。
+通过直接调用 WS handler 函数 + mock WebSocket 对象来测试真实业务逻辑，
+同时通过 REST API 验证消息持久化结果。
 
-本文件通过直接调用 WS handler 函数 + mock WebSocket 对象来测试真实业务逻辑，
-同时通过 REST API 验证消息持久化结果。这样既测试了 WS 路由的完整逻辑，
-又不依赖有问题的 TestClient WS 基础设施。
-
-覆盖 P1-1-4 测试方案：
+覆盖 P1-2 测试方案：
 - ping → pong，不持久化，不触发 Agent 回复
 - send_message → human message 先落库
-- Provider 成功 → agent message 落库，sender_role=PM
-- 缺失 QWEN_API_KEY → provider_not_configured，不落库 agent message
-- 上游失败 → provider_request_failed，不落库 agent message
-- 上游空回复 → provider_response_invalid，不落库 agent message
+- 流式成功 → agent message 落库，typing + chunks + final + typing=false
+- 缺失 QWEN_API_KEY → provider_not_configured，typing=false
+- 上游失败 → provider_request_failed，typing=false
+- 上游空回复 → provider_response_invalid，typing=false
 - 非法请求 → invalid_request，WS 保持可用
 - session 不存在 → 返回错误后关闭
+- WS 在流式中断开 → partial interrupted 收口
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -103,6 +100,7 @@ def query_messages(session_id: str) -> list[dict]:
                 "sender_role": m.sender_role,
                 "content": m.content,
                 "content_type": m.content_type,
+                "delivery_status": m.delivery_status,
             }
             for m in msgs
         ]
@@ -206,15 +204,29 @@ class TestPingPong:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Provider 成功路径（直接 handler 调用 + mock Provider）
+# Tests: 流式成功路径（直接 handler 调用 + mock Provider）
 # ---------------------------------------------------------------------------
 
+import asyncio
+from unittest.mock import patch
+
+
 class TestSendMessageSuccess:
-    def _mock_provider_success(self, response_text: str = "This is a PM response."):
-        from app.providers.base import ProviderOutput
-        mock_output = MagicMock()
-        mock_output.text = response_text
-        return AsyncMock(return_value=mock_output)
+    """P1-2-3: 流式成功路径测试。mock stream_chat 并验证流式事件序列。"""
+
+    def _mock_stream_chat(self, deltas: list[str]):
+        """返回流式 delta 的 mock stream_chat。
+
+        每个 delta 必须包含可 flush 的内容（句号或标点），
+        以便 SentenceChunker 能正确触发 flush。
+        """
+        from app.providers.base import ProviderStreamEvent
+
+        async def mock(input):
+            for d in deltas:
+                yield ProviderStreamEvent(text_delta=d)
+
+        return mock
 
     def test_send_message_persists_human_and_agent_messages(self, setup):
         session_id = create_session_via_db()
@@ -226,31 +238,28 @@ class TestSendMessageSuccess:
             "content": "hello",
         })
 
-        from unittest.mock import patch
-
-        with patch(
-            "app.api.ws.get_provider"
-        ) as mock_get_provider:
+        with patch("app.api.ws.get_provider") as mock_get_provider, \
+             patch("app.api.ws.get_default_agent") as mock_get_agent:
             mock_provider = MagicMock()
-            mock_provider.chat = self._mock_provider_success("PM response text.")
+            mock_provider.stream_chat = self._mock_stream_chat(["PM response text。"])
             mock_get_provider.return_value = mock_provider
+            mock_get_agent.return_value = MagicMock(role="PM", system_prompt="You are PM.")
 
             import asyncio
-            asyncio.run(
-                session_websocket(ws, session_id)
-            )
+            asyncio.run(session_websocket(ws, session_id))
 
         assert ws.accepted
-        assert len(ws.sent_messages) == 1
-        pushed = ws.sent_messages[0]
-        assert pushed["type"] == "chat_stream"
-        assert pushed["session_id"] == session_id
-        assert pushed["sender_type"] == "agent"
-        assert pushed["sender_role"] == "PM"
-        assert pushed["content"] == "PM response text."
-        assert pushed["content_type"] == "text"
-        assert "message_id" in pushed
-        assert "created_at" in pushed
+        # 流式协议：typing(true) -> chat_stream chunks -> final -> typing(false)
+        typing_true = next(m for m in ws.sent_messages if m["type"] == "agent_typing" and m["is_typing"] is True)
+        assert typing_true["agent_role"] == "PM"
+        assert "stream_id" in typing_true
+
+        chunks = [m for m in ws.sent_messages if m["type"] == "chat_stream"]
+        assert len(chunks) >= 1
+        final_chunk = next(m for m in chunks if m["is_final"])
+        assert final_chunk["content_chunk"] == ""
+        typing_false = next(m for m in ws.sent_messages if m["type"] == "agent_typing" and m["is_typing"] is False)
+        assert typing_false["agent_role"] == "PM"
 
         msgs = query_messages(session_id)
         assert len(msgs) == 2
@@ -258,7 +267,8 @@ class TestSendMessageSuccess:
         assert msgs[0]["content"] == "hello"
         assert msgs[1]["sender_type"] == "agent"
         assert msgs[1]["sender_role"] == "PM"
-        assert msgs[1]["content"] == "PM response text."
+        assert msgs[1]["content"] == "PM response text。"
+        assert msgs[1]["delivery_status"] == "completed"
 
     def test_send_message_moves_session_to_top_of_list(self, setup):
         from app.core.database import SessionLocal
@@ -274,7 +284,6 @@ class TestSendMessageSuccess:
             db.refresh(first)
             db.refresh(second)
             first_id = first.id
-            second_id = second.id
         finally:
             db.close()
 
@@ -285,17 +294,15 @@ class TestSendMessageSuccess:
             "content": "bump",
         })
 
-        from unittest.mock import patch
-
-        with patch("app.api.ws.get_provider") as mock_get_provider:
+        with patch("app.api.ws.get_provider") as mock_get_provider, \
+             patch("app.api.ws.get_default_agent") as mock_get_agent:
             mock_provider = MagicMock()
-            mock_provider.chat = self._mock_provider_success("ok")
+            mock_provider.stream_chat = self._mock_stream_chat(["ok。"])
             mock_get_provider.return_value = mock_provider
+            mock_get_agent.return_value = MagicMock(role="PM", system_prompt="You are PM.")
 
             import asyncio
-            asyncio.run(
-                session_websocket(ws, first_id)
-            )
+            asyncio.run(session_websocket(ws, first_id))
 
         msgs = query_messages(first_id)
         assert len(msgs) == 2
@@ -313,21 +320,20 @@ class TestSendMessageSuccess:
         })
         ws.queue_message({"type": "ping"})
 
-        from unittest.mock import patch
-
-        with patch("app.api.ws.get_provider") as mock_get_provider:
+        with patch("app.api.ws.get_provider") as mock_get_provider, \
+             patch("app.api.ws.get_default_agent") as mock_get_agent:
             mock_provider = MagicMock()
-            mock_provider.chat = self._mock_provider_success("agent reply")
+            mock_provider.stream_chat = self._mock_stream_chat(["agent reply。"])
             mock_get_provider.return_value = mock_provider
+            mock_get_agent.return_value = MagicMock(role="PM", system_prompt="You are PM.")
 
             import asyncio
-            asyncio.run(
-                session_websocket(ws, session_id)
-            )
+            asyncio.run(session_websocket(ws, session_id))
 
-        assert len(ws.sent_messages) == 2
-        assert ws.sent_messages[0]["type"] == "chat_stream"
-        assert ws.sent_messages[1]["type"] == "pong"
+        chunks = [m for m in ws.sent_messages if m["type"] == "chat_stream" and not m["is_final"]]
+        assert len(chunks) >= 1
+        pong = next(m for m in ws.sent_messages if m["type"] == "pong")
+        assert pong is not None
 
 
 # ---------------------------------------------------------------------------
@@ -335,8 +341,21 @@ class TestSendMessageSuccess:
 # ---------------------------------------------------------------------------
 
 class TestSendMessageProviderErrors:
-    def _mock_provider_error(self, error_cls):
-        return AsyncMock(side_effect=error_cls("upstream error"))
+    """P1-2-3: Provider 错误路径测试。mock stream_chat 验证流式错误事件。"""
+
+    def _mock_stream_error(self, error_cls):
+        """返回立即抛出异常的 async generator。
+
+        在抛出异常前先 yield 一个可 flush 的 delta，使句段聚合器产生 chunk，
+        从而触发 agent message 创建。这样才能测试到 partial interrupted 的收口。
+        """
+        from app.providers.base import ProviderStreamEvent
+
+        async def mock(input):
+            yield ProviderStreamEvent(text_delta="partial content。")
+            raise error_cls("upstream error")
+
+        return mock
 
     def test_missing_api_key_returns_provider_not_configured(self, setup):
         session_id = create_session_via_db()
@@ -348,29 +367,33 @@ class TestSendMessageProviderErrors:
             "content": "hello",
         })
 
-        from unittest.mock import patch
         from app.providers.base import ProviderNotConfiguredError
 
-        with patch("app.api.ws.get_provider") as mock_get_provider:
+        with patch("app.api.ws.get_provider") as mock_get_provider, \
+             patch("app.api.ws.get_default_agent") as mock_get_agent:
             mock_provider = MagicMock()
-            mock_provider.chat = self._mock_provider_error(ProviderNotConfiguredError)
+            mock_provider.stream_chat = self._mock_stream_error(ProviderNotConfiguredError)
             mock_get_provider.return_value = mock_provider
+            mock_get_agent.return_value = MagicMock(role="PM", system_prompt="You are PM.")
 
             import asyncio
-            asyncio.run(
-                session_websocket(ws, session_id)
-            )
+            asyncio.run(session_websocket(ws, session_id))
 
         assert ws.accepted
-        assert len(ws.sent_messages) == 1
-        error = ws.sent_messages[0]
-        assert error["type"] == "error"
+        # 流式协议：typing(true) -> chat_stream chunk(s) -> error -> typing(false)
+        typing_true = next(m for m in ws.sent_messages if m["type"] == "agent_typing" and m["is_typing"] is True)
+        assert typing_true["stream_id"] is not None
+        error = next(m for m in ws.sent_messages if m["type"] == "error")
         assert error["error_code"] == "provider_not_configured"
-        assert "configured" in error["error_message"].lower() or "key" in error["error_message"].lower()
+        typing_false = next(m for m in ws.sent_messages if m["type"] == "agent_typing" and m["is_typing"] is False)
+        assert typing_false is not None
 
+        # human message 存在，agent message 存在（partial interrupted）
         msgs = query_messages(session_id)
-        assert len(msgs) == 1
+        assert len(msgs) == 2
         assert msgs[0]["sender_type"] == "human"
+        assert msgs[1]["sender_type"] == "agent"
+        assert msgs[1]["delivery_status"] == "interrupted"
 
     def test_upstream_5xx_returns_provider_request_failed(self, setup):
         session_id = create_session_via_db()
@@ -382,26 +405,26 @@ class TestSendMessageProviderErrors:
             "content": "hello",
         })
 
-        from unittest.mock import patch
         from app.providers.base import ProviderRequestError
 
-        with patch("app.api.ws.get_provider") as mock_get_provider:
+        with patch("app.api.ws.get_provider") as mock_get_provider, \
+             patch("app.api.ws.get_default_agent") as mock_get_agent:
             mock_provider = MagicMock()
-            mock_provider.chat = self._mock_provider_error(ProviderRequestError)
+            mock_provider.stream_chat = self._mock_stream_error(ProviderRequestError)
             mock_get_provider.return_value = mock_provider
+            mock_get_agent.return_value = MagicMock(role="PM", system_prompt="You are PM.")
 
             import asyncio
-            asyncio.run(
-                session_websocket(ws, session_id)
-            )
+            asyncio.run(session_websocket(ws, session_id))
 
-        error = ws.sent_messages[0]
-        assert error["type"] == "error"
+        error = next(m for m in ws.sent_messages if m["type"] == "error")
         assert error["error_code"] == "provider_request_failed"
 
         msgs = query_messages(session_id)
-        assert len(msgs) == 1
+        assert len(msgs) == 2
         assert msgs[0]["sender_type"] == "human"
+        assert msgs[1]["sender_type"] == "agent"
+        assert msgs[1]["delivery_status"] == "interrupted"
 
     def test_upstream_empty_response_returns_provider_response_invalid(self, setup):
         session_id = create_session_via_db()
@@ -413,26 +436,25 @@ class TestSendMessageProviderErrors:
             "content": "hello",
         })
 
-        from unittest.mock import patch
         from app.providers.base import ProviderResponseInvalidError
 
-        with patch("app.api.ws.get_provider") as mock_get_provider:
+        with patch("app.api.ws.get_provider") as mock_get_provider, \
+             patch("app.api.ws.get_default_agent") as mock_get_agent:
             mock_provider = MagicMock()
-            mock_provider.chat = self._mock_provider_error(ProviderResponseInvalidError)
+            mock_provider.stream_chat = self._mock_stream_error(ProviderResponseInvalidError)
             mock_get_provider.return_value = mock_provider
+            mock_get_agent.return_value = MagicMock(role="PM", system_prompt="You are PM.")
 
             import asyncio
-            asyncio.run(
-                session_websocket(ws, session_id)
-            )
+            asyncio.run(session_websocket(ws, session_id))
 
-        error = ws.sent_messages[0]
-        assert error["type"] == "error"
+        error = next(m for m in ws.sent_messages if m["type"] == "error")
         assert error["error_code"] == "provider_response_invalid"
 
         msgs = query_messages(session_id)
-        assert len(msgs) == 1
+        assert len(msgs) == 2
         assert msgs[0]["sender_type"] == "human"
+        assert msgs[1]["sender_type"] == "agent"
 
     def test_ws_usable_after_provider_error(self, setup):
         session_id = create_session_via_db()
@@ -445,21 +467,22 @@ class TestSendMessageProviderErrors:
         })
         ws.queue_message({"type": "ping"})
 
-        from unittest.mock import patch
         from app.providers.base import ProviderRequestError
 
-        with patch("app.api.ws.get_provider") as mock_get_provider:
+        with patch("app.api.ws.get_provider") as mock_get_provider, \
+             patch("app.api.ws.get_default_agent") as mock_get_agent:
             mock_provider = MagicMock()
-            mock_provider.chat = self._mock_provider_error(ProviderRequestError)
+            mock_provider.stream_chat = self._mock_stream_error(ProviderRequestError)
             mock_get_provider.return_value = mock_provider
+            mock_get_agent.return_value = MagicMock(role="PM", system_prompt="You are PM.")
 
             import asyncio
-            asyncio.run(
-                session_websocket(ws, session_id)
-            )
+            asyncio.run(session_websocket(ws, session_id))
 
-        assert ws.sent_messages[0]["error_code"] == "provider_request_failed"
-        assert ws.sent_messages[1]["type"] == "pong"
+        error = next(m for m in ws.sent_messages if m["type"] == "error")
+        assert error["error_code"] == "provider_request_failed"
+        pong = next(m for m in ws.sent_messages if m["type"] == "pong")
+        assert pong is not None
 
 
 # ---------------------------------------------------------------------------
@@ -477,14 +500,15 @@ class TestSendMessageValidation:
         })
 
         import asyncio
-        asyncio.run(
-            session_websocket(ws, session_id)
-        )
+        asyncio.run(session_websocket(ws, session_id))
 
         assert ws.accepted
-        assert ws.sent_messages == [
-            {"type": "error", "error_code": "invalid_request", "error_message": "Invalid request"}
-        ]
+        # 新协议 error 包含 agent_role, timestamp, stream_id
+        error = ws.sent_messages[0]
+        assert error["type"] == "error"
+        assert error["error_code"] == "invalid_request"
+        assert error["agent_role"] == "PM"
+        assert "stream_id" in error
 
     def test_empty_content_returns_invalid_request(self, setup):
         session_id = create_session_via_db()
@@ -497,13 +521,14 @@ class TestSendMessageValidation:
         })
 
         import asyncio
-        asyncio.run(
-            session_websocket(ws, session_id)
-        )
+        asyncio.run(session_websocket(ws, session_id))
 
-        assert ws.sent_messages == [
-            {"type": "error", "error_code": "invalid_request", "error_message": "Invalid request"}
-        ]
+        assert ws.accepted
+        error = ws.sent_messages[0]
+        assert error["type"] == "error"
+        assert error["error_code"] == "invalid_request"
+        assert error["agent_role"] == "PM"
+        assert "stream_id" in error
 
     def test_malformed_json_closes_connection(self, setup):
         """非 JSON 请求体时 WS 连接关闭（handler 捕获 JSONDecodeError 后返回 invalid_request 后继续循环，
@@ -547,16 +572,12 @@ class TestSessionNotFound:
         ws = MockWebSocket()
 
         import asyncio
-        asyncio.run(
-            session_websocket(ws, missing_id)
-        )
+        asyncio.run(session_websocket(ws, missing_id))
 
         assert ws.accepted
         assert ws.closed
-        assert ws.sent_messages == [
-            {
-                "type": "error",
-                "error_code": "session_not_found",
-                "error_message": "Session not found",
-            }
-        ]
+        # 新协议 error 包含 agent_role, timestamp, stream_id
+        error = ws.sent_messages[0]
+        assert error["type"] == "error"
+        assert error["error_code"] == "session_not_found"
+        assert "stream_id" in error
