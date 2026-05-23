@@ -1,12 +1,20 @@
 from json import JSONDecodeError
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.core.database import get_db
+from app.agents.registry import get_default_agent
+from app.core.config import get_settings
+from app.core.database import SessionLocal
 from app.models.message import Message
 from app.models.session import ChatSession, utcnow
+from app.providers.base import (
+    ProviderInput,
+    ProviderNotConfiguredError,
+    ProviderRequestError,
+    ProviderResponseInvalidError,
+)
 from app.schemas.common import to_iso_z
+from app.services.agent_runtime import get_provider
 
 router = APIRouter(tags=["websocket"])
 
@@ -37,22 +45,22 @@ async def session_websocket(
     websocket: WebSocket,
     session_id: str,
     x_token: str | None = None,
-    db: Session = Depends(get_db),
 ) -> None:
     await websocket.accept()
-    session = db.get(ChatSession, session_id)
-    if session is None:
-        await send_error(websocket, "session_not_found", "Session not found")
-        await websocket.close()
-        return
 
-    if x_token and x_token != session.owner_id:
-        await send_error(websocket, "forbidden", "You do not have access to this session")
-        await send_error(websocket, "forbidden", "You do not have access to this session")
-        await websocket.close()
-        return
-
+    db = SessionLocal()
     try:
+        session = db.get(ChatSession, session_id)
+        if session is None:
+            await send_error(websocket, "session_not_found", "Session not found")
+            await websocket.close()
+            return
+
+        if x_token and x_token != session.owner_id:
+            await send_error(websocket, "forbidden", "You do not have access to this session")
+            await websocket.close()
+            return
+
         while True:
             try:
                 payload = await websocket.receive_json()
@@ -69,6 +77,7 @@ async def session_websocket(
                 continue
 
             content = payload["content"]
+
             human_message = Message(
                 session_id=session_id,
                 sender_type="human",
@@ -76,16 +85,41 @@ async def session_websocket(
                 content=content,
                 content_type="text",
             )
+            db.add(human_message)
+            session.updated_at = utcnow()
+            db.add(session)
+            db.commit()
+
+            agent = get_default_agent()
+            provider = get_provider()
+            settings = get_settings()
+
+            try:
+                output = await provider.chat(
+                    ProviderInput(
+                        system_prompt=agent.system_prompt,
+                        user_message=content,
+                        model=settings.qwen_model,
+                    )
+                )
+            except ProviderNotConfiguredError:
+                await send_error(websocket, "provider_not_configured", "Provider is not configured")
+                continue
+            except ProviderRequestError:
+                await send_error(websocket, "provider_request_failed", "Provider request failed")
+                continue
+            except ProviderResponseInvalidError:
+                await send_error(websocket, "provider_response_invalid", "Provider returned invalid response")
+                continue
+
             agent_message = Message(
                 session_id=session_id,
                 sender_type="agent",
-                sender_role="PM",
-                content=f"Echo: {content}",
+                sender_role=agent.role,
+                content=output.text,
                 content_type="text",
             )
-            session.updated_at = utcnow()
-            db.add_all([human_message, agent_message])
-            db.add(session)
+            db.add(agent_message)
             db.commit()
             db.refresh(agent_message)
 
@@ -102,6 +136,8 @@ async def session_websocket(
                 }
             )
     except WebSocketDisconnect:
-        return
+        pass
     except Exception:
         await send_error(websocket, "unknown", "Unknown error")
+    finally:
+        db.close()

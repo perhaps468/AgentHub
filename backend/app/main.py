@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.agents import router as agents_router
 from app.api.sessions import router as sessions_router
 from app.api.ws import router as ws_router
 
@@ -65,3 +66,4 @@ def api_health() -> dict:
 
 app.include_router(sessions_router)
 app.include_router(ws_router)
+app.include_router(agents_router)
