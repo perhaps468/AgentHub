@@ -20,6 +20,9 @@ class Settings:
     database_url: str
     host: str
     port: int
+    qwen_api_key: str | None
+    qwen_base_url: str
+    qwen_model: str
 
 
 def get_settings() -> Settings:
@@ -31,4 +34,9 @@ def get_settings() -> Settings:
         ),
         host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", "8088")),
+        qwen_api_key=os.getenv("QWEN_API_KEY"),
+        qwen_base_url=os.getenv(
+            "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        ),
+        qwen_model=os.getenv("QWEN_MODEL", "qwen-plus"),
     )

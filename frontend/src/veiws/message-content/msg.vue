@@ -11,7 +11,7 @@
               {{ displayUser?.name || '未知用户' }}
             </div>
             <div class="msg-role">
-              {{ isOwn ? '我' : '成员' }}
+              {{ roleLabel }}
             </div>
           </div>
           <msg_content :right="isOwn" :msg="props.msg" />
@@ -24,6 +24,7 @@
 <script setup>
 import { computed } from 'vue'
 
+import { useAgentStore } from '../../store/module/useAgentStore'
 import { useUserInfoStore } from '../../store/module/useUserStore'
 import Avatar from '../img/avatar.vue'
 import msg_content from '../message-content/msg_content .vue'
@@ -35,8 +36,14 @@ const props = defineProps({
 })
 
 const userStore = useUserInfoStore()
+const agentStore = useAgentStore()
 const isOwn = computed(() => props.msg?.fromId === userStore.userId)
 const displayUser = computed(() => props.user || props.msg?.fromInfo)
+
+const roleLabel = computed(() => {
+  if (isOwn.value) return '我'
+  return agentStore.agent?.role ?? '成员'
+})
 </script>
 
 <style scoped>

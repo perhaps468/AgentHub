@@ -115,6 +115,7 @@ import { logout } from '../api/login'
 import router from '../router/index'
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
+import { useAgentStore } from '../store/index'
 import type { ConversationItem } from '../types/agenthub'
 import { wsClient, getWsClientReconnectAttempt } from '../utils/ws-client'
 import Search from '../veiws/Serach.vue'
@@ -126,6 +127,7 @@ import dot_hint from '../veiws/left/dot-hint.vue'
 
 const userInfoStore = useUserInfoStore()
 const sessionStore = useSessionStore()
+const agentStore = useAgentStore()
 const showToast = useToast()
 
 const showLeft = ref(false)
@@ -250,6 +252,8 @@ onMounted(async () => {
     page: 1,
     page_size: 50,
   })
+
+  agentStore.fetchDefaultAgent()
 
   wsClient.onStateChange((state) => {
     sessionStore.setConnectionState(state)

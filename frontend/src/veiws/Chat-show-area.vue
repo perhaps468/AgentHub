@@ -31,6 +31,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
+import { useAgentStore } from '../store/module/useAgentStore'
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
 import type { ChatMessage } from '../types/agenthub'
@@ -49,6 +50,7 @@ const props = defineProps({
 })
 
 const sessionStore = useSessionStore()
+const agentStore = useAgentStore()
 const userInfoStore = useUserInfoStore()
 const chatShowAreaRef = ref<HTMLElement>()
 const newMsgCount = ref(0)
@@ -65,7 +67,9 @@ const msgRecord = computed(() => {
       toId: props.targetId,
       fromInfo: {
         id: senderId,
-        name: isHuman ? (userInfoStore.userName || '我') : (m.sender_role ?? 'AI助手'),
+        name: isHuman
+          ? userInfoStore.userName || '我'
+          : agentStore.agent?.name ?? m.sender_role ?? 'AI助手',
         avatar: null,
         type: isHuman ? 'User' : 'Agent',
         badge: null,

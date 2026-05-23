@@ -7,10 +7,12 @@ export interface AgentProfile {
   id: string
   name: string
   avatar?: string | null
+  avatar_url?: string | null
   platform: string
   capabilityTags: string[]
   status?: 'online' | 'offline'
   role?: string
+  model?: string
 }
 
 export interface PersonProfile {

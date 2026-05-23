@@ -1,25 +1,33 @@
 # AgentHub
 
-AgentHub 是一个 IM 聊天式多 Agent 协作平台。当前实现聚焦 MVP-3 + MVP-4 的后端闭环：Session REST、Message 历史、按会话工作的 WebSocket，以及最小 Echo 消息持久化。
+AgentHub 是一个 IM 聊天式多 Agent 协作平台。当前实现 P1-1 阶段：单 Provider（千问 OpenAI 兼容接口）+ 单内置 PM Agent + WebSocket 真实消息链路。
 
 ## 目录职责
 
 - `frontend`: Vue + Vite 前端应用。
-- `backend`: FastAPI 后端服务，提供会话、消息历史和 WebSocket Echo 接口。
+- `backend`: FastAPI 后端服务，提供会话、消息历史、WebSocket 真实 Agent 消息和 Agent 身份接口。
 - `shared`: 前后端共享类型和协议定义。
 - `openspec`: 产品规划、阶段说明和变更文档。
 
 ## 后端环境变量
 
-复制 `backend/.env.example` 为 `backend/.env` 后按本地环境修改：
+复制 `backend/.env.example` 为 `backend/.env` 后按本地环境修改。真实密钥只放本地 `.env`，不要提交到 GitHub。
 
 ```bash
-HOST=127.0.0.1
-PORT=8000
+# Database
 DATABASE_URL=mysql+pymysql://root:password@127.0.0.1:3306/agenthub
+
+# Server
+HOST=127.0.0.1
+PORT=8088
+
+# Qwen Provider (千问 OpenAI 兼容接口)
+QWEN_API_KEY=your_qwen_api_key_here
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_MODEL=qwen-plus
 ```
 
-如果不创建 `backend/.env`，后端会使用以上默认值。
+未配置 `QWEN_API_KEY` 时后端仍可启动，但发送消息会返回 `provider_not_configured` 错误。
 
 ## 本地启动
 
@@ -68,6 +76,7 @@ pnpm dev:backend
 - `GET /api/sessions/{session_id}`
 - `PATCH /api/sessions/{session_id}`
 - `DELETE /api/sessions/{session_id}`
+- `GET /api/agents/default`
 - `GET /api/sessions/{session_id}/messages`
 - `WS /ws/{session_id}`
 
@@ -75,10 +84,10 @@ pnpm dev:backend
 
 ## WebSocket 契约
 
-`WS /ws/{session_id}` 在 MVP-5 阶段继续复用既有会话通道，不新增 REST 接口。
+`WS /ws/{session_id}` 使用真实 PM Agent 响应，不再使用 Echo。
 
 - 连接到存在的 `session_id` 后，客户端可以发送 `{"type":"ping"}`，服务端会返回 `{"type":"pong"}`。
-- `ping/pong` 只用于连接保活，不会写入消息历史，也不会触发 Echo 回复。
+- `ping/pong` 只用于连接保活，不会写入消息历史，也不会触发 Agent 回复。
 - 业务消息继续使用：
 
 ```json
@@ -103,9 +112,12 @@ pnpm dev:backend
 
 - `session_not_found`：目标会话不存在。
 - `invalid_request`：消息体不是合法的 `ping` 或 `send_message` 契约。
+- `provider_not_configured`：QWEN_API_KEY 未配置。
+- `provider_request_failed`：上游调用失败。
+- `provider_response_invalid`：上游响应无有效内容。
 - `unknown`：服务端出现未预期异常。
 
-MVP-5 的自动重连由客户端负责。客户端断开后，可以重新连接同一个 `WS /ws/{session_id}`，连接恢复后继续发送 `send_message` 并接收现有 `chat_stream` Echo 响应。
+默认 Agent 为 `PM Agent`，可通过 `GET /api/agents/default` 获取身份信息（不包含模型名）。
 
 ## 验证命令
 
@@ -132,6 +144,12 @@ curl "http://127.0.0.1:8000/api/sessions?owner_id=dev_user"
 
 ```bash
 curl -X PATCH http://127.0.0.1:8000/api/sessions/<session_id> -H "Content-Type: application/json" -d "{\"is_archived\":true}"
+```
+
+查询默认 Agent 信息：
+
+```bash
+curl http://127.0.0.1:8000/api/agents/default
 ```
 
 查询消息历史：
