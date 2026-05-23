@@ -241,7 +241,17 @@
             "type": { "const": "error" },
             "error_code": {
               "type": "string",
-              "enum": ["llm_timeout", "vfs_conflict", "invalid_request", "session_not_found", "unknown"]
+              "enum": [
+                "llm_timeout",
+                "vfs_conflict",
+                "invalid_request",
+                "session_not_found",
+                "unknown",
+                "provider_not_configured",
+                "provider_request_failed",
+                "provider_response_invalid",
+                "agent_busy"
+              ]
             },
             "error_message": { "type": "string", "description": "错误描述" },
             "diff_id": { "type": "string", "description": "关联的 diff_id（vfs_conflict 时携带）" }

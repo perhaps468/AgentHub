@@ -17,6 +17,12 @@ class Message(Base):
     sender_role: Mapped[str | None] = mapped_column(String(50), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_type: Mapped[str] = mapped_column(String(20), nullable=False, default="text")
+    delivery_status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
     session = relationship("ChatSession", back_populates="messages")
+
+    def __init__(self, **kwargs) -> None:
+        if "delivery_status" not in kwargs:
+            kwargs["delivery_status"] = "completed"
+        super().__init__(**kwargs)
