@@ -1,0 +1,378 @@
+<template>
+  <div class="chat-input-area">
+    <!-- Reference bar -->
+    <div v-if="referenceMsg" class="reference-msg">
+      <div class="reference-copy">
+        <svg class="ref-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="ref-content">
+          <span class="reference-label">{{ referenceMsg.from }}</span>
+          <span class="reference-text">{{ referenceMsg.text }}</span>
+        </div>
+      </div>
+      <button class="reference-clear" type="button" aria-label="取消引用" @click="clearRef">
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Main composer -->
+    <div class="composer-row">
+      <!-- Toolbar -->
+      <div class="composer-toolbar" role="toolbar" aria-label="消息工具">
+        <button type="button" class="tool-btn" aria-label="表情" title="表情" @click="showEmoji = !showEmoji">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M8.5 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="currentColor"/>
+            <path d="M15.5 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="currentColor"/>
+            <path d="M8.5 16.5c.8 1 2.2 1.5 3.5 1.5s2.7-.5 3.5-1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button type="button" class="tool-btn" aria-label="附件" title="发送文件" @click="msgInputRef?.openFilePicker?.()">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button type="button" class="tool-btn" aria-label="语音通话" title="语音通话" @click="msgInputRef?.startAudioCall?.()">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M5 4v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <path d="M3 10v1a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <path d="M8 15v3M16 15v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <rect x="5" y="16" width="14" height="4" rx="2" stroke="currentColor" stroke-width="1.6"/>
+          </svg>
+        </button>
+        <button type="button" class="tool-btn" aria-label="视频通话" title="视频通话" @click="msgInputRef?.startVideoCall?.()">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="5" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M16 9l5-3v12l-5-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Input editor -->
+      <div class="composer-editor-wrap">
+        <Input
+          ref="msgInputRef"
+          v-model:value="msgContent"
+          :handlerSubmitMsg="handlerSubmitMsg"
+          placeholder="输入消息..."
+          @send="handlerSubmitMsg"
+        />
+      </div>
+
+      <!-- Send button -->
+      <button
+        type="button"
+        class="send-btn"
+        :class="{ active: canSend && !props.disabled }"
+        :disabled="!canSend || props.disabled"
+        aria-label="发送消息"
+        @click="handlerSubmitMsg"
+      >
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Emoji panel -->
+    <transition name="emoji-slide">
+      <div v-if="showEmoji" class="emoji-panel">
+        <div class="emoji-grid">
+          <button
+            v-for="e in emojis"
+            :key="e.icon"
+            type="button"
+            class="emoji-item"
+            :title="e.name"
+            @click="insertEmoji(e.icon)"
+          >
+            {{ e.icon }}
+          </button>
+        </div>
+      </div>
+    </transition>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+
+import emojis from '../utils/emoji/emoji'
+import Input from './input-content/input.vue'
+
+const props = defineProps<{
+  sessionId: string
+  disabled?: boolean
+}>()
+
+const emit = defineEmits<{
+  send: [content: string]
+}>()
+
+const msgContent = ref('')
+const showEmoji = ref(false)
+const referenceMsg = ref<{ from: string; text: string } | null>(null)
+const msgInputRef = ref<any>(null)
+
+const canSend = computed(() => msgContent.value.toString().trim().length > 0)
+
+const clearRef = () => {
+  referenceMsg.value = null
+}
+
+const handlerSubmitMsg = () => {
+  if (!canSend.value || props.disabled) return
+  const text = msgContent.value.trim()
+  emit('send', text)
+  msgContent.value = ''
+  referenceMsg.value = null
+}
+
+const insertEmoji = (emoji: string) => {
+  msgInputRef.value?.insertEmoji?.(emoji)
+  showEmoji.value = false
+}
+</script>
+
+<style scoped>
+.chat-input-area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: rgb(var(--surface-color));
+}
+
+/* Reference bar */
+.reference-msg {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgb(var(--border-color));
+  background: rgb(var(--surface-muted));
+}
+
+.reference-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ref-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: rgb(var(--primary-strong));
+}
+
+.ref-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reference-label {
+  color: rgb(var(--primary-strong));
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.reference-text {
+  color: rgb(var(--text-secondary));
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reference-clear {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: rgb(var(--text-muted));
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.reference-clear svg {
+  width: 14px;
+  height: 14px;
+}
+
+.reference-clear:hover {
+  color: rgb(var(--danger-color));
+  background: rgba(215, 96, 96, 0.08);
+}
+
+/* Composer row */
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgb(var(--surface-color));
+}
+
+/* Toolbar */
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding-bottom: 4px;
+}
+
+.tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: rgb(var(--text-secondary));
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.tool-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.tool-btn:hover {
+  color: rgb(var(--primary-strong));
+  background: rgb(var(--primary-soft));
+}
+
+/* Editor wrapper */
+.composer-editor-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Send button */
+.send-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgb(var(--surface-muted));
+  color: rgb(var(--text-muted));
+  cursor: not-allowed;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
+}
+
+.send-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.send-btn.active {
+  background: rgb(var(--primary-color));
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(103, 194, 135, 0.35);
+}
+
+.send-btn.active:hover {
+  background: rgb(var(--primary-strong));
+  transform: scale(1.06);
+  box-shadow: 0 4px 14px rgba(103, 194, 135, 0.45);
+}
+
+.send-btn.active:active {
+  transform: scale(0.96);
+}
+
+/* Emoji panel */
+.emoji-panel {
+  position: absolute;
+  left: 16px;
+  bottom: calc(100% + 10px);
+  z-index: 20;
+  border-radius: 14px;
+  border: 1px solid rgb(var(--border-color));
+  background: rgb(var(--surface-color));
+  box-shadow:
+    0 0 0 4px rgba(103, 194, 135, 0.04),
+    0 8px 24px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0;
+  padding: 10px;
+  gap: 4px;
+}
+
+.emoji-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  font-size: 22px;
+  line-height: 1;
+  transition: background 0.12s ease, transform 0.12s ease;
+  cursor: pointer;
+}
+
+.emoji-item:hover {
+  background: rgb(var(--primary-soft));
+  transform: scale(1.18);
+}
+
+.emoji-item:active {
+  transform: scale(0.92);
+}
+
+/* Emoji panel animation */
+.emoji-slide-enter-active,
+.emoji-slide-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.emoji-slide-enter-from,
+.emoji-slide-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+  transform-origin: bottom left;
+}
+
+@media (max-width: 720px) {
+  .composer-row {
+    flex-wrap: wrap;
+  }
+
+  .composer-toolbar {
+    order: 1;
+  }
+
+  .composer-editor-wrap {
+    order: 2;
+    flex: 1 1 100%;
+  }
+
+  .send-btn {
+    order: 3;
+  }
+}
+</style>

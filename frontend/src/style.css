@@ -1,0 +1,79 @@
+:root {
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --background-color: 248, 250, 248;
+  --surface-color: 255, 255, 255;
+  --surface-muted: 244, 247, 244;
+  --border-color: 224, 230, 224;
+  --border-strong: 208, 218, 208;
+  --text-color: 23, 28, 24;
+  --text-secondary: 100, 109, 101;
+  --text-muted: 148, 156, 149;
+  --primary-color: 103, 194, 135;
+  --primary-soft: 233, 246, 237;
+  --primary-strong: 63, 161, 101;
+  --danger-color: 215, 96, 96;
+  --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.04);
+  --radius-xs: 10px;
+  --radius-sm: 14px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+body {
+  background: rgb(var(--background-color));
+  color: rgb(var(--text-color));
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  background: transparent;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+/* Placeholder for contenteditable input */
+.msg-input.is-empty:empty::before {
+  content: attr(data-placeholder);
+  color: rgb(var(--text-muted));
+  pointer-events: none;
+}
+
+/* Placeholder for contenteditable input */
+.msg-input.is-empty:empty::before {
+  content: attr(data-placeholder);
+  color: rgb(var(--text-muted));
+  pointer-events: none;
+}

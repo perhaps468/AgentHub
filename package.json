@@ -1,6 +1,11 @@
 {
   "name": "agenthub",
   "private": true,
-  "packageManager": "pnpm@10"
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "build:frontend": "pnpm --filter frontend build"
+  }
 }
 

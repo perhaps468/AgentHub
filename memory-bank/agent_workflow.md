@@ -1,8 +1,9 @@
 # AgentHub 多 Agent 协作流转与 Prompt 规范
 
-> 本文件是 `实施计划.md` 的 Agent 协作子文档，定义 LangGraph 状态机中四个角色的
-> System Prompt、触发条件、输出规范和流转规则。
-> MVP 阶段：单聊 + 固定四角色流水线。群聊模式（P2）不包含在本文件中。
+> 状态：`future-reference`
+>
+> 本文件是固定多 Agent 流水线和 Prompt 规范的后续参考资料。
+> 当前 MVP 若尚未进入该阶段，不应将本文直接当作现行实现要求。
 
 ---
 

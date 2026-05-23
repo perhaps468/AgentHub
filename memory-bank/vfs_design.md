@@ -1,7 +1,9 @@
 # 虚拟文件系统（VFS）设计规范
 
-> 本文件是 `实施计划.md` 的 VFS 子文档，详细定义 VFS 的数据结构、
-> Redis 存储方案、Accept/Reject 流程、落盘策略以及前后端接口。
+> 状态：`future-reference`
+>
+> 本文件适合作为 P2 及之后的 VFS / Diff / 预览闭环参考。
+> 当前阶段如尚未进入 VFS 能力建设，不应以本文作为直接实现依据。
 
 ---
 
@@ -72,7 +74,7 @@ TTL: 无（持久化直到项目被删除）
 | `/src/index.html` | `{"content": "<!DOCTYPE html>...", "version": 1, "updated_at": "2026-05-20T10:00:00Z"}` |
 | `/src/style.css` | `{"content": "body { ... }", "version": 2, "updated_at": "2026-05-20T10:05:00Z"}` |
 
-**VFS 快照（存入 PostgreSQL `projects.vfs_state`）**：
+**VFS 快照（存入 MySQL `projects.vfs_state` JSON 字段）**：
 
 ```json
 {
@@ -116,7 +118,7 @@ class VFSService:
         1. 读取 Diff 信息
         2. apply_diff 更新 Redis
         3. 落盘到 /tmp/agent-projects/{project_id}/
-        4. 更新 PostgreSQL code_diffs.status = 'accepted'
+        4. 更新 MySQL code_diffs.status = 'accepted'
         5. 返回更新后的文件路径列表
         """
 
@@ -136,7 +138,7 @@ class VFSService:
         """删除项目：
         1. 删除 Redis VFS
         2. 删除磁盘文件
-        3. 更新 PostgreSQL projects.status = 'deleted'
+        3. 更新 MySQL projects.status = 'deleted'
         """
 ```
 
@@ -179,7 +181,7 @@ class VFSService:
     ├─ 6. 异步落盘（aiofiles）：
     │      写入 /tmp/agent-projects/{project_id}/{file_path}
     │
-    ├─ 7. 更新 PostgreSQL：
+    ├─ 7. 更新 MySQL：
     │      code_diffs.status = 'accepted'
     │
     └─ 8. 推送 WebSocket 消息给前端：
@@ -210,7 +212,7 @@ class VFSService:
     ▼
 后端 VFSService.reject_diff("diff_001")
     │
-    ├─ 1. 更新 PostgreSQL code_diffs.status = 'rejected'
+    ├─ 1. 更新 MySQL code_diffs.status = 'rejected'
     │
     ├─ 2. 推送 WebSocket 消息给前端：
            {
