@@ -13,6 +13,15 @@
             <div class="msg-role">
               {{ roleLabel }}
             </div>
+            <div v-if="props.msg.deliveryStatus === 'interrupted'" class="msg-status-badge interrupted">
+              已中断
+            </div>
+            <div v-if="props.msg.isStreaming && props.msg.streamStatus === 'thinking'" class="msg-status-badge thinking">
+              思考中...
+            </div>
+            <div v-if="props.msg.isStreaming && props.msg.streamStatus === 'streaming'" class="msg-status-badge streaming">
+              <span class="streaming-dot"></span>
+            </div>
           </div>
           <msg_content :right="isOwn" :msg="props.msg" />
         </div>
@@ -107,5 +116,52 @@ const roleLabel = computed(() => {
   border-color: rgba(var(--primary-color), 0.45);
   color: rgb(var(--primary-strong));
   background: rgb(var(--primary-soft));
+}
+
+.msg-status-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.msg-status-badge.interrupted {
+  border: 1px solid rgba(215, 96, 96, 0.3);
+  color: rgb(215, 96, 96);
+  background: rgba(215, 96, 96, 0.08);
+}
+
+.msg-status-badge.thinking {
+  border: 1px solid rgba(var(--primary-color), 0.3);
+  color: rgb(var(--primary-color));
+  background: rgba(var(--primary-color), 0.08);
+}
+
+.msg-status-badge.streaming {
+  border: 1px solid rgba(var(--primary-color), 0.3);
+  background: rgba(var(--primary-color), 0.08);
+  padding: 4px 8px;
+}
+
+.streaming-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(var(--primary-color));
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.8);
+  }
 }
 </style>
