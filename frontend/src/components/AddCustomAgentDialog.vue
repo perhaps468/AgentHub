@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     title="添加自建 Agent"
-    width="480px"
+    width="100px"
     :close-on-click-modal="false"
     @close="handleClose"
   >

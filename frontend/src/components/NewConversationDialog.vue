@@ -155,9 +155,6 @@ const toggleAgent = (agentId: string) => {
   }
 }
 
-const handleAddCustomAgent = () => {
-  emit('add-custom-agent')
-}
 
 const handleClose = () => {
   visible.value = false

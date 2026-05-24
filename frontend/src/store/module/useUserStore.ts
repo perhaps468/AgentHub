@@ -23,5 +23,11 @@ export const useUserInfoStore = defineStore('user-info', {
     async setUserAvatar(avatar: string) {
       this.avatar = avatar
     },
+    async setUserName(name: string) {
+      this.userName = name
+    },
+    async setEmail(email: string) {
+      this.email = email
+    },
   },
 })
