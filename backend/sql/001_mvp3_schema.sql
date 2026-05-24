@@ -13,18 +13,17 @@ CREATE TABLE IF NOT EXISTS sessions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS messages (
-  id CHAR(36) PRIMARY KEY,
+  id CHAR(36) NOT NULL,
   session_id CHAR(36) NOT NULL,
   sender_type VARCHAR(20) NOT NULL,
-  sender_role VARCHAR(50),
+  sender_role VARCHAR(50) DEFAULT NULL,
   content TEXT NOT NULL,
   content_type VARCHAR(20) NOT NULL DEFAULT 'text',
+  delivery_status VARCHAR(20) NOT NULL DEFAULT 'completed',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_messages_session_created (session_id, created_at),
-  CONSTRAINT chk_messages_sender_type CHECK (sender_type IN ('human', 'agent', 'system')),
-  CONSTRAINT chk_messages_content_type CHECK (content_type IN ('text')),
-  CONSTRAINT fk_messages_session
-    FOREIGN KEY (session_id)
-    REFERENCES sessions(id)
-    ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  PRIMARY KEY (id),
+  KEY idx_messages_session_created (session_id, created_at),
+  CONSTRAINT fk_messages_session FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
+  CONSTRAINT chk_messages_content_type CHECK (content_type = 'text'),
+  CONSTRAINT chk_messages_sender_type CHECK (sender_type IN ('human', 'agent', 'system'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
