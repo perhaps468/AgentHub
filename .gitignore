@@ -184,6 +184,10 @@ memory-bank/
 
 # VFS output directory (generated at runtime)
 tmp/
+.tmp/
+
+# Local package manager/runtime caches
+.corepack/
 
 # SQLite databases
 *.db
@@ -204,6 +208,7 @@ uploads/
 # Logs
 *.log
 logs/
+.cursor/*.log
 
 # Alembic ini (auto-generated)
 alembic.ini
