@@ -11,11 +11,11 @@
   --border-color: 224, 230, 224;
   --border-strong: 208, 218, 208;
   --text-color: 23, 28, 24;
-  --text-secondary: 100, 109, 101;
+  --text-secondary: 0, 0, 0;
   --text-muted: 148, 156, 149;
   --primary-color: 103, 194, 135;
-  --primary-soft: 233, 246, 237;
-  --primary-strong: 63, 161, 101;
+  --primary-soft: 230,230,238;
+  --primary-strong:255,255,255;
   --danger-color: 215, 96, 96;
   --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.04);
   --radius-xs: 10px;

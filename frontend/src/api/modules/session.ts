@@ -45,3 +45,8 @@ export const fetchConversationMessages = async (
   return data
 }
 
+export const deleteConversation = async (sessionId: string) => {
+  const { data } = await agenthubRequest.delete<{ code: number; msg: string }>(`/sessions/${sessionId}`)
+  return data
+}
+

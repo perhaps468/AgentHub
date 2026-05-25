@@ -14,20 +14,17 @@
       <MessageListPanel
         :active-panel="activePanel"
         :search-value="searchValue"
-        :show-archived="showArchived"
         :filtered-sessions="filteredSessions"
-        :agent-conversations="agentConversations"
-        :group-conversations="groupConversations"
         :current-session-id="currentSessionId"
         :is-loading="isLoadingList"
         :agents="agents"
         :format-time="formatTime"
         @update:search-value="$emit('update:searchValue', $event)"
-        @update:show-archived="$emit('update:showArchived', $event)"
         @new-session="$emit('new-session')"
         @select-session="$emit('select-session', $event)"
         @toggle-pin="$emit('toggle-pin', $event)"
         @toggle-archive="$emit('toggle-archive', $event)"
+        @delete-session="$emit('delete-session', $event)"
       />
 
       <AgentListPanel
@@ -56,10 +53,7 @@ defineProps<{
   showUserPopover: boolean
   searchValue: string
   agentSearchValue: string
-  showArchived: boolean
   filteredSessions: ConversationItem[]
-  agentConversations: ConversationItem[]
-  groupConversations: ConversationItem[]
   currentSessionId: string
   isLoadingList: boolean
   agents: SidebarAgent[]
@@ -73,13 +67,13 @@ defineEmits<{
   (e: 'update:showUserPopover', value: boolean): void
   (e: 'update:searchValue', value: string): void
   (e: 'update:agentSearchValue', value: string): void
-  (e: 'update:showArchived', value: boolean): void
   (e: 'new-session'): void
   (e: 'select-session', item: ConversationItem): void
   (e: 'toggle-pin', item: ConversationItem): void
   (e: 'toggle-archive', item: ConversationItem): void
   (e: 'add-agent'): void
   (e: 'select-agent', agent: SidebarAgent): void
+  (e: 'delete-session', item: ConversationItem): void
   (e: 'edit-profile'): void
   (e: 'logout'): void
 }>()

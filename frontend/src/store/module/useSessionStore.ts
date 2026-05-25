@@ -7,6 +7,7 @@ import {
   createConversation,
   updateConversation as updateConversationApi,
   fetchConversationMessages,
+  deleteConversation,
 } from '@/api/modules/session'
 import type {
   ConversationItem,
@@ -245,6 +246,18 @@ export const useSessionStore = defineStore(
       currentSessionId.value = id
     }
 
+    async function deleteSession(sessionId: string) {
+      await deleteConversation(sessionId)
+      if (sessionList.value) {
+        sessionList.value = sessionList.value.filter((s) => s.id !== sessionId)
+      }
+      clearMessages(sessionId)
+      if (currentSessionId.value === sessionId) {
+        currentSessionId.value = null
+        currentSession.value = null
+      }
+    }
+
     return {
       // state
       sessionList,
@@ -268,6 +281,7 @@ export const useSessionStore = defineStore(
       updateSession,
       archiveSession,
       fetchMessages,
+      deleteSession,
       appendMessage,
       appendHumanMessage,
       mergeOrUpdateMessage,

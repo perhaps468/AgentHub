@@ -178,7 +178,7 @@ onBeforeUnmount(() => {
 
 .msg-content.is-own {
   border-color: rgba(var(--primary-color), 0.45);
-  background: rgb(var(--primary-soft));
+  background: rgb(var(--surface-color));
 }
 </style>
 

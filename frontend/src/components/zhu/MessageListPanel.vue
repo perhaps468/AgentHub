@@ -1,4 +1,5 @@
 <template>
+  <!-- 仅当消息面板激活时渲染 -->
   <template v-if="activePanel === 'messages'">
     <div class="sidebar-header">
       <div>
@@ -7,6 +8,7 @@
       <span class="version-tag">v1.1.3</span>
     </div>
 
+    <!-- 搜索框 -->
     <Search
       :value="searchValue"
       placeholder="搜索用户/会话"
@@ -18,70 +20,213 @@
       @update:value="$emit('update:searchValue', $event)"
     />
 
+    <!-- 工具栏：新建对话 + 切换归档视图 -->
     <div class="toolbar-row">
       <button class="new-session-btn" type="button" @click="$emit('new-session')">
         新建对话
       </button>
-      <button class="toolbar-btn" type="button" @click="$emit('update:showArchived', !showArchived)">
-        {{ showArchived ? '隐藏归档' : '显示归档' }}
+      <button class="toolbar-btn" type="button" @click="toggleArchivedView">
+        {{ showArchivedView ? '← 返回未归档' : '显示已归档' }}
       </button>
     </div>
 
+    <!-- 会话列表 -->
     <div class="conversation-list">
+      <!-- 加载态 -->
       <div v-if="isLoading" class="loading-hint">加载中...</div>
 
-      <div v-if="agentConversations.length > 0" class="list-section">
-        <div class="section-title">Agent 单聊</div>
+      <!-- 隐藏归档模式：显示未归档会话 -->
+      <template v-if="!showArchivedView">
+        <!-- Agent 单聊区（未归档） -->
+        <div v-if="pinnedAgentSessions.length > 0" class="list-section">
+          <div class="section-title">置顶</div>
+          <button
+            v-for="item in pinnedAgentSessions"
+            :key="item.id"
+            class="conversation-item"
+            :class="{ 'is-active': currentSessionId === item.id }"
+            type="button"
+            @click="$emit('select-session', item)"
+          >
+            <avatar
+              :info="{ name: item.title || '会话', avatar: getAgentAvatar(item, agents) }"
+              size="38px"
+            />
+            <div class="conversation-copy">
+              <div class="conversation-title-row">
+                <span class="conversation-title">{{ item.title || '未命名会话' }}</span>
+                <span class="mode-tag single">单聊</span>
+                <dot_hint v-if="item.is_pinned" text="置顶" />
+              </div>
+              <div v-if="getAgentTags(item, agents).length > 0" class="capability-tags">
+                <span
+                  v-for="tag in getAgentTags(item, agents).slice(0, 3)"
+                  :key="tag"
+                  class="capability-tag"
+                >{{ tag }}</span>
+              </div>
+              <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
+            </div>
+            <!-- 操作按钮 ... -->
+            <div class="item-more-wrapper">
+              <button class="item-more-btn" type="button" @click.stop="toggleMore(item.id)">⋯</button>
+              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop>
+                <button class="more-action danger" type="button" @click="doDelete(item)">删除会话</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="doTogglePin(item)">
+                  {{ item.is_pinned ? '取消置顶' : '置顶' }}
+                </button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="doToggleArchive(item)">归档</button>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        <div v-if="unpinnedAgentSessions.length > 0" class="list-section">
+          <div v-if="pinnedAgentSessions.length > 0" class="section-title">Agent 单聊</div>
+          <button
+            v-for="item in unpinnedAgentSessions"
+            :key="item.id"
+            class="conversation-item"
+            :class="{ 'is-active': currentSessionId === item.id }"
+            type="button"
+            @click="$emit('select-session', item)"
+          >
+            <avatar
+              :info="{ name: item.title || '会话', avatar: getAgentAvatar(item, agents) }"
+              size="38px"
+            />
+            <div class="conversation-copy">
+              <div class="conversation-title-row">
+                <span class="conversation-title">{{ item.title || '未命名会话' }}</span>
+                <span class="mode-tag single">单聊</span>
+              </div>
+              <div v-if="getAgentTags(item, agents).length > 0" class="capability-tags">
+                <span
+                  v-for="tag in getAgentTags(item, agents).slice(0, 3)"
+                  :key="tag"
+                  class="capability-tag"
+                >{{ tag }}</span>
+              </div>
+              <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
+            </div>
+            <div class="item-more-wrapper">
+              <button class="item-more-btn" type="button" @click.stop="toggleMore(item.id)">⋯</button>
+              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop>
+                <button class="more-action danger" type="button" @click="doDelete(item)">删除会话</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="doTogglePin(item)">置顶</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="doToggleArchive(item)">归档</button>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        <!-- 群聊区（未归档） -->
+        <div v-if="pinnedGroupSessions.length > 0" class="list-section">
+          <div class="section-title">群聊 · 置顶</div>
+          <button
+            v-for="item in pinnedGroupSessions"
+            :key="item.id"
+            class="conversation-item"
+            :class="{ 'is-active': currentSessionId === item.id }"
+            type="button"
+            @click="$emit('select-session', item)"
+          >
+            <avatar :info="{ name: '群', avatar: '' }" size="38px" :style="{ background: '#ff7043', color: '#fff' }" />
+            <div class="conversation-copy">
+              <div class="conversation-title-row">
+                <span class="conversation-title">{{ item.title || '群聊' }}</span>
+                <span class="mode-tag group">默认</span>
+              </div>
+              <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
+            </div>
+            <div class="item-more-wrapper">
+              <button class="item-more-btn" type="button" @click.stop="toggleMore(item.id)">⋯</button>
+              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop>
+                <button class="more-action danger" type="button" @click="doDelete(item)">删除会话</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="doTogglePin(item)">取消置顶</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="doToggleArchive(item)">归档</button>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        <div v-if="unpinnedGroupSessions.length > 0" class="list-section">
+          <div v-if="pinnedGroupSessions.length > 0" class="section-title">群聊</div>
+          <button
+            v-for="item in unpinnedGroupSessions"
+            :key="item.id"
+            class="conversation-item"
+            :class="{ 'is-active': currentSessionId === item.id }"
+            type="button"
+            @click="$emit('select-session', item)"
+          >
+            <avatar :info="{ name: '群', avatar: '' }" size="38px" :style="{ background: '#ff7043', color: '#fff' }" />
+            <div class="conversation-copy">
+              <div class="conversation-title-row">
+                <span class="conversation-title">{{ item.title || '群聊' }}</span>
+                <span class="mode-tag group">默认</span>
+              </div>
+              <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
+            </div>
+            <div class="item-more-wrapper">
+              <button class="item-more-btn" type="button" @click.stop="toggleMore(item.id)">⋯</button>
+              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop>
+                <button class="more-action danger" type="button" @click="doDelete(item)">删除会话</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="doTogglePin(item)">置顶</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="doToggleArchive(item)">归档</button>
+              </div>
+            </div>
+          </button>
+        </div>
+      </template>
+
+      <!-- 显示归档模式：只显示已归档会话 -->
+      <template v-else>
+        <div v-if="archivedSessions.length === 0" class="empty-hint">暂无已归档会话</div>
         <button
-          v-for="item in agentConversations"
+          v-for="item in archivedSessions"
           :key="item.id"
           class="conversation-item"
           :class="{ 'is-active': currentSessionId === item.id }"
           type="button"
           @click="$emit('select-session', item)"
         >
-          <avatar :info="{ name: item.title || '会话', avatar: getAgentAvatar(item) }" size="38px" />
+          <avatar
+            :info="{ name: item.title || '会话', avatar: getAgentAvatar(item, agents) }"
+            size="38px"
+            :style="{ opacity: 0.6 }"
+          />
           <div class="conversation-copy">
             <div class="conversation-title-row">
-              <span class="conversation-title">{{ item.title || '未命名会话' }}</span>
-              <span v-if="item.mode === 'single'" class="mode-tag single">单聊</span>
-              <dot_hint v-if="item.is_pinned" text="置顶" />
-            </div>
-            <div class="capability-tags" v-if="getAgentTags(item).length > 0">
-              <span v-for="tag in getAgentTags(item).slice(0, 3)" :key="tag" class="capability-tag">{{ tag }}</span>
-              <span v-if="getAgentTags(item).length > 3" class="capability-tag more">+{{ getAgentTags(item).length - 3 }}</span>
+              <span class="conversation-title" style="opacity: 0.6">{{ item.title || '未命名会话' }}</span>
+              <span class="mode-tag archived">已归档</span>
             </div>
             <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
           </div>
-          <div class="conversation-actions">
-            <button class="action-btn" type="button" @click.stop="$emit('toggle-pin', item)">{{ item.is_pinned ? '取消置顶' : '置顶' }}</button>
-            <button class="action-btn" type="button" @click.stop="$emit('toggle-archive', item)">归档</button>
-          </div>
-        </button>
-      </div>
-
-      <div v-if="groupConversations.length > 0" class="list-section">
-        <div class="section-title">群聊</div>
-        <button
-          v-for="item in groupConversations"
-          :key="item.id"
-          class="conversation-item"
-          :class="{ 'is-active': currentSessionId === item.id }"
-          type="button"
-          @click="$emit('select-session', item)"
-        >
-          <avatar :info="{ name: '群', avatar: '' }" size="38px" :style="{ background: '#ff7043', color: '#fff' }" />
-          <div class="conversation-copy">
-            <div class="conversation-title-row">
-              <span class="conversation-title">{{ item.title || '群聊' }}</span>
-              <span class="mode-tag group">默认</span>
+          <div class="item-more-wrapper">
+            <button class="item-more-btn" type="button" @click.stop="toggleMore(item.id)">⋯</button>
+            <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop>
+              <button class="more-action danger" type="button" @click="doDelete(item)">删除会话</button>
+              <div class="more-divider" />
+              <button class="more-action" type="button" @click="doToggleArchive(item)">取消归档</button>
             </div>
-            <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
           </div>
         </button>
-      </div>
+      </template>
 
-      <div v-if="!isLoading && filteredSessions.length === 0" class="empty-hint">
+      <!-- 空状态 -->
+      <div
+        v-if="!isLoading && !showArchivedView && allActiveSessions.length === 0"
+        class="empty-hint"
+      >
         暂无会话
       </div>
     </div>
@@ -89,42 +234,114 @@
 </template>
 
 <script lang="ts" setup>
+import { computed, ref } from 'vue'
 import type { ConversationItem, SidebarAgent, SidebarPanel } from '../../types/agenthub'
-import Search from '../../veiws/Serach.vue'
 import avatar from '../../veiws/img/avatar.vue'
 import dot_hint from '../../veiws/left/dot-hint.vue'
+import Search from '../../veiws/Serach.vue'
 
 const props = defineProps<{
   activePanel: SidebarPanel
   searchValue: string
-  showArchived: boolean
   filteredSessions: ConversationItem[]
-  agentConversations: ConversationItem[]
-  groupConversations: ConversationItem[]
   currentSessionId: string
   isLoading: boolean
   agents: SidebarAgent[]
   formatTime: (iso: string) => string
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'update:searchValue', value: string): void
-  (e: 'update:showArchived', value: boolean): void
   (e: 'new-session'): void
   (e: 'select-session', item: ConversationItem): void
   (e: 'toggle-pin', item: ConversationItem): void
   (e: 'toggle-archive', item: ConversationItem): void
+  (e: 'delete-session', item: ConversationItem): void
 }>()
 
-const getAgentAvatar = (item: ConversationItem) => {
-  const agent = props.agents.find((a) => item.title?.includes(a.name))
+// ==================== 归档视图开关 ====================
+/** 当前是否处于归档视图 */
+const showArchivedView = ref(false)
+
+const toggleArchivedView = () => {
+  showArchivedView.value = !showArchivedView.value
+}
+
+// ==================== 会话分组 & 排序 ====================
+
+/** 所有活跃会话（未归档） */
+const activeSessions = computed(() =>
+  props.filteredSessions.filter((s) => !s.is_archived),
+)
+
+/** 所有已归档会话 */
+const archivedSessions = computed(() =>
+  [...props.filteredSessions.filter((s) => s.is_archived)].sort(
+    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+  ),
+)
+
+/** 活跃会话中所有单聊（置顶优先 → 更新时间倒序） */
+const sortedAgentSessions = computed(() =>
+  [...activeSessions.value.filter((s) => s.mode === 'single')].sort((a, b) => {
+    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  }),
+)
+
+/** 活跃会话中所有群聊（置顶优先 → 更新时间倒序） */
+const sortedGroupSessions = computed(() =>
+  [...activeSessions.value.filter((s) => s.mode === 'group')].sort((a, b) => {
+    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+  }),
+)
+
+const pinnedAgentSessions = computed(() => sortedAgentSessions.value.filter((s) => s.is_pinned))
+const unpinnedAgentSessions = computed(() => sortedAgentSessions.value.filter((s) => !s.is_pinned))
+const pinnedGroupSessions = computed(() => sortedGroupSessions.value.filter((s) => s.is_pinned))
+const unpinnedGroupSessions = computed(() => sortedGroupSessions.value.filter((s) => !s.is_pinned))
+const allActiveSessions = computed(() => activeSessions.value)
+
+// ==================== 辅助函数 ====================
+
+const getAgentAvatar = (item: ConversationItem, agents: SidebarAgent[]) => {
+  const agent = agents.find((a) => item.title?.includes(a.name))
   return agent?.avatar || ''
 }
 
-const getAgentTags = (item: ConversationItem) => {
-  const agent = props.agents.find((a) => item.title?.includes(a.name))
+const getAgentTags = (item: ConversationItem, agents: SidebarAgent[]) => {
+  const agent = agents.find((a) => item.title?.includes(a.name))
   return agent?.capabilityTags || []
 }
+
+// ==================== ... 操作菜单 ====================
+/** 当前展开的 ... 菜单对应会话 ID */
+const activeMoreId = ref<string | null>(null)
+
+const toggleMore = (id: string) => {
+  activeMoreId.value = activeMoreId.value === id ? null : id
+}
+
+const doTogglePin = (item: ConversationItem) => {
+  activeMoreId.value = null
+  emit('toggle-pin', item)
+}
+
+const doToggleArchive = (item: ConversationItem) => {
+  activeMoreId.value = null
+  emit('toggle-archive', item)
+}
+
+const doDelete = (item: ConversationItem) => {
+  activeMoreId.value = null
+  emit('delete-session', item)
+}
+
+// 点击空白区域关闭菜单
+document.addEventListener('click', () => {
+  activeMoreId.value = null
+})
 </script>
 
 <style scoped>
@@ -163,7 +380,7 @@ const getAgentTags = (item: ConversationItem) => {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s;
 }
 
 .new-session-btn:hover {
@@ -185,6 +402,7 @@ const getAgentTags = (item: ConversationItem) => {
   background: #f5f5f5;
 }
 
+/* 列表分区 */
 .list-section {
   margin-bottom: 8px;
 }
@@ -201,7 +419,7 @@ const getAgentTags = (item: ConversationItem) => {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-height: 0;
+  min-height: 85%;
   overflow-y: auto;
 }
 
@@ -232,8 +450,8 @@ const getAgentTags = (item: ConversationItem) => {
 }
 
 .conversation-item.is-active {
-  background: #f3e5f5;
-  border-color: rgba(156, 39, 176, 0.2);
+  background: #e3f2fd;
+  border-color: #1976d2;
 }
 
 .conversation-copy {
@@ -275,6 +493,11 @@ const getAgentTags = (item: ConversationItem) => {
   color: #e65100;
 }
 
+.mode-tag.archived {
+  background: #f5f5f5;
+  color: #999;
+}
+
 .conversation-snippet {
   color: #999;
   font-size: 12px;
@@ -283,31 +506,80 @@ const getAgentTags = (item: ConversationItem) => {
   text-overflow: ellipsis;
 }
 
-.conversation-actions {
-  display: none;
-  flex-direction: column;
-  gap: 4px;
+/* ==================== ... 操作菜单 ==================== */
+.item-more-wrapper {
+  position: relative;
+  flex-shrink: 0;
 }
 
-.conversation-item:hover .conversation-actions {
-  display: flex;
-}
-
-.action-btn {
-  padding: 4px 8px;
+.item-more-btn {
+  padding: 2px 6px;
   border-radius: 4px;
-  border: 1px solid #e0e0e0;
-  background: #fff;
-  color: #666;
-  font-size: 11px;
+  border: none;
+  background: transparent;
+  color: #999;
+  font-size: 16px;
   cursor: pointer;
-  white-space: nowrap;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
 
-.action-btn:hover {
+.conversation-item:hover .item-more-btn {
+  opacity: 1;
+}
+
+.item-more-btn:hover {
+  background: #e8e8e8;
+  color: #333;
+}
+
+.item-more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 200;
+  min-width: 120px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.more-action {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: #333;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.more-action:hover {
   background: #f5f5f5;
 }
 
+.more-action.danger {
+  color: #e53935;
+}
+
+.more-action.danger:hover {
+  background: #ffebee;
+}
+
+.more-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: #f0f0f0;
+}
+
+/* 能力标签 */
 .capability-tags {
   display: flex;
   flex-wrap: wrap;
@@ -321,10 +593,5 @@ const getAgentTags = (item: ConversationItem) => {
   border-radius: 4px;
   background: #f5f5f5;
   color: #666;
-}
-
-.capability-tag.more {
-  background: #e0e0e0;
-  color: #999;
 }
 </style>

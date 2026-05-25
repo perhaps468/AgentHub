@@ -50,7 +50,7 @@ const isOwn = computed(() => props.msg?.fromId === userStore.userId)
 const displayUser = computed(() => props.user || props.msg?.fromInfo)
 
 const roleLabel = computed(() => {
-  if (isOwn.value) return '我'
+  if (isOwn.value) return 'me'
   return agentStore.agent?.role ?? '成员'
 })
 </script>
@@ -113,9 +113,9 @@ const roleLabel = computed(() => {
 }
 
 .is-own .msg-role {
-  border-color: rgba(var(--primary-color), 0.45);
-  color: rgb(var(--primary-strong));
-  background: rgb(var(--primary-soft));
+  border-color: rgba(var(--primary-color), 0.9);
+  color: rgb(var(--text-color));
+  background: rgb(var(--surface-color),0.1);
 }
 
 .msg-status-badge {

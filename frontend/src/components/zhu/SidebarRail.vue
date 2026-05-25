@@ -1,9 +1,13 @@
 <template>
+  <!-- 左侧菜单栏：头像 + 消息列表按钮 + Agent 列表按钮 -->
   <div class="sidebar-rail">
+    <!-- 头像 + 用户信息弹框 -->
     <div class="rail-avatar-wrapper">
       <button class="rail-avatar" type="button" @click="$emit('update:showUserPopover', !showUserPopover)">
-        <avatar :info="{ name: currentUser.name || 'Guest', avatar: currentUser.avatar }" size="44px" />
+        <avatar :info="{ name: currentUser.name || '管理员', avatar: currentUser.avatar }" size="44px" />
       </button>
+
+      <!-- 用户信息弹框 -->
       <Transition name="popover-fade">
         <div v-if="showUserPopover" class="user-popover">
           <div class="user-popover-header">
@@ -20,6 +24,8 @@
         </div>
       </Transition>
     </div>
+
+    <!-- 消息列表入口按钮 -->
     <button
       class="rail-button"
       :class="{ active: activePanel === 'messages' }"
@@ -29,6 +35,8 @@
     >
       <ChatDotRound />
     </button>
+
+    <!-- Agent 列表入口按钮 -->
     <button
       class="rail-button"
       :class="{ active: activePanel === 'agents' }"
@@ -101,6 +109,7 @@ defineEmits<{
   color: rgb(var(--primary-strong));
 }
 
+/* 用户弹框 */
 .user-popover {
   position: absolute;
   top: 0;
@@ -173,6 +182,7 @@ defineEmits<{
   background: #ffebee;
 }
 
+/* 弹框过渡动画 */
 .popover-fade-enter-active,
 .popover-fade-leave-active {
   transition: opacity 0.2s, transform 0.2s;
