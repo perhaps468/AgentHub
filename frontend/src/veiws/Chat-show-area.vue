@@ -80,11 +80,11 @@ const msgRecord = computed(() => {
       referenceMsg: m.reference ?? null,
       atUser: null,
       isShowTime: false,
-      type: m.content_type === 'text' ? 'text' : m.content_type,
+      type: m.type ?? 'text',
       source: 'User',
       createTime: m.created_at,
       updateTime: m.created_at,
-      deliveryStatus: m.delivery_status,
+      deliveryStatus: m.status,
       isStreaming: false,
     }
   })

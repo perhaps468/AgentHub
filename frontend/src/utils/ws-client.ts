@@ -10,15 +10,37 @@ export type ConnectionState =
 
 export type WsIncomingMessage = {
   type: string
+  // Common fields
   message_id?: string
   session_id?: string
   sender_type?: string
   sender_role?: string | null
+  stream_id?: string
+  agent_role?: string
+  timestamp?: string
+  // message_start
+  message?: {
+    id: string
+    session_id: string
+    sender_type: string
+    sender_role: string | null
+    type: string
+    content: string
+    payload: Record<string, unknown>
+    metadata: Record<string, unknown>
+    status: string
+    created_at: string
+  }
+  // message_delta
+  delta?: string
+  // message_end / message_error
+  status?: string
+  error_code?: string
+  error_message?: string
+  // Legacy / generic
   content?: string
   content_type?: string
   created_at?: string
-  error_code?: string
-  error_message?: string
 }
 
 type StateChangeHandler = (state: ConnectionState) => void
@@ -51,6 +73,23 @@ class WsClient {
     const token = localStorage.getItem('x-token')
     const url = `${WS_BASE_URL}/${sessionId}${token ? `?x-token=${token}` : ''}`
     console.log(`[WsClient] Connecting to ${url}`)
+    console.log(`[WsClient] WS_BASE_URL=${WS_BASE_URL}, sessionId=${sessionId}, token=${token}`)
+
+    // #region debug log
+    fetch('http://127.0.0.1:7351/ingest/f6734860-d025-44b4-ac1d-bc01de0a6e77', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f14211' },
+      body: JSON.stringify({
+        sessionId: 'f14211',
+        location: 'ws-client.ts:43',
+        message: 'WsClient.connect called',
+        data: { WS_BASE_URL, sessionId, token: token ? 'present' : 'missing', url },
+        timestamp: Date.now(),
+        runId: 'initial',
+        hypothesisId: 'H5',
+      }),
+    }).catch(() => {})
+    // #endregion
 
     try {
       this.ws = new WebSocket(url)
@@ -135,6 +174,22 @@ class WsClient {
     this.reconnectAttempt = 0
     this.setState('connected')
     this.startPing()
+
+    // #region debug log
+    fetch('http://127.0.0.1:7351/ingest/f6734860-d025-44b4-ac1d-bc01de0a6e77', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f14211' },
+      body: JSON.stringify({
+        sessionId: 'f14211',
+        location: 'ws-client.ts:140',
+        message: 'WsClient.onOpen - WebSocket connected successfully',
+        data: { sessionId: this.sessionId },
+        timestamp: Date.now(),
+        runId: 'initial',
+        hypothesisId: 'H1,H2,H3,H4,H5',
+      }),
+    }).catch(() => {})
+    // #endregion
   }
 
   private onMessage(event: MessageEvent<string>): void {
@@ -165,6 +220,22 @@ class WsClient {
     console.log(`[WsClient] Closed (code=${event.code}, reason=${event.reason})`)
     this.clearTimers()
 
+    // #region debug log
+    fetch('http://127.0.0.1:7351/ingest/f6734860-d025-44b4-ac1d-bc01de0a6e77', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f14211' },
+      body: JSON.stringify({
+        sessionId: 'f14211',
+        location: 'ws-client.ts:171',
+        message: 'WsClient.onClose',
+        data: { code: event.code, reason: event.reason, wasClean: event.wasClean, sessionId: this.sessionId, state: this.state },
+        timestamp: Date.now(),
+        runId: 'initial',
+        hypothesisId: 'H1,H2,H3,H4',
+      }),
+    }).catch(() => {})
+    // #endregion
+
     if (event.code === 1000) {
       this.setState('disconnected')
       return
@@ -176,6 +247,23 @@ class WsClient {
   private onError(event: Event): void {
     console.error('[WsClient] Error:', event)
     this.clearTimers()
+
+    // #region debug log
+    fetch('http://127.0.0.1:7351/ingest/f6734860-d025-44b4-ac1d-bc01de0a6e77', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f14211' },
+      body: JSON.stringify({
+        sessionId: 'f14211',
+        location: 'ws-client.ts:183',
+        message: 'WsClient.onError',
+        data: { type: event.type, sessionId: this.sessionId },
+        timestamp: Date.now(),
+        runId: 'initial',
+        hypothesisId: 'H1,H2,H3,H4',
+      }),
+    }).catch(() => {})
+    // #endregion
+
     this.handleReconnect()
   }
 
@@ -246,5 +334,19 @@ class WsClient {
 }
 
 export const wsClient = new WsClient()
+export const ws = {
+  connect: (sessionId: string) => wsClient.connect(sessionId),
+  disConnect: () => wsClient.disconnect(),
+  send: (content: string) => wsClient.sendMessage(content),
+  getState: () => wsClient.getState(),
+  getStatus: () => ({
+    isConnect: wsClient.getState() === 'connected',
+    readyState: wsClient.getState(),
+    reconnectCount: wsClient.getReconnectAttempt(),
+  }),
+  onStateChange: (cb: (state: ConnectionState) => void) => wsClient.onStateChange(cb),
+  onReceiveMessage: (cb: (msg: WsIncomingMessage) => void) => wsClient.onReceiveMessage(cb),
+  manualRetry: () => wsClient.manualRetry(),
+}
 export const getWsClientState = () => wsClient.getState()
 export const getWsClientReconnectAttempt = () => wsClient.getReconnectAttempt()

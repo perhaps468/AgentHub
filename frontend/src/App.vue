@@ -19,7 +19,7 @@ import { useThemeStore } from './store/module/useThemeStore'
 import ToastProvider from './veiws/ToastProvider.vue'
 import Dialog from './veiws/theme/Dialog.vue'
 import { useGlobalStore } from './store/module/useGlobalStore'
-import ws from './utils/ws'
+import { ws } from './utils/ws-client'
 import { useUserInfoStore } from './store/module/useUserStore'
 
 const themeStore = useThemeStore()
@@ -29,7 +29,7 @@ const router = useRouter()
 const handlerLogout = () => {
   localStorage.removeItem('x-token')
   userInfoStore.clearUserInfo()
-  ws.disConnect
+  ws.disConnect()
   router.push('/login')
   globalStore.closeGlobalDialog()
 }

@@ -18,11 +18,15 @@ CREATE TABLE IF NOT EXISTS messages (
   sender_type VARCHAR(20) NOT NULL,
   sender_role VARCHAR(50),
   content TEXT NOT NULL,
-  content_type VARCHAR(20) NOT NULL DEFAULT 'text',
+  type VARCHAR(20) NOT NULL DEFAULT 'text',
+  status VARCHAR(20) NOT NULL DEFAULT 'completed',
+  payload JSON NOT NULL DEFAULT '{}',
+  msg_metadata JSON NOT NULL DEFAULT '{}',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_messages_session_created (session_id, created_at),
   CONSTRAINT chk_messages_sender_type CHECK (sender_type IN ('human', 'agent', 'system')),
-  CONSTRAINT chk_messages_content_type CHECK (content_type IN ('text')),
+  CONSTRAINT chk_messages_type CHECK (type IN ('text', 'code', 'diff', 'artifact', 'deploy')),
+  CONSTRAINT chk_messages_status CHECK (status IN ('pending', 'streaming', 'completed', 'failed')),
   CONSTRAINT fk_messages_session
     FOREIGN KEY (session_id)
     REFERENCES sessions(id)
