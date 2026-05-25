@@ -1,6 +1,5 @@
 <template>
   <div class="workspace">
-    <div v-if="showLeft" class="workspace-backdrop" @click="closeMask" />
 
     <!-- 左侧边栏 -->
     <aside class="sidebar" :class="{ 'is-open': showLeft }">
@@ -67,7 +66,7 @@
           />
 
           <div class="toolbar-row">
-            <button class="new-session-btn" type="button" @click="handleNewSession">
+            <button class="new-session-btn" type="button" @click="newDialog">
               新建对话
             </button>
             <button class="toolbar-btn" type="button" @click="showArchived = !showArchived">
@@ -233,123 +232,23 @@
 
     <aside class="blank-panel" aria-hidden="true" />
   </div>
-
-  <!-- 新建对话弹窗 -->
-  <!-- <el-dialog
-    v-model="showNewConversationDialog"
-    title="新建对话"
-    width="480px"
-    :close-on-click-modal="false"
-    @closed="resetNewConvForm"
-  >
-    <el-form label-position="top" class="create-conversation-form">
-      <el-form-item label="会话类型">
-        <el-radio-group v-model="newConvType">
-          <el-radio value="single">单聊</el-radio>
-          <el-radio value="group">群聊</el-radio>
-        </el-radio-group>
-      </el-form-item>
-
-      <el-form-item :label="newConvType === 'single' ? '选择 Agent（单选）' : '选择 Agent（多选，至少 1 个）'">
-        <div v-if="newConvType === 'single'" class="agent-picker-list">
-          <label
-            v-for="agent in sidebarAgents"
-            :key="agent.id"
-            :class="['agent-picker-item', selectedAgentForConv === agent.id ? 'selected' : '']"
-          >
-            <input
-              type="radio"
-              name="single-agent"
-              :value="agent.id"
-              v-model="selectedAgentForConv"
-            />
-            <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="32px" />
-            <div class="agent-picker-meta">
-              <span class="agent-picker-name">{{ agent.name }}</span>
-              <span v-if="agent.platform" class="agent-platform-tag">{{ formatPlatformLabel(agent.platform) }}</span>
-            </div>
-          </label>
-        </div>
-
-        <div v-else class="agent-picker-list agent-picker-checkboxes">
-          <label
-            v-for="agent in sidebarAgents"
-            :key="agent.id"
-            :class="['agent-picker-item', selectedAgentsForGroup.includes(agent.id) ? 'selected' : '']"
-          >
-            <input
-              type="checkbox"
-              :value="agent.id"
-              v-model="selectedAgentsForGroup"
-            />
-            <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="32px" />
-            <div class="agent-picker-meta">
-              <span class="agent-picker-name">{{ agent.name }}</span>
-              <span v-if="agent.platform" class="agent-platform-tag">{{ formatPlatformLabel(agent.platform) }}</span>
-            </div>
-          </label>
-        </div>
-      </el-form-item>
-
-      <el-form-item label="会话标题（可选）">
-        <el-input
-          v-model="newConvTitle"
-          maxlength="48"
-          :placeholder="getDefaultConvTitle()"
-        />
-      </el-form-item>
-
-      <button class="link-to-agent-panel" type="button" @click="goToAgentPanelFromCreateDialog">
-        去 Agent 列表添加或浏览更多 Agent →
-      </button>
-    </el-form>
-
-    <template #footer>
-      <button class="profile-dialog-btn" type="button" @click="showNewConversationDialog = false">取消</button>
-      <button class="profile-dialog-btn primary" type="button" @click="handleCreateConversation" :disabled="!canCreateConversation">确认创建</button>
-    </template>
-  </el-dialog> -->
-
-  <!-- 添加自建 Agent 弹窗 -->
-  <!-- <el-dialog
-    v-model="showAddAgentDialog"
-    title="添加自建 Agent"
-    width="420px"
-    :close-on-click-modal="false"
-    @closed="resetCustomAgentForm"
-  >
-    <el-form label-position="top" class="edit-profile-form">
-      <el-form-item label="名称">
-        <el-input v-model="newAgentName" maxlength="32" placeholder="例如：我的代码助手" />
-      </el-form-item>
-      <el-form-item label="能力标签（逗号分隔）">
-        <el-input v-model="newAgentTags" maxlength="80" placeholder="代码生成, 测试, 文档" />
-      </el-form-item>
-      <el-form-item label="简介（可选）">
-        <el-input
-          v-model="newAgentDesc"
-          type="textarea"
-          :rows="3"
-          maxlength="80"
-          placeholder="简要描述 Agent 能力"
-        />
-      </el-form-item>
-    </el-form>
-
-    <template #footer>
-      <button class="profile-dialog-btn" type="button" @click="showAddAgentDialog = false">取消</button>
-      <button class="profile-dialog-btn primary" type="button" @click="handleAddCustomAgent">添加</button>
-    </template>
-  </el-dialog> -->
-
   <!-- 编辑资料弹窗 -->
-  <!-- <UserProfileDialog
+  <UserProfileDialog
     v-model="showEditProfileDialog"
     :user="currentUser"
     @confirm="handleProfileUpdate"
-    /> -->
+  />
+  <AddAgentDialog
+    v-model="showAddAgentDialog"
+    :agent="newAgent"
+    @confirm="handleAddAgent"
+    />
+  <NewConversationDialog 
+    v-model="showNewConversationDialog" 
+    :agents="sidebarAgents" 
+    @confirm="handleCreateConversation" 
+  />
 </template>
-
 <script lang="ts" setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
@@ -359,7 +258,7 @@ import router from '../router/index'
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
 import { useAgentStore } from '../store/index'
-import type { ConversationItem, SidebarAgent, SidebarPanel, SidebarUser } from '../types/agenthub'
+import type { ConversationItem, ConversationMode, SidebarAgent, SidebarPanel, SidebarUser } from '../types/agenthub'
 import { wsClient, getWsClientReconnectAttempt } from '../utils/ws-client'
 import Search from '../veiws/Serach.vue'
 import { useToast } from '../veiws/useToast'
@@ -367,9 +266,10 @@ import ChatInputArea from '../veiws/Chat-input-area.vue'
 import ChatShowArea from '../veiws/Chat-show-area.vue'
 import avatar from '../veiws/img/avatar.vue'
 import dot_hint from '../veiws/left/dot-hint.vue'
-import UserProfileDialog from './UserProfileDialog.vue'
+import UserProfileDialog from './zhu/UserProfileDialog.vue'
 import ConnectionStatus from './ConnectionStatus.vue'
-
+import AddAgentDialog from './zhu/AddAgentDialog.vue'
+import NewConversationDialog from './zhu/NewConversationDialog.vue'
 const userInfoStore = useUserInfoStore()
 const sessionStore = useSessionStore()
 const agentStore = useAgentStore()
@@ -392,7 +292,7 @@ const newConvType = ref<'single' | 'group'>('single')
 const selectedAgentForConv = ref('')
 const selectedAgentsForGroup = ref<string[]>([])
 const newConvTitle = ref('')
-
+const showMask=ref(false)
 // 添加自建 Agent 弹窗
 const showAddAgentDialog = ref(false)
 const newAgentName = ref('')
@@ -461,7 +361,7 @@ const chatShow = ref<InstanceType<typeof ChatShowArea>>()
 const chatRef = ref<InstanceType<typeof ChatInputArea>>()
 
 const filteredSessionList = computed(() => {
-  let list = sessionStore.sessionList
+  let list = sessionStore.sessionList ?? []
   if (!showArchived.value) {
     list = list.filter((s) => !s.is_archived)
   }
@@ -506,22 +406,29 @@ const getAgentAvatarStyle = (agent: SidebarAgent) => {
   const bg = colors[agent.platform || 'custom'] || '#9e9e9e'
   return { '--avatar-bg': bg }
 }
-
-const handleNewSession = async () => {
-  try {
-    const session = await sessionStore.createSession({
-      owner_id: userInfoStore.userId || 'dev_user',
-      title: `会话 ${new Date().toLocaleString('zh-CN')}`,
-      mode: 'single',
-    })
-    sessionStore.setCurrentSessionId(session.id)
-    await sessionStore.fetchMessages(session.id, { page: 1, page_size: 20 })
-    wsClient.connect(session.id)
-  } catch (e) {
-    console.error('创建会话失败', e)
-    showToast('创建会话失败', true)
-  }
+const newDialog =()=>{
+  showNewConversationDialog.value = true
 }
+// const handleNewSession = async () => {
+//   try {
+//     const session = await sessionStore.createSession({
+//       owner_id: userInfoStore.userId || 'dev_user',
+//       title: `会话 ${new Date().toLocaleString('zh-CN')}`,
+//       mode: 'single',
+//     })
+//     sessionStore.setCurrentSessionId(session.id)
+//     await sessionStore.fetchMessages(session.id, { page: 1, page_size: 20 })
+//     wsClient.connect(session.id)
+//   } catch (e) {
+//     console.error('创建会话失败', e)
+//     showToast('创建会话失败', true)
+//   }
+// }
+const handleAddAgent = (newAgent: SidebarAgent) => {
+  sidebarAgents.value.push(newAgent)
+  showAddAgentDialog.value = false
+}
+
 
 const getAgentPlatformLabel = (agent: SidebarAgent) => {
   const labels: Record<string, string> = {
@@ -566,18 +473,6 @@ const getAgentTags = (item: ConversationItem) => {
   return agent?.capabilityTags || []
 }
 
-const isAgentSelected = (agentId: string) => {
-  if (newConvType.value === 'single') return selectedAgentForConv.value === agentId
-  return selectedAgentsForGroup.value.includes(agentId)
-}
-
-const getDefaultConvTitle = () => {
-  if (newConvType.value === 'single') {
-    const agent = sidebarAgents.value.find((a) => a.id === selectedAgentForConv.value)
-    return agent ? `${agent.name} 对话` : '选择 Agent 后自动生成'
-  }
-  return '多 Agent 协作'
-}
 
 const formatTime = (iso: string) => {
   if (!iso) return ''
@@ -604,12 +499,12 @@ const selectSession = async (item: ConversationItem) => {
   closeMask()
 }
 
-const handleCreateConversation = async () => {
-  if (newConvType.value === 'single' && !selectedAgentForConv.value) {
+const handleCreateConversation = async (payload: { mode: ConversationMode; title: string; agentId?: string; participantAgentIds?: string[] }) => {
+  if (payload.mode === 'single' && !payload.agentId) {
     showToast('请先选择一个 Agent', true)
     return
   }
-  if (newConvType.value === 'group' && selectedAgentsForGroup.value.length === 0) {
+  if (payload.mode === 'group' && (!payload.participantAgentIds || payload.participantAgentIds.length === 0)) {
     showToast('请至少选择一个 Agent', true)
     return
   }
@@ -629,8 +524,8 @@ const handleCreateConversation = async () => {
   try {
     const session = await sessionStore.createSession({
       owner_id: userInfoStore.userId || 'dev_user',
-      title,
-      mode,
+      title: payload.title,
+      mode: payload.mode,
     })
     sessionStore.setCurrentSessionId(session.id)
     await sessionStore.fetchMessages(session.id, { page: 1, page_size: 20 })
@@ -662,31 +557,6 @@ const handleSelectAgent = (agent: SidebarAgent) => {
   }
 }
 
-const handleAddCustomAgent = () => {
-  const name = newAgentName.value.trim()
-  if (!name) {
-    showToast('名称不能为空', true)
-    return
-  }
-
-  const tags = newAgentTags.value
-    .split(/[,，]/)
-    .map((t) => t.trim())
-    .filter(Boolean)
-
-  sidebarAgents.value.push({
-    id: `custom-${Date.now()}`,
-    name,
-    avatar: '',
-    capabilityTags: tags.length > 0 ? tags : ['自定义'],
-    description: newAgentDesc.value.trim() || undefined,
-    platform: 'custom',
-    isCustom: true,
-  })
-
-  resetCustomAgentForm()
-  showAddAgentDialog.value = false
-}
 
 const togglePin = async (item: ConversationItem) => {
   try {
@@ -707,10 +577,13 @@ const toggleArchive = async (item: ConversationItem) => {
 const handleEditProfile = () => {
   showUserPopover.value = false
   showEditProfileDialog.value = true
+  showMask.value=true
 }
 
 const handleProfileUpdate = (data: Partial<SidebarUser>) => {
   if (data.name) userInfoStore.setUserName(data.name)
+  if (data.email) userInfoStore.setEmail(data.email)
+  if (data.avatar !== undefined) userInfoStore.setUserAvatar(data.avatar)
   showToast('资料已更新')
 }
 
@@ -872,7 +745,7 @@ onUnmounted(() => {
 .sidebar,
 .chat-shell,
 .blank-panel {
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
   background: rgb(var(--surface-color));
 }
@@ -1133,8 +1006,8 @@ onUnmounted(() => {
 }
 
 .conversation-item.is-active {
-  background: #f3e5f5;
-  border-color: rgba(156, 39, 176, 0.2);
+  background: #e3f2fd;
+  border-color: #1976d2;
 }
 
 .conversation-copy {
@@ -1249,8 +1122,8 @@ onUnmounted(() => {
 }
 
 .agent-item.is-selected {
-  background: #f3e5f5;
-  border-color: rgba(156, 39, 176, 0.2);
+  background: #e3f2fd;
+  border-color: #1976d2;
 }
 
 .agent-info {
@@ -1397,7 +1270,7 @@ onUnmounted(() => {
 .chat-shell {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   min-width: 0;
   border-right: 1px solid rgb(var(--border-color));
 }

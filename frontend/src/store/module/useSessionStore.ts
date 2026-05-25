@@ -95,15 +95,20 @@ export const useSessionStore = defineStore(
 
     async function createSession(payload: CreateSessionPayload) {
       const res = await createConversation(payload)
+      if (!sessionList.value) {
+        sessionList.value = []
+      }
       sessionList.value.unshift(res)
       return res
     }
 
     async function updateSession(sessionId: string, payload: UpdateSessionPayload) {
       const res = await updateConversationApi(sessionId, payload)
-      const idx = sessionList.value.findIndex((s) => s.id === sessionId)
-      if (idx !== -1) {
-        sessionList.value[idx] = res
+      if (sessionList.value) {
+        const idx = sessionList.value.findIndex((s) => s.id === sessionId)
+        if (idx !== -1) {
+          sessionList.value[idx] = res
+        }
       }
       if (currentSession.value?.id === sessionId) {
         currentSession.value = res
@@ -113,7 +118,9 @@ export const useSessionStore = defineStore(
 
     async function archiveSession(sessionId: string) {
       await updateSession(sessionId, { is_archived: true })
-      sessionList.value = sessionList.value.filter((s) => s.id !== sessionId)
+      if (sessionList.value) {
+        sessionList.value = sessionList.value.filter((s) => s.id !== sessionId)
+      }
       if (currentSessionId.value === sessionId) {
         currentSessionId.value = null
         currentSession.value = null

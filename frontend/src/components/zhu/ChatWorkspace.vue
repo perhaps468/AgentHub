@@ -1,0 +1,78 @@
+<template>
+  <main class="chat-shell">
+    <ChatHeader
+      :current-session="currentSession"
+      :current-session-id="currentSessionId"
+      :connection-state="connectionState"
+      :reconnect-attempt="reconnectAttempt"
+      :format-time="formatTime"
+      @open-left="$emit('open-left')"
+      @retry="$emit('retry')"
+    />
+
+    <section class="chat-stream-panel">
+      <ChatShowArea
+        ref="chatShow"
+        :targetId="currentSessionId || ''"
+        :isChatRecordLoading="isLoadingMessages"
+        :isSendLoading="isSendLoading"
+        :isComplete="false"
+      />
+    </section>
+
+    <section class="chat-composer-panel">
+      <ChatInputArea
+        ref="chatRef"
+        :sessionId="currentSessionId || ''"
+        :disabled="!currentSessionId"
+        @send="$emit('send', $event)"
+      />
+    </section>
+  </main>
+</template>
+
+<script lang="ts" setup>
+import ChatInputArea from '../../veiws/Chat-input-area.vue'
+import ChatShowArea from '../../veiws/Chat-show-area.vue'
+import type { ConversationItem } from '../../types/agenthub'
+import type { ConnectionState } from '../../utils/ws-client'
+import ChatHeader from './ChatHeader.vue'
+
+defineProps<{
+  currentSession: ConversationItem | null | undefined
+  currentSessionId: string
+  connectionState: ConnectionState
+  reconnectAttempt: number
+  isLoadingMessages: boolean
+  isSendLoading: boolean
+  formatTime: (iso: string) => string
+}>()
+
+defineEmits<{
+  (e: 'open-left'): void
+  (e: 'retry'): void
+  (e: 'send', content: string): void
+}>()
+</script>
+
+<style scoped>
+.chat-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+  background: rgb(var(--surface-color));
+  border-right: 1px solid rgb(var(--border-color));
+}
+
+.chat-stream-panel {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.chat-composer-panel {
+  border-top: 1px solid rgb(var(--border-color));
+}
+</style>

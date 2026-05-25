@@ -1,14 +1,18 @@
 <template>
+  <div>
   <el-dialog
     v-model="visible"
     title="编辑资料"
-    width="450px"
+    width="200px"
+    :fullscreen="false"
+    :modal="true" 
     :close-on-click-modal="false"
     @close="handleClose"
   >
     <div class="dialog-content">
       <div class="avatar-section">
         <avatar :info="{ name: formData.name, avatar: formData.avatar }" size="80px" />
+        <span>{{formData.name}}</span>
         <el-button size="small" text>更换头像</el-button>
       </div>
 
@@ -18,16 +22,13 @@
           v-model="formData.name"
           placeholder="请输入用户名"
           clearable
+          class="el-input__wrapper"
         />
       </div>
 
       <div class="form-section">
         <label class="form-label">邮箱</label>
-        <el-input
-          v-model="formData.email"
-          placeholder="请输入邮箱"
-          clearable
-        />
+        <el-input v-model="formData.email" placeholder="请输入邮箱" clearable class="el-input__wrapper"/>
       </div>
 
       <div class="form-section">
@@ -39,31 +40,33 @@
           placeholder="AgentHub 用户"
           maxlength="200"
           show-word-limit
+          class="el-input__wrapper"
         />
       </div>
-    </div>
-
-    <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleClose">取消</el-button>
+        <el-button @click="handleClose" class="el-button">取消</el-button>
         <el-button type="primary" @click="handleConfirm">保存</el-button>
       </div>
-    </template>
+    </div>
   </el-dialog>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { computed, ref, watch ,watchEffect} from 'vue'
+
 import type { SidebarUser } from '@/types/agenthub'
 import avatar from '@/veiws/img/avatar.vue'
 
 const props = defineProps<{
   modelValue: boolean
   user: SidebarUser
+  // showMask:boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
+  'update:showMask': [value: boolean] 
   confirm: [data: Partial<SidebarUser>]
 }>()
 
@@ -86,12 +89,19 @@ watch(
     if (newUser) {
       formData.value = { ...newUser }
     }
+    
   },
   { immediate: true },
 )
+watchEffect(() => {
+  console.log('visible 实时变化:', visible.value)
+  console.log('formDat',formData.value);
+  console.log('showMask',props.showMask);
+})
 
 const handleClose = () => {
   visible.value = false
+  // emit('update:showMask', false)
 }
 
 const handleConfirm = () => {
@@ -101,6 +111,7 @@ const handleConfirm = () => {
     bio: formData.value.bio,
   })
   visible.value = false
+  // emit('update:showMask', false)
 }
 </script>
 
@@ -108,8 +119,14 @@ const handleConfirm = () => {
 .dialog-content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 4px 0;
+  background-color: white;
+  gap: 30px;
+  margin-top: 300px;
+  width: 400px;
+  height: 400px;
+  margin-left: 400px;
+  font-size: 20px;
+  border-radius: 10px;
 }
 
 .avatar-section {
@@ -117,13 +134,16 @@ const handleConfirm = () => {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  padding: 12px 0;
+  padding: 12px 0 4px;
 }
 
 .form-section {
   display: flex;
-  flex-direction: column;
   gap: 8px;
+  margin-left: 10px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
 }
 
 .form-label {
@@ -134,9 +154,14 @@ const handleConfirm = () => {
 
 .dialog-footer {
   display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding-top: 8px;
+  justify-content:flex-end;
+  gap: 20px;
+  padding-right: 10px;
+}
+
+:deep(.el-dialog) {
+  border-radius: 12px;
+  margin: 0;
 }
 
 :deep(.el-dialog__header) {
@@ -185,46 +210,32 @@ const handleConfirm = () => {
   border-color: #409eff;
 }
 
-:deep(.el-button) {
+:deep(el-button) {
   border-radius: 6px;
-  padding: 9px 20px;
+  padding: 3px 8px;
   font-size: 14px;
   font-weight: 400;
+  cursor: pointer;
 }
 
-:deep(.el-button--primary) {
-  background-color: #000;
-  border-color: #000;
+
+:deep(.el-input__wrapper) {
+  min-height: 30px;
+  width: 300px;
 }
 
-:deep(.el-button--primary:hover) {
-  background-color: #333;
-  border-color: #333;
-}
 
-:deep(.el-button--primary:active) {
-  background-color: #000;
-  border-color: #000;
-}
 
-:deep(.el-button--default) {
-  background-color: #fff;
-  border-color: #dcdfe6;
-  color: #606266;
-}
 
-:deep(.el-button--default:hover) {
+:deep(el-button:hover) {
   color: #409eff;
   border-color: #c6e2ff;
   background-color: #ecf5ff;
 }
 
-:deep(.el-button--text) {
-  color: #606266;
-  padding: 6px 12px;
-}
 
-:deep(.el-button--text:hover) {
+
+:deep(.el-buttont:hover) {
   color: #409eff;
   background-color: #ecf5ff;
 }
