@@ -20,7 +20,6 @@ function normalizeBaseUrl(rawValue: string | undefined, fallback: string, suffix
 
 export const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_HTTP_URL, '/api', '/api')
 export const WS_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_WS_URL, '/ws', '/ws')
-
 export const agenthubRequest = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,

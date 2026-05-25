@@ -1,4 +1,4 @@
-# AgentHub 分期重排方案（以 implementation-phases 为准）
+# AgentHub 分期路线图（Phase1 ~ Phase7）
 
 ---
 
@@ -10,239 +10,467 @@
 
 - 每个阶段的目标是什么
 - 每个阶段做到什么程度算完成
-- 哪些能力应该放在哪一层，不要提前混入下一阶段
+- 哪些能力应该放在哪一层，哪些底层抽象必须提前建立
 
-后续如果 `roadmap.md` 与 `implementation-phases.md` 有冲突，以 `implementation-phases.md` 为准。
+文档职责约定如下：
 
----
+- `proposal.md` 负责讲“总愿景与最终能力”
+- `roadmap.md` 负责讲“整体分几步做”
+- `implementation-phases.md` 负责讲“每一步具体做哪些执行任务”
 
-## 2. 总体分层原则
-
-- `MVP`：先完成 IM 基础能力、最小聊天闭环与单用户占位，不只是启动壳子
-- `P1`：在 MVP 基础上先把 Echo 壳子升级为真实单 Agent 产品，重点是首个真实 Agent、流式输出与最小上下文承接
-- `P2`：在真实用户边界下，补齐多 Agent 协作起步能力与平台基础能力，重点是 Auth、核心 IM、多 Provider、基础动态分派、群聊与 Diff 展示
-- `P3`：补齐产物正式闭环，再进入高阶产品化能力，承接自建 Agent、Diff/VFS、完整部署、高级调度、长期记忆与产物编辑增强
-
-为什么这样分层：
-
-- 先验证“真实 Agent 聊天产品”是否成立，再扩展成“多 Agent 协作产品”
-- 上下文承接是重要能力，但在早期应服务于真实 Agent 可用，而不是抢在真实 Agent 接入前成为阶段主线
-- 多 Agent 协作、群聊和 Provider 扩展应建立在单 Agent 链路已经稳定可演示的前提上
-- Diff 闭环、VFS 和部署发布都属于更重的产物状态能力，应晚于协作能力本身落地
-
-统一约束：
-
-- 从 `MVP` 开始保留 `Session`、`Message`、`Agent`、`mode(single/group)`、`content_type` 等核心抽象
-- `MVP` 就纳入最小 Session / Message 接口与最小持久化
-- `MVP` 与 `P1` 允许暂时使用 `dev_user` 或前端显式 `owner_id` 占位，但要保留后续接入真实用户身份所需的数据边界
-- `P2-1` 再纳入最小正式 Auth，把此前临时使用的 `owner_id` 收束为后端 `current_user`
-- `P2-1` 验收后，后续阶段不得再依赖 `dev_user` 或前端手传 `owner_id`
-- `P1` 只承诺真实单 Agent、句段级流式和最小上下文承接，不提前承诺多 Agent 协作
-- `P2` 才进入多角色、多 Agent 协作、群聊和 Diff 展示
-- `P2` 不做部署发布、自建 Agent、Diff 操作闭环和 VFS 正式闭环
-- `P3` 才进入自建 Agent、Diff/VFS 正式闭环与完整部署发布
+后续如果旧分期描述、旧 task 拆分或既有实现细节与本文档定义的主线冲突，以本文档为后续调整依据。
 
 ---
 
-## 3. MVP：IM 基础能力、最小聊天闭环与单用户占位
+## 2. 总实现原则
 
-### 3.1 目标
+### 2.1 总愿景与总实现方案优先
 
-MVP 的目标不是只让前后端跑起来，而是形成一个可以演示、且具备清晰单用户数据边界的最小 IM 系统：
+AgentHub 的 spec 是后续 task 拆分、编码和评审的唯一真相源。
 
-- 前后端能稳定启动
-- 有最小聊天页面
-- 有按会话工作的 WebSocket
-- 有最小 Session / Message 接口
-- 有最小会话与消息持久化
-- 有 Echo 消息闭环
-- 有基础连接状态与重连能力
-- 有清晰的 `owner_id` / `dev_user` 数据归属占位方案
+后续任何实现不得静默扩大 scope，也不得绕过本文档重新定义阶段边界。若需要调整阶段顺序，必须先回到 spec 更新总愿景或总实现方案。
 
-### 3.2 范围
+### 2.2 先闭环，再复杂
 
-- 工程骨架跑通
-- 前端最小聊天页跑通
-- Session 最小接口可用
-- Message 历史接口可用
-- `WS /ws/{session_id}` 可用
-- 用户消息和 Echo 回复都能持久化
-- 刷新页面后可以恢复当前会话消息
-- 前端能显示连接状态并支持基础重连
-- Session 的 `owner_id` 在 `MVP` 阶段允许由前端显式传入，或由后端挂到固定 `dev_user`
-- 数据模型与接口语义要为后续 `P2-1` 收束到 `current_user` 预留空间
+AgentHub 的实现必须优先保证工程闭环成立，再逐步增加智能程度与产品复杂度。
 
-### 3.3 MVP 必须具备的接口
+优先级顺序始终是：
 
-- `POST /api/sessions`
-- `GET /api/sessions`
-- `GET /api/sessions/{session_id}`
-- `PATCH /api/sessions/{session_id}`
-- `DELETE /api/sessions/{session_id}`
-- `GET /api/sessions/{session_id}/messages`
-- `WS /ws/{session_id}`
+```text
+用户输入
+-> Agent Runtime
+-> Tool 调用
+-> 产物生成
+-> 消息流展示
+-> 多 Agent 编排
+-> 持续运行与自治
+```
 
-### 3.4 简化策略
+这意味着系统早期可以暂时缺少完整登录注册、复杂群聊和正式部署，但不能缺少会导致后续大重构的消息模型、流式协议、运行时边界和资产边界。
 
-- 不接真实 LLM，可先用 Echo Agent
-- 不做任务拆解
-- 不做多 Agent 协作
-- 不做复杂群聊
-- 不做 Diff 操作闭环
-- 不做正式 VFS 接入
-- `MVP` 不做正式 Auth；注册、登录、JWT 和多用户数据隔离后移到 `P2-1`
+### 2.3 先工程，再智能
 
-### 3.5 验收标准
+很多高阶能力看起来是“智能能力”，但真正决定系统能否持续演进的是工程结构是否成立。
 
-- 前后端都能稳定启动
-- 页面能打开并展示最小聊天界面
-- 可创建会话、查询会话、进入会话
-- 可查询当前会话历史消息
-- WebSocket 能按会话实时收发消息
-- Echo 回复闭环成立
-- 刷新后消息不丢
-- 连接状态与基础重连成立
-- 基于 `owner_id` / `dev_user` 的单用户链路成立
+因此实现顺序必须优先保障：
 
----
+- 会话、消息、参与者、Agent、Artifact 等核心抽象
+- 统一 Message + Streaming 协议
+- 当前回复链路与 UI 解耦
+- 用户归属与会话隔离边界
+- Agent Runtime、Prompt、Context、Tool、Loop、State
+- Workspace、Sandbox、Diff、Preview
+- Artifact 资产化
+- 多 Agent 编排
+- 长生命周期、记忆与自治
 
-## 4. P1：真实单 Agent 产品化
+而不是优先追求：
 
-### 4.1 目标
+- 复杂视觉和消息操作体验
+- 多 Agent 群聊效果
+- 长期记忆
+- 后台自治运行
+- 高级调度和完整部署发布
 
-P1 的目标是在 MVP 基础上，把系统从“Echo 聊天壳子”升级为“真实可用的单 Agent 聊天产品”。
+### 2.4 抽象前置，产品能力后置
 
-### 4.2 范围
+路线图区分两类工作：
 
-- 单 Provider 薄适配
-- 首个真实 Agent 接入
-- 句段级流式输出
-- `typing` 状态与流式消息渲染
-- 当前会话近历史的最小上下文承接
-- 单角色 Agent 基础展示
+- 底层抽象：会影响数据库、接口、消息协议和运行时边界，必须提前建立
+- 产品能力：会影响用户可见体验和完整闭环，可以在底层抽象稳定后再补齐
 
-### 4.3 产品重点
+典型例子：
 
-- 用户进入系统后，不再只和 Echo 对话，而是能和一个真实 Agent 稳定交互
-- 聊天回复具备明显的流式体验，但流式粒度只做到句段级 chunk，不做逐 token
-- 历史消息开始参与 Agent 理解，但只承接当前会话近历史，不引入 pin、摘要和长期记忆
-- 这一阶段只验证“真实单 Agent 产品”是否成立，不提前把多 Agent 协作、群聊和 Diff 闭环拉进来
+- `Message` 统一封装要早于真实 LLM 回复接入
+- 流式协议要早于 Runtime 事件流
+- `owner_id / user_id` 要早于完整 Auth 体系
+- `Workspace` 要早于正式 Code Agent 自修复闭环
+- `Artifact` 主模型要早于完整预览、编辑和发布能力
 
-### 4.4 验收标准
+### 2.5 当前阶段约束
 
-- 默认唯一真实 Agent 可稳定接收并回复用户消息
-- 聊天流中可以看到句段级流式输出
-- 前端可以展示 Agent `typing` 状态和流式内容追加
-- 用户在同一会话连续交互时，Agent 回复能够承接最近历史
-- 前端能明确展示当前唯一真实 Agent 的身份
+结合当前 spec，路线图调整遵循以下约束：
+
+- 以 `implementation-phases.md` 中的 `Phase1 ~ Phase7` 为唯一阶段顺序
+- 本次路线图更新只收敛文档，不直接改动代码实现
+- Phase1 必须先解决 IM 底座、streaming、错误链路改造和基础用户隔离
+- 在 Phase1 完成前，不得提前把真实 LLM 执行链路固化为正式 Runtime 实现
+- 在 Phase2 完成前，不得提前把多 Agent、复杂工具和长期运行混入当前阶段
 
 ---
 
-## 5. P2：真实用户边界下的多 Agent 协作起步
+## 3. 核心模型成熟顺序
 
-### 5.1 目标
+AgentHub 后续演进不应以“聊天消息”作为唯一中心，而应逐步转向以 Runtime 为执行主语，以 Message 和 Artifact 作为用户可见投影。
 
-P2 的目标是在真实用户边界下，让系统从“单 Agent 聊天产品”升级为“可演示的多 Agent 协作产品”，同时建立最小平台接入能力。
+核心模型成熟顺序如下：
 
-### 5.2 范围
+```text
+Conversation
+-> Participant
+-> Message
+-> Streaming Protocol
+-> User Ownership
+-> Agent Runtime
+-> Workspace
+-> Artifact
+-> Multi-Agent Orchestrator
+-> Long-running Memory System
+```
 
-- 最小正式 Auth 与用户数据隔离
-- 核心 IM 能力集
-- 至少两个真实 Provider 接入
-- 多角色 Agent 元信息与基础展示
-- 基础动态分派的 Orchestrator
-- 基础参与者管理的群聊能力
-- Diff 展示与确认意图
+各模型的职责边界如下：
 
-### 5.3 产品重点
+- `Conversation`：承载一次会话或协作空间
+- `Participant`：描述参与方，包括 `user`、`agent`、`system`
+- `Message`：面向用户展示的对话投影，必须支持文本和结构化消息
+- `Streaming Protocol`：描述消息开始、增量、结束、失败等流式事件
+- `User Ownership`：描述用户边界、会话隔离和资源归属
+- `Agent Runtime`：描述单 Agent 的上下文构建、推理、执行、观察和回复过程
+- `Workspace`：承载工作区边界和环境上下文
+- `Artifact`：承载代码、Diff、预览、文档、部署结果等非纯文本产物
+- `Multi-Agent Orchestrator`：承载任务拆分、调度、共享和汇总
+- `Long-running Memory System`：承载长任务、唤醒、长期记忆和自治状态
 
-- 把 `MVP` / `P1` 的临时单用户占位收束为真实账号体系，补齐注册、登录、鉴权与用户数据隔离
-- IM 从基础聊天升级为更完整的核心体验，包括多会话切换、搜索、置顶、归档、回复、引用、重新生成和展开预览
-- 系统开始具备至少两个真实 Provider 的平台接入能力，但这一阶段还不开放用户自建 Agent
-- 多 Agent 协作从单 Agent 对话升级为基础动态分派和多角色协作，支持基础参与者管理的群聊
-- Diff 在这一阶段只要求“看得见、能确认意图”，不要求正式落盘、VFS 闭环或部署联动
-
-### 5.4 验收标准
-
-- 用户可以注册、登录并获取当前用户信息
-- 未登录用户不能访问需要身份的 Session、Message 和 WebSocket 能力
-- 会话和消息只返回当前登录用户的数据
-- 会话置顶、归档、搜索、多会话并行切换正常
-- 回复、引用、重新生成和展开预览可用
-- 至少两个真实 Provider 可用
-- 前端可以明确展示 PM、Planner、Coder、Reviewer 等多角色身份
-- Orchestrator 能根据用户输入做基础动态分派，不要求并行调度和复杂恢复
-- 群聊具备基础参与者管理能力
-- 聊天流中可稳定展示 Diff 或等价结构化代码产物，并支持用户表达接受/拒绝意图
+从 Phase1 开始，后续 task 拆分必须优先检查这些模型是否已经具备最小字段和接口边界。
 
 ---
 
-## 6. P3：产物正式闭环与高阶产品化能力
+## 4. 阶段总览
 
-### 6.1 目标
+### 4.1 Phase1：IM 聊天底座
 
-P3 的目标是在保留原有高阶产品化主线的前提下，先补齐前面未落地的正式闭环，再进入高级协同、长期记忆、产物编辑与完整部署发布。
+目标：
 
-### 6.2 范围
+先完成可持续承载后续 Agent 能力的 IM 底座，而不是继续扩展临时聊天 demo。
 
-- 自建 Agent
-- Diff 操作闭环与 VFS
+这一阶段关注：
+
+- 聊天 UI 与实时消息流
+- Streaming 流式输出协议
+- 当前错误链路改造
+- 基础用户登录与用户隔离
+- 用户验证与阶段验收
+
+这一阶段的关键约束是：
+
+- 当前 LLM 不应继续直接回复 UI
+- WS 接口应先走固定消息或固定流式片段，只验证统一消息流
+- Message 必须先收敛为统一结构，避免干扰 Phase2
+
+这一阶段完成后，系统应当是：
+
+```text
+一个具备统一消息流、基础流式协议和用户隔离能力的 IM 底座
+```
+
+### 4.2 Phase2：单 Agent Runtime
+
+目标：
+
+把系统从“能承载消息流的 IM 系统”升级为“最小单 Agent 执行平台”。
+
+这一阶段关注：
+
+- Runtime 基础抽象
+- Prompt System
+- Context Management
+- Tool Calling
+- ReAct Loop
+- Runtime State、错误恢复与 Memory 雏形
+
+这一阶段完成后，系统应当从：
+
+```text
+统一消息流 IM 底座
+```
+
+升级为：
+
+```text
+具备最小单 Agent 执行能力的 Runtime 系统
+```
+
+### 4.3 Phase3：Code Agent 能力
+
+目标：
+
+在单 Agent Runtime 稳定后，把 Agent 能力扩展到工作区、文件、命令和预览环境。
+
+这一阶段关注：
+
+- Workspace Runtime
+- File Tool System
+- Diff System
+- Sandbox Runtime
+- Terminal Runtime、Preview Runtime、Self-Repair Loop
+
+这一阶段完成后，系统应当从：
+
+```text
+单 Agent Runtime
+```
+
+升级为：
+
+```text
+可安全操作代码环境的 Code Agent 系统
+```
+
+### 4.4 Phase4：Artifact 体系
+
+目标：
+
+让聊天流中的产物从“消息附属物”升级为可管理、可版本化、可操作的平台资产。
+
+这一阶段关注：
+
+- Artifact Schema
+- Storage、Versioning、Renderer
+- Permission、Action、Lifecycle
+
+这一阶段完成后，系统应当从：
+
+```text
+可执行代码任务的 Agent 系统
+```
+
+升级为：
+
+```text
+具备独立 Artifact 资产层的平台系统
+```
+
+### 4.5 Phase5：用户自建 Agent
+
+目标：
+
+让平台从“内置 Agent 集合”升级为“用户可配置自己的 Agent 蓝图”。
+
+这一阶段关注：
+
+- Agent Template 与 Profile System
+- Tool Permission、Runtime Factory、Store/Share
+
+这一阶段完成后，系统应当从：
+
+```text
+仅支持内置 Agent 的平台
+```
+
+升级为：
+
+```text
+支持用户自建 Agent 的统一 Runtime 平台
+```
+
+### 4.6 Phase6：Orchestrator 多 Agent 编排
+
+目标：
+
+在 Runtime、Workspace、Artifact 和用户边界都已经建立后，再进入多 Agent 编排主线。
+
+这一阶段关注：
+
+- Task Graph 与 Planner
+- Agent Selector、Parallel Runtime、Shared Context Bus
+- Artifact Merge、Failure Recovery、Human Interrupt
+
+这一阶段完成后，系统应当从：
+
+```text
+单 Agent / 自建 Agent 平台
+```
+
+演化为：
+
+```text
+多 Agent 编排与协作系统
+```
+
+### 4.7 Phase7：高级自治与持续运行
+
+目标：
+
+在多 Agent 编排稳定后，再把系统升级为可持续运行、可恢复、可唤醒、可长期积累记忆的 Agent OS。
+
+这一阶段关注：
+
+- 长生命周期 Runtime
+- 高级记忆、反思与自治能力
+
+这一阶段完成后，系统应当从：
+
+```text
+多 Agent 协作系统
+```
+
+演化为：
+
+```text
+具备持续运行能力的 Agent OS
+```
+
+---
+
+## 5. 各阶段边界
+
+### 5.1 Phase1 边界
+
+Phase1 承诺：
+
+- 基础聊天 UI 与消息历史恢复
+- 会话级实时消息流
+- 统一 streaming 协议
+- `Message` 的最小通用封装
+- 当前错误链路收敛
+- 基础用户登录与用户隔离
+
+Phase1 不承诺：
+
+- 正式 `AgentRuntime`
+- Prompt、Context、Tool、ReAct Loop
+- 多 Agent 编排
+- Code Agent、Workspace、Diff、Artifact 生命周期
+- 完整 Auth、RBAC、组织体系
+
+### 5.2 Phase2 边界
+
+Phase2 承诺：
+
+- 完整单 Agent Runtime 主线
+- Prompt、Context、Tool、Loop、State 的最小统一架构
+- 真实 LLM 回复通过 Runtime 接管 Phase1 消息流
+
+Phase2 不承诺：
+
+- Code Agent 环境能力
+- Artifact 平台化
+- 多 Agent 编排
+- 长期后台运行
+
+### 5.3 Phase3 边界
+
+Phase3 承诺：
+
+- Workspace 边界
+- 文件读写与检索能力
+- Diff 展示与用户确认主链路
+- 受控命令执行
+- 预览与有限自修复
+
+Phase3 不承诺：
+
+- Artifact 独立资产化
+- 用户自建 Agent
+- 多 Agent 编排
+- 长生命周期自治
+
+### 5.4 Phase4 边界
+
+Phase4 承诺：
+
+- Artifact 独立主模型
+- Artifact 存储、版本与渲染
+- Artifact 权限、动作与生命周期
+
+Phase4 不承诺：
+
+- 用户自建 Agent 产品化
+- 多 Agent 编排
+- 长期后台运行与完整部署发布
+
+### 5.5 Phase5 边界
+
+Phase5 承诺：
+
+- 用户自建 Agent 蓝图
+- 自建 Agent 的运行时工厂与工具权限边界
+- Store / Share 的基础骨架
+
+Phase5 不承诺：
+
+- 多 Agent 编排
+- 长生命周期自治
+- 完整 Agent 商店产品化
+
+### 5.6 Phase6 边界
+
+Phase6 承诺：
+
+- 多 Agent 的任务图、选择、并行与共享上下文主线
+- 多 Agent 结果合并
+- 失败恢复和人工介入的最小编排能力
+
+Phase6 不承诺：
+
+- 长任务后台运行
+- 周期唤醒
+- 长期记忆产品化
 - 完整部署发布
-- 高级调度与高级群聊
-- 长期上下文与记忆
-- 产物编辑增强
 
-### 6.3 产品重点
+### 5.7 Phase7 边界
 
-- 用户开始具备自建 Agent 的能力，平台从“接入多个 Provider”升级为“允许用户配置自己的 Agent”
-- Diff 从“展示结果”升级到“可 Accept / Reject / 应用并真实改变项目状态”，VFS 在此阶段正式承担已确认代码状态
-- 部署发布不拆基础版和增强版，直接在本阶段承接完整部署主线
-- 在补齐正式闭环之后，再强化多 Agent 高级调度、长期记忆与围绕产物本身的持续编辑能力
-- 保留原有 P3 的答辩亮点定位，不把高阶能力前置挪空
+Phase7 承诺：
 
-### 6.4 验收标准
+- 长生命周期任务
+- 周期唤醒或事件触发
+- 高级记忆、反思与自治能力
 
-- 用户可创建并使用基础自建 Agent
-- Diff Accept / Reject / 应用闭环成立，VFS 能反映已确认结果
-- 系统具备完整部署发布链路，不再拆“基础版”和“增强版”两个阶段
-- 高级群聊与复杂协作路径可稳定演示
-- 长会话上下文承接和长期记忆效果明显增强
-- 用户可围绕产物进行更持续、更局部的编辑
+Phase7 不承诺：
+
+- 在没有权限、安全、可观测边界下直接增加自治程度
 
 ---
 
-## 7. 最终交付验收
+## 6. 阶段进入与退出原则
 
-最终项目完成时，除产品功能验收外，还必须交付：
+进入下一阶段前，必须满足：
 
-- 产品设计文档
-- 技术文档
-- 可运行 Demo
-- AI 协作开发记录
-- 3 分钟 Demo 视频
+- 当前阶段闭环成立
+- 当前阶段已有稳定验收路径
+- 当前阶段关键抽象已收口，不再频繁重写
+- 下一阶段能力不是靠临时绕过当前阶段缺口硬接上去
 
----
+禁止出现以下情况：
 
-## 8. 分阶段实现原则
-
-- 先保证每一层形成独立闭环，再进入下一层
-- 当前阶段不提前实现下一阶段能力
-- 先验证真实单 Agent 产品价值，再扩展多 Agent 协作，再进入产物闭环与高阶产品化
-- 上下文承接、Diff、VFS 和部署都应放在各自真正需要的阶段，不提前抢主线
-- 每一层都应有明确目标、范围和验收标准
-- task 拆解应直接依赖 `implementation-phases.md` 的阶段步骤编号
-- `roadmap.md` 负责讲“分几步做”，`implementation-phases.md` 负责讲“每一步具体做什么”
+- `Message` 未统一封装就提前接入正式 Runtime 事件
+- 当前 LLM 仍直接回复 UI，就提前进入 Phase2
+- 用户隔离未明确，就提前沉淀会话、Artifact、Workspace 的真实资产状态
+- Runtime 未成型就提前做复杂多 Agent
+- Workspace、Diff、Sandbox 未成型就提前做完整 Code Agent 闭环
+- Artifact 未收口就提前做一键部署主线
+- 为了展示效果，把高阶段能力提前塞回低阶段
 
 ---
 
-## 9. 文档关系建议
+## 7. 近期执行结论
 
-- `proposal.md`：描述产品愿景与核心能力
-- `roadmap.md`：定义 `MVP / P1 / P2 / P3` 阶段边界
-- `implementation-phases.md`：定义各阶段的执行步骤与 task 入口
+结合当前 spec，近期阶段判断如下：
 
-文档职责分工如下：
+- 当前应以 `Phase1` 为准推进 IM 底座收敛
+- `Phase1` 的优先级顺序是：
+  1. 聊天 UI 与实时消息流
+  2. Streaming 流式输出
+  3. 当前错误链路改造
+  4. 基础用户登录与用户隔离
+  5. 用户验证与阶段验收
+- 在 `Phase1` 完成前，不应直接把真实 LLM 链路扩成正式 AgentRuntime
+- `Phase2` 才承接真实单 Agent Runtime
+- `Phase3` 之后再进入 Code Agent、Artifact、自建 Agent、多 Agent 编排和长期自治主线
 
-- `proposal` 负责讲“想做什么”
-- `roadmap` 负责讲“分几步做”
-- `implementation-phases` 负责讲“每一步做哪些大任务”
+---
+
+## 8. 与 implementation-phases 的关系
+
+本文档定义的是：
+
+```text
+整体阶段顺序与阶段边界
+```
+
+`implementation-phases.md` 基于本文档继续展开执行任务：
+
+- `roadmap.md` 说明每个阶段是什么
+- `implementation-phases.md` 说明每个阶段具体做什么
+- 如果执行任务和路线图边界冲突，以路线图边界为准先回收 scope
+- 如果路线图边界和总愿景冲突，必须先更新更高层 spec，再调整执行文档

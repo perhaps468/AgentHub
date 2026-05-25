@@ -103,10 +103,13 @@ def list_messages(
     db: Session = Depends(get_db),
 ) -> Page[MessageResponse]:
     get_session_or_404(db, session_id)
-    total = db.scalar(select(func.count()).select_from(Message).where(Message.session_id == session_id)) or 0
+    total = db.scalar(select(func.count()).select_from(Message).where(
+        Message.session_id == session_id,
+        Message.status != "streaming",
+    )) or 0
     items = db.scalars(
         select(Message)
-        .where(Message.session_id == session_id)
+        .where(Message.session_id == session_id, Message.status != "streaming")
         .order_by(Message.created_at.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)

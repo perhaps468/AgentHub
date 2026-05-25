@@ -119,14 +119,12 @@ export interface ChatMessage {
   session_id: string
   sender_type: SenderType
   sender_role: string | null
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
   content: string
-  content_type: 'text'
+  payload: Record<string, unknown>
+  metadata: Record<string, unknown>
+  status: 'pending' | 'streaming' | 'completed' | 'failed'
   created_at: string
-  delivery_status?: 'completed' | 'interrupted'
-  reference?: MessageReference | null
-  codeArtifact?: MessageCodeArtifact | null
-  fileArtifact?: MessageFileArtifact | null
-  previewArtifact?: MessagePreviewArtifact | null
 }
 
 export interface StreamingMessage {
@@ -135,7 +133,10 @@ export interface StreamingMessage {
   session_id: string
   sender_type: SenderType
   sender_role: string | null
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
   content: string
+  payload: Record<string, unknown>
+  metadata: Record<string, unknown>
   ui_status: 'thinking' | 'streaming' | 'done' | 'syncing_interrupted'
   is_ephemeral: boolean
   created_at: string

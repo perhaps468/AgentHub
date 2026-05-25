@@ -7,34 +7,15 @@ from app.agents.registry import get_default_agent
 from app.core.database import SessionLocal
 from app.models.message import Message
 from app.models.session import ChatSession, utcnow
-from app.providers.base import (
-    ProviderNotConfiguredError,
-    ProviderRequestError,
-    ProviderResponseInvalidError,
-)
 from app.schemas.common import to_iso_z
-from app.services.agent_runtime import get_provider
-from app.services.agent_stream_service import (
-    AgentStreamService,
-    ChunkEvent,
-    ErrorEvent,
-    TypingEvent,
-)
+from app.services.fixed_agent_responder import FixedAgentResponder
 
-router = APIRouter(tags=["websocket"])
+router = APIRouter(prefix="/ws", tags=["websocket"])
 
 
 # ---- 在途并发保护 ----
 
 class _InFlightGuard:
-    """单会话单在途回复保护。
-
-    规则：
-    - try_enter 返回 True 表示成功进入，False 表示已被占用。
-    - leave 释放占用。
-    - interrupt 中断但不抛异常。
-    """
-
     def __init__(self) -> None:
         self._sessions: set[str] = set()
 
@@ -61,18 +42,19 @@ _IN_FLIGHT_GUARD = _InFlightGuard()
 
 
 def set_guard(guard: _InFlightGuard) -> None:
-    """注入测试用 guard。用于测试隔离。"""
     global _IN_FLIGHT_GUARD
     _IN_FLIGHT_GUARD = guard
 
 
-# ---- WebSocket 消息发送辅助函数 ----
+# ---- 工具函数 ----
 
 def _utcnow_iso() -> str:
     return to_iso_z(utcnow())
 
 
-async def send_error(
+# ---- Pre-start 错误发送（复用旧 error 类型） ----
+
+async def _send_error(
     websocket: WebSocket,
     code: str,
     message: str,
@@ -90,37 +72,84 @@ async def send_error(
     await websocket.send_json(payload)
 
 
-async def ws_send_typing(
+# ---- 新协议发送函数（P1-3-3） ----
+
+async def ws_send_message_start(
     websocket: WebSocket,
     agent_role: str,
     stream_id: str,
-    is_typing: bool,
+    message: Message,
 ) -> None:
     await websocket.send_json({
-        "type": "agent_typing",
+        "type": "message_start",
         "agent_role": agent_role,
         "timestamp": _utcnow_iso(),
         "stream_id": stream_id,
-        "is_typing": is_typing,
+        "message": {
+            "id": message.id,
+            "session_id": message.session_id,
+            "sender_type": "agent",
+            "sender_role": message.sender_role,
+            "type": message.type,
+            "content": message.content,
+            "payload": message.payload,
+            "metadata": message.msg_metadata,
+            "status": message.status,
+            "created_at": to_iso_z(message.created_at),
+        },
     })
 
 
-async def ws_send_chunk(
+async def ws_send_message_delta(
     websocket: WebSocket,
     agent_role: str,
     stream_id: str,
     message_id: str,
-    content_chunk: str,
-    is_final: bool,
+    delta: str,
 ) -> None:
     await websocket.send_json({
-        "type": "chat_stream",
+        "type": "message_delta",
         "agent_role": agent_role,
         "timestamp": _utcnow_iso(),
         "stream_id": stream_id,
         "message_id": message_id,
-        "content_chunk": content_chunk,
-        "is_final": is_final,
+        "delta": delta,
+    })
+
+
+async def ws_send_message_end(
+    websocket: WebSocket,
+    agent_role: str,
+    stream_id: str,
+    message_id: str,
+    status: str,
+) -> None:
+    await websocket.send_json({
+        "type": "message_end",
+        "agent_role": agent_role,
+        "timestamp": _utcnow_iso(),
+        "stream_id": stream_id,
+        "message_id": message_id,
+        "status": status,
+    })
+
+
+async def ws_send_message_error(
+    websocket: WebSocket,
+    agent_role: str,
+    stream_id: str,
+    message_id: str,
+    error_code: str,
+    error_message: str,
+) -> None:
+    await websocket.send_json({
+        "type": "message_error",
+        "agent_role": agent_role,
+        "timestamp": _utcnow_iso(),
+        "stream_id": stream_id,
+        "message_id": message_id,
+        "error_code": error_code,
+        "error_message": error_message,
     })
 
 
@@ -143,20 +172,13 @@ async def session_websocket(
 ) -> None:
     await websocket.accept()
 
-    # 尽早初始化 agent，使 session_not_found、invalid_request 等错误路径
-    # 也能使用 agent.role 生成符合 BaseMessage 契约的错误事件。
     agent = get_default_agent()
 
     db = SessionLocal()
     try:
         session = db.get(ChatSession, session_id)
         if session is None:
-            await send_error(websocket, "session_not_found", "Session not found", stream_id=str(uuid.uuid4()), agent_role=agent.role)
-            await websocket.close()
-            return
-
-        if x_token and x_token != session.owner_id:
-            await send_error(websocket, "forbidden", "You do not have access to this session", stream_id=str(uuid.uuid4()), agent_role=agent.role)
+            await _send_error(websocket, "session_not_found", "Session not found", stream_id=str(uuid.uuid4()), agent_role=agent.role)
             await websocket.close()
             return
 
@@ -164,7 +186,7 @@ async def session_websocket(
             try:
                 payload = await websocket.receive_json()
             except JSONDecodeError:
-                await send_error(websocket, "invalid_request", "Invalid request", stream_id=str(uuid.uuid4()), agent_role=agent.role)
+                await _send_error(websocket, "invalid_request", "Invalid request", stream_id=str(uuid.uuid4()), agent_role=agent.role)
                 continue
 
             if isinstance(payload, dict) and payload.get("type") == "ping":
@@ -172,72 +194,112 @@ async def session_websocket(
                 continue
 
             if not valid_send_message(payload, session_id):
-                await send_error(websocket, "invalid_request", "Invalid request", stream_id=str(uuid.uuid4()), agent_role=agent.role)
+                await _send_error(websocket, "invalid_request", "Invalid request", stream_id=str(uuid.uuid4()), agent_role=agent.role)
                 continue
 
-            # 预先生成 stream_id
             stream_id = str(uuid.uuid4())
 
-            # 在途保护
             if not _IN_FLIGHT_GUARD.try_enter(session_id):
-                await send_error(websocket, "agent_busy", "Agent is busy, please wait", stream_id=stream_id, agent_role=agent.role)
+                await _send_error(websocket, "agent_busy", "Agent is busy, please wait", stream_id=stream_id, agent_role=agent.role)
                 continue
 
             content = payload["content"]
 
-            # human message 落库
+            # human message 落库（status=completed）
             human_message = Message(
                 session_id=session_id,
                 sender_type="human",
                 sender_role=None,
                 content=content,
-                content_type="text",
+                type="text",
+                status="completed",
+                payload={"text": content},
+                metadata={},
             )
             db.add(human_message)
             session.updated_at = utcnow()
             db.add(session)
             db.commit()
-            db.refresh(human_message)
-
-            provider = get_provider()
-
-            service = AgentStreamService(
-                session_id=session_id,
-                human_message_id=human_message.id,
-                agent_role=agent.role,
-                system_prompt=agent.system_prompt,
-                user_message=content,
-                provider=provider,
-                db=db,
-                stream_id=stream_id,
-            )
 
             try:
-                async for event in service.stream_events():
-                    if isinstance(event, TypingEvent):
-                        await ws_send_typing(websocket, agent.role, stream_id, event.is_typing)
-                    elif isinstance(event, ChunkEvent):
-                        await ws_send_chunk(
-                            websocket,
-                            agent.role,
-                            stream_id,
-                            service._agent_message.id,
-                            event.content_chunk,
-                            event.is_final,
-                        )
-                    elif isinstance(event, ErrorEvent):
-                        await send_error(websocket, event.error_code, event.error_message, stream_id=stream_id, agent_role=agent.role)
-            except Exception:
-                # WebSocket 断开，触发中断收口
-                service.interrupt()
-                _IN_FLIGHT_GUARD.interrupt(session_id)
-                raise
+                responder = FixedAgentResponder(
+                    session_id=session_id,
+                    user_message=content,
+                    agent_role=agent.role,
+                    db=db,
+                    stream_id=stream_id,
+                )
 
-            _IN_FLIGHT_GUARD.leave(session_id)
+                active_stream_id = stream_id
+                active_agent_role = agent.role
+                active_message_id: str | None = None
+
+                async for event in responder.stream_events():
+                    if event.type == "message_start":
+                        active_stream_id = event.stream_id
+                        active_agent_role = event.agent_role
+                        active_message_id = event.message.id
+                        await ws_send_message_start(
+                            websocket,
+                            agent_role=event.agent_role,
+                            stream_id=event.stream_id,
+                            message=event.message,
+                        )
+                    elif event.type == "message_delta":
+                        active_stream_id = event.stream_id
+                        active_agent_role = event.agent_role
+                        active_message_id = event.message_id
+                        await ws_send_message_delta(
+                            websocket,
+                            agent_role=event.agent_role,
+                            stream_id=event.stream_id,
+                            message_id=event.message_id,
+                            delta=event.delta,
+                        )
+                    elif event.type == "message_end":
+                        active_stream_id = event.stream_id
+                        active_agent_role = event.agent_role
+                        active_message_id = event.message_id
+                        await ws_send_message_end(
+                            websocket,
+                            agent_role=event.agent_role,
+                            stream_id=event.stream_id,
+                            message_id=event.message_id,
+                            status=event.status,
+                        )
+                    elif event.type == "message_error":
+                        active_stream_id = event.stream_id
+                        active_agent_role = event.agent_role
+                        active_message_id = event.message_id
+                        await ws_send_message_error(
+                            websocket,
+                            agent_role=event.agent_role,
+                            stream_id=event.stream_id,
+                            message_id=event.message_id,
+                            error_code=event.error_code,
+                            error_message=event.error_message,
+                        )
+            except Exception as exc:
+                if active_message_id:
+                    agent_message = db.get(Message, active_message_id)
+                    if agent_message is not None:
+                        agent_message.status = "failed"
+                        db.add(agent_message)
+                        db.commit()
+                await ws_send_message_error(
+                    websocket,
+                    agent_role=active_agent_role,
+                    stream_id=active_stream_id,
+                    message_id=active_message_id or "",
+                    error_code="fixed_responder_failed",
+                    error_message=str(exc),
+                )
+            finally:
+                _IN_FLIGHT_GUARD.leave(session_id)
 
     except WebSocketDisconnect:
         pass
     except Exception:
-        await send_error(websocket, "unknown", "Unknown error", stream_id=str(uuid.uuid4()), agent_role=agent.role)
+        await _send_error(websocket, "unknown", "Unknown error", stream_id=str(uuid.uuid4()), agent_role=agent.role)
     finally:
         db.close()

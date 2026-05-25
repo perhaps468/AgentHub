@@ -14,7 +14,7 @@ def iso_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-app = FastAPI(title="AgentHub Backend")
+app = FastAPI(title="AgentHub Backend", debug=True)
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +64,7 @@ def api_health() -> dict:
     return health()
 
 
-app.include_router(sessions_router)
+# 恢复成原来的写法（正确）
 app.include_router(ws_router)
+app.include_router(sessions_router)
 app.include_router(agents_router)

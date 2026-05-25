@@ -18,6 +18,21 @@ import type {
 import type { ConnectionState } from '@/utils/ws-client'
 import { useChatStreamState } from '@/utils/useChatStreamState'
 
+// In-flight stream type for streaming messages (P1-3-4)
+export interface InFlightStream {
+  stream_id: string
+  message_id?: string
+  session_id: string
+  sender_role: string | null
+  content: string
+  accumulated_content: string
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
+  payload: { text: string }
+  metadata: Record<string, unknown>
+  ui_status: 'thinking' | 'streaming' | 'done' | 'syncing_interrupted'
+  created_at: string
+}
+
 export const useSessionStore = defineStore(
   'session',
   () => {
@@ -31,6 +46,9 @@ export const useSessionStore = defineStore(
     const isLoadingList = ref(false)
     const isLoadingMessages = ref(false)
 
+    // In-flight streaming messages (P1-3-4 reconciliation)
+    const inFlightMessages = ref<Map<string, InFlightStream>>(new Map())
+
     const streamState = useChatStreamState()
 
     // ── Getters ──────────────────────────────────────────────
@@ -41,7 +59,7 @@ export const useSessionStore = defineStore(
 
     const currentStreamingMessages = computed(() => {
       if (!currentSessionId.value) return []
-      return streamState.getStreamingMessages.value(currentSessionId.value)
+      return streamState.getStreamingMessages(currentSessionId.value)
     })
 
     const currentPageInfo = computed(() => {
@@ -112,7 +130,30 @@ export const useSessionStore = defineStore(
         const res = await fetchConversationMessages(sessionId, opts)
 
         if (page === 1) {
-          messageMap.value[sessionId] = res.items
+          // P1-3-4 Reconciliation:
+          // 1. Get current in-flight message_ids for this session
+          const localAgentMessageIds = new Set<string>()
+          inFlightMessages.value.forEach((stream) => {
+            if (stream.session_id === sessionId && stream.message_id) {
+              localAgentMessageIds.add(stream.message_id)
+            }
+          })
+
+          // 2. Process historical messages with upsert logic
+          const updatedList: ChatMessage[] = []
+          for (const msg of res.items) {
+            // If there's a local streaming message with same id, skip (will be replaced by in-flight)
+            if (localAgentMessageIds.has(msg.id)) {
+              continue
+            }
+            // Delete optimistic human messages from local
+            if (msg.metadata?.source === 'optimistic_human') {
+              continue
+            }
+            updatedList.push(msg)
+          }
+
+          messageMap.value[sessionId] = updatedList
         } else {
           const existing = messageMap.value[sessionId] ?? []
           messageMap.value[sessionId] = [...existing, ...res.items]
@@ -158,9 +199,34 @@ export const useSessionStore = defineStore(
       }
     }
 
+    function upsertMessage(messageId: string, msg: ChatMessage) {
+      // upsert based on message.id
+      const list = messageMap.value[currentSessionId.value]
+      if (!list) return
+      const idx = list.findIndex((m) => m.id === messageId)
+      if (idx !== -1) {
+        messageMap.value[currentSessionId.value][idx] = msg
+      } else {
+        messageMap.value[currentSessionId.value].push(msg)
+      }
+    }
+
+    function deleteMessage(messageId: string) {
+      const list = messageMap.value[currentSessionId.value]
+      if (!list) return
+      messageMap.value[currentSessionId.value] = list.filter((m) => m.id !== messageId)
+    }
+
     function clearMessages(sessionId: string) {
       delete messageMap.value[sessionId]
       delete messagePageMap.value[sessionId]
+      // Clear in-flight messages for this session
+      inFlightMessages.value.forEach((_, streamId) => {
+        const stream = inFlightMessages.value.get(streamId)
+        if (stream && stream.session_id === sessionId) {
+          inFlightMessages.value.delete(streamId)
+        }
+      })
       streamState.clearSession(sessionId)
     }
 
@@ -182,6 +248,7 @@ export const useSessionStore = defineStore(
       connectionState,
       isLoadingList,
       isLoadingMessages,
+      inFlightMessages,
       streamState,
       // getters
       currentMessages,
@@ -197,6 +264,8 @@ export const useSessionStore = defineStore(
       appendMessage,
       appendHumanMessage,
       mergeOrUpdateMessage,
+      upsertMessage,
+      deleteMessage,
       clearMessages,
       setConnectionState,
       setCurrentSessionId,

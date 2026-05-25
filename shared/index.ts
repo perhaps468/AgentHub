@@ -2,21 +2,19 @@
 // AgentHub - 跨端 TypeScript 类型定义
 // Source of Truth: shared/schemas/ws_messages.json
 // 本文件从 JSON Schema 派生，前后端共享同一份类型定义。
+// P1-3 统一协议已生效，旧协议类型已移除
 // =============================================================================
 
 // ========== 枚举类型 ==========
 
 export type AgentRole = 'Human' | 'PM' | 'Planner' | 'Coder' | 'Reviewer' | 'System';
 
-export type MessageType =
-  | 'chat_stream'
-  | 'task_update'
-  | 'code_diff'
-  | 'system_status'
-  | 'vfs_update'
-  | 'agent_typing'
-  | 'deployment_status'
-  | 'error';
+// P1-3 统一协议消息类型 (替代旧 chat_stream/agent_typing/error)
+export type UnifiedMessageType =
+  | 'message_start'
+  | 'message_delta'
+  | 'message_end'
+  | 'message_error';
 
 export type ClientAction = 'send_message' | 'accept_code' | 'reject_code' | 'deploy';
 
@@ -30,105 +28,65 @@ export type ContentType = 'text' | 'code' | 'image' | 'file' | 'diff' | 'preview
 
 export type SenderType = 'human' | 'agent' | 'system';
 
-// ========== 基础类型 ==========
+// ========== P1-3 统一消息模型 ==========
 
-export interface BaseMessage {
-  type: MessageType;
-  agent_role: AgentRole;
-  timestamp: string; // ISO 8601
-  stream_id: string; // 用于追踪同一消息的多个 chunk
-}
-
-// ========== 服务端 → 客户端 消息类型 ==========
-
-export interface ChatStreamMessage extends BaseMessage {
-  type: 'chat_stream';
-  message_id: string;
-  content_chunk: string; // 按句子 chunk，非逐 token
-  is_final: boolean;
-}
-
-export interface TaskItem {
+export interface UnifiedMessage {
   id: string;
-  title: string;
-  description?: string;
-  status: TaskStatus;
-  assignee: AgentRole;
-  priority?: number;
-  dependencies?: string[];
+  session_id: string;
+  sender_type: SenderType;
+  sender_role?: AgentRole | null;
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy';
+  content: string;
+  payload: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  status: 'pending' | 'streaming' | 'completed' | 'failed';
+  created_at: string;
 }
 
-export interface TaskUpdateMessage extends BaseMessage {
-  type: 'task_update';
-  tasks: TaskItem[];
+// ========== P1-3 统一协议事件类型 (服务端 → 客户端) ==========
+
+export interface MessageStartEvent {
+  type: 'message_start';
+  agent_role: AgentRole;
+  timestamp: string;
+  stream_id: string;
+  message: UnifiedMessage;
 }
 
-export interface CodeDiffMessage extends BaseMessage {
-  type: 'code_diff';
-  diff_id: string;
-  file_path: string;
-  old_content: string;
-  new_content: string; // 完整文件内容
-  diff_summary: string;
-  status: DiffStatus;
+export interface MessageDeltaEvent {
+  type: 'message_delta';
+  agent_role: AgentRole;
+  timestamp: string;
+  stream_id: string;
+  message_id: string;
+  delta: string;
 }
 
-export interface SystemStatusMessage extends BaseMessage {
-  type: 'system_status';
-  status: 'connected' | 'disconnected' | 'phase_changed' | 'agent_joined' | 'agent_left';
-  message: string;
-  phase?: 'requirement' | 'planning' | 'coding' | 'review' | 'done';
+export interface MessageEndEvent {
+  type: 'message_end';
+  agent_role: AgentRole;
+  timestamp: string;
+  stream_id: string;
+  message_id: string;
+  status: 'completed' | 'failed';
 }
 
-export interface VFSUpdateMessage extends BaseMessage {
-  type: 'vfs_update';
-  action: 'create' | 'update' | 'delete' | 'accepted' | 'rejected';
-  file_path: string;
-  version?: number;
-  diff_id?: string;
-}
-
-export interface AgentTypingMessage extends BaseMessage {
-  type: 'agent_typing';
-  is_typing: boolean;
-  message?: string;
-}
-
-export interface DeploymentStatusMessage extends BaseMessage {
-  type: 'deployment_status';
-  project_id: string;
-  status: 'pending' | 'building' | 'success' | 'failed';
-  preview_url?: string;
-  message?: string;
-}
-
-export type ErrorCode =
-  | 'llm_timeout'
-  | 'vfs_conflict'
-  | 'invalid_request'
-  | 'session_not_found'
-  | 'unknown'
-  | 'provider_not_configured'
-  | 'provider_request_failed'
-  | 'provider_response_invalid'
-  | 'agent_busy';
-
-export interface ErrorMessage extends BaseMessage {
-  type: 'error';
-  error_code: ErrorCode;
+export interface MessageErrorEvent {
+  type: 'message_error';
+  agent_role: AgentRole;
+  timestamp: string;
+  stream_id: string;
+  message_id?: string;
+  error_code: 'session_not_found' | 'invalid_request' | 'agent_busy' | 'fixed_responder_failed' | 'unknown';
   error_message: string;
-  diff_id?: string;
 }
 
-export type ServerMessage =
-  | ChatStreamMessage
-  | TaskUpdateMessage
-  | CodeDiffMessage
-  | SystemStatusMessage
-  | VFSUpdateMessage
-  | AgentTypingMessage
-  | DeploymentStatusMessage
-  | ErrorMessage;
+// P1-3 统一服务端消息类型 (唯一真相源)
+export type UnifiedServerMessage =
+  | MessageStartEvent
+  | MessageDeltaEvent
+  | MessageEndEvent
+  | MessageErrorEvent;
 
 // ========== 客户端 → 服务端 消息类型 ==========
 
@@ -215,18 +173,17 @@ export interface ChatSession {
   updated_at: string;
 }
 
+// REST API Message 类型 (与 UnifiedMessage 同构)
 export interface Message {
   id: string;
   session_id: string;
   sender_type: SenderType;
-  sender_id?: string;
-  sender_role?: AgentRole;
+  sender_role?: AgentRole | null;
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy';
   content: string;
-  content_type: ContentType;
-  delivery_status?: 'completed' | 'interrupted';
+  payload: Record<string, unknown>;
   metadata: Record<string, unknown>;
-  is_pinned: boolean;
-  parent_message_id?: string;
+  status: 'pending' | 'streaming' | 'completed' | 'failed';
   created_at: string;
 }
 
@@ -282,8 +239,8 @@ export interface GetMessagesResponse {
 
 // ========== 工具类型 ==========
 
-/** 从 ServerMessage 联合类型中提取特定类型 */
-export type ExtractServerMessage<T extends MessageType> = Extract<ServerMessage, { type: T }>;
+/** 从 UnifiedServerMessage 联合类型中提取特定类型 */
+export type ExtractServerMessage<T extends UnifiedMessageType> = Extract<UnifiedServerMessage, { type: T }>;
 
 /** 从 ClientMessage 联合类型中提取特定类型 */
 export type ExtractClientMessage<T extends ClientAction> = Extract<ClientMessage, { action: T }>;

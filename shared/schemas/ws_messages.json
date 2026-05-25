@@ -24,7 +24,11 @@
         "vfs_update",
         "agent_typing",
         "deployment_status",
-        "error"
+        "error",
+        "message_start",
+        "message_delta",
+        "message_end",
+        "message_error"
       ],
       "description": "服务端推送消息类型"
     },
@@ -261,6 +265,106 @@
     },
 
     "------------------------------------------------------------": {
+      "description": "========== NEW UNIFIED PROTOCOL (P1-3) =========="
+    },
+
+    "message_start": {
+      "description": "Agent 流式消息开始事件（P1-3 新协议，替代 agent_typing）",
+      "allOf": [
+        {
+          "type": "object",
+          "required": ["type", "agent_role", "timestamp", "stream_id", "message"],
+          "properties": {
+            "type": { "const": "message_start" },
+            "agent_role": { "type": "string" },
+            "timestamp": { "type": "string", "format": "date-time" },
+            "stream_id": { "type": "string" },
+            "message": {
+              "type": "object",
+              "required": ["id", "session_id", "sender_type", "sender_role", "type", "content", "payload", "metadata", "status", "created_at"],
+              "properties": {
+                "id": { "type": "string" },
+                "session_id": { "type": "string" },
+                "sender_type": { "type": "string", "enum": ["agent"] },
+                "sender_role": { "type": ["string", "null"] },
+                "type": { "type": "string", "enum": ["text", "code", "diff", "artifact", "deploy"] },
+                "content": { "type": "string" },
+                "payload": { "type": "object" },
+                "metadata": { "type": "object" },
+                "status": { "type": "string", "enum": ["streaming", "completed", "failed"] },
+                "created_at": { "type": "string", "format": "date-time" }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "message_delta": {
+      "description": "Agent 流式消息增量事件（P1-3 新协议，替代 chat_stream）",
+      "allOf": [
+        {
+          "type": "object",
+          "required": ["type", "agent_role", "timestamp", "stream_id", "message_id", "delta"],
+          "properties": {
+            "type": { "const": "message_delta" },
+            "agent_role": { "type": "string" },
+            "timestamp": { "type": "string", "format": "date-time" },
+            "stream_id": { "type": "string" },
+            "message_id": { "type": "string" },
+            "delta": { "type": "string", "description": "本帧的文本增量" }
+          }
+        }
+      ]
+    },
+
+    "message_end": {
+      "description": "Agent 流式消息结束事件（P1-3 新协议）",
+      "allOf": [
+        {
+          "type": "object",
+          "required": ["type", "agent_role", "timestamp", "stream_id", "message_id", "status"],
+          "properties": {
+            "type": { "const": "message_end" },
+            "agent_role": { "type": "string" },
+            "timestamp": { "type": "string", "format": "date-time" },
+            "stream_id": { "type": "string" },
+            "message_id": { "type": "string" },
+            "status": { "type": "string", "enum": ["completed", "failed"] }
+          }
+        }
+      ]
+    },
+
+    "message_error": {
+      "description": "Agent 流式消息错误事件（P1-3 新协议，替代 error）",
+      "allOf": [
+        {
+          "type": "object",
+          "required": ["type", "agent_role", "timestamp", "stream_id", "message_id", "error_code", "error_message"],
+          "properties": {
+            "type": { "const": "message_error" },
+            "agent_role": { "type": "string" },
+            "timestamp": { "type": "string", "format": "date-time" },
+            "stream_id": { "type": "string" },
+            "message_id": { "type": "string" },
+            "error_code": {
+              "type": "string",
+              "enum": [
+                "session_not_found",
+                "invalid_request",
+                "agent_busy",
+                "fixed_responder_failed",
+                "unknown"
+              ]
+            },
+            "error_message": { "type": "string" }
+          }
+        }
+      ]
+    },
+
+    "------------------------------------------------------------": {
       "description": "========== CLIENT → SERVER =========="
     },
 
@@ -335,7 +439,7 @@
     },
 
     "ServerMessage": {
-      "description": "服务端推送消息的联合类型",
+      "description": "服务端推送消息的联合类型（包含旧协议与 P1-3 新统一协议）",
       "oneOf": [
         { "$ref": "#/definitions/ChatStreamMessage" },
         { "$ref": "#/definitions/TaskUpdateMessage" },
@@ -343,7 +447,11 @@
         { "$ref": "#/definitions/SystemStatusMessage" },
         { "$ref": "#/definitions/VFSUpdateMessage" },
         { "$ref": "#/definitions/AgentTypingMessage" },
-        { "$ref": "#/definitions/ErrorMessage" }
+        { "$ref": "#/definitions/ErrorMessage" },
+        { "$ref": "#/definitions/message_start" },
+        { "$ref": "#/definitions/message_delta" },
+        { "$ref": "#/definitions/message_end" },
+        { "$ref": "#/definitions/message_error" }
       ]
     }
 
