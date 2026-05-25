@@ -13,10 +13,10 @@ CREATE TABLE IF NOT EXISTS sessions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS messages (
-  id CHAR(36) PRIMARY KEY,
+  id CHAR(36) NOT NULL,
   session_id CHAR(36) NOT NULL,
   sender_type VARCHAR(20) NOT NULL,
-  sender_role VARCHAR(50),
+  sender_role VARCHAR(50) DEFAULT NULL,
   content TEXT NOT NULL,
   type VARCHAR(20) NOT NULL DEFAULT 'text',
   status VARCHAR(20) NOT NULL DEFAULT 'completed',
