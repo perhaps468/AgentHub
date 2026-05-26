@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS users (
  created_at      DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
 
--- 建立测试用户
+-- 新增测试用户
 INSERT INTO users (username, password) VALUES
    ('gy', 'admin123'),
    ('ljw', 'admin123');
