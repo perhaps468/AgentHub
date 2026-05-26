@@ -73,7 +73,6 @@ export const useSessionStore = defineStore(
     // ── Actions ──────────────────────────────────────────────
 
     async function fetchSessionList(params: {
-      owner_id: string
       page?: number
       page_size?: number
       include_archived?: boolean
@@ -138,23 +137,9 @@ export const useSessionStore = defineStore(
         const res = await fetchConversationMessages(sessionId, opts)
 
         if (page === 1) {
-          // P1-3-4 Reconciliation:
-          // 1. Get current in-flight message_ids for this session
-          const localAgentMessageIds = new Set<string>()
-          inFlightMessages.value.forEach((stream) => {
-            if (stream.session_id === sessionId && stream.message_id) {
-              localAgentMessageIds.add(stream.message_id)
-            }
-          })
-
-          // 2. Process historical messages with upsert logic
           const updatedList: ChatMessage[] = []
           for (const msg of res.items) {
-            // If there's a local streaming message with same id, skip (will be replaced by in-flight)
-            if (localAgentMessageIds.has(msg.id)) {
-              continue
-            }
-            // Delete optimistic human messages from local
+            // Skip optimistic human messages
             if (msg.metadata?.source === 'optimistic_human') {
               continue
             }

@@ -85,6 +85,7 @@
  * - 不承载大段列表 DOM、弹窗 DOM 或聊天区 DOM
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
@@ -103,6 +104,7 @@ import UserProfileDialog from './zhu/UserProfileDialog.vue'
 const userInfoStore = useUserInfoStore()
 const sessionStore = useSessionStore()
 const agentStore = useAgentStore()
+const router = useRouter()
 const showToast = useToast()
 
 // ==================== 布局状态 ====================
@@ -393,19 +395,16 @@ const handleAddAgent = (newAgent: SidebarAgent) => {
 // ==================== 登出 ====================
 
 /** 退出登录：断开 WebSocket、清除本地信息、跳转登录页 */
-const handlerLogout = async () => {
+const handlerLogout = () => {
   showUserPopover.value = false
   wsClient.disconnect()
-  const rawRes = await import('../api/login').then((m) => m.logout())
-  const res = 'status' in rawRes ? rawRes.data : rawRes
-
-  if (res.code === 0) {
-    localStorage.removeItem('x-token')
-    userInfoStore.clearUserInfo()
-    import('../router/index').then((m) => m.default.push('/login'))
-  } else {
-    showToast(res.msg, true)
-  }
+  localStorage.removeItem('x-token')
+  localStorage.removeItem('user')
+  localStorage.removeItem('session-store')
+  sessionStore.setCurrentSessionId(null)
+  sessionStore.clearMessages('')
+  userInfoStore.clearUserInfo()
+  router.push('/login')
 }
 
 // ==================== 恢复当前会话 ====================

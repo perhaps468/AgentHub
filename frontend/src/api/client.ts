@@ -28,7 +28,7 @@ export const agenthubRequest = axios.create({
 agenthubRequest.interceptors.request.use((config) => {
   const token = localStorage.getItem('x-token')
   if (token) {
-    config.headers['x-token'] = token
+    config.headers['Authorization'] = `Bearer ${token}`
   }
   return config
 })

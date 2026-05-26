@@ -32,3 +32,17 @@ CREATE TABLE IF NOT EXISTS messages (
     REFERENCES sessions(id)
     ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 用户表
+CREATE TABLE IF NOT EXISTS users (
+ id              BIGINT UNSIGNED   PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID',
+ username        VARCHAR(50)       NOT NULL UNIQUE COMMENT '登录用户名，同时也是显示名称',
+ password        VARCHAR(255)      NOT NULL COMMENT '登录密码（明文）',
+ avatar          VARCHAR(500)      DEFAULT NULL COMMENT '头像URL',
+ created_at      DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
+
+-- 测试用户
+INSERT INTO users (username, password) VALUES
+   ('gy', 'admin123'),
+   ('ljw', 'admin123');

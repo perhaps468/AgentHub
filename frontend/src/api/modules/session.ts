@@ -8,7 +8,6 @@ import type {
 } from '@/types/agenthub'
 
 export const fetchConversationList = async (params: {
-  owner_id: string
   include_archived?: boolean
   page?: number
   page_size?: number

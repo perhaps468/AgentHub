@@ -26,6 +26,17 @@ const themeStore = useThemeStore()
 const globalStore = useGlobalStore()
 const userInfoStore = useUserInfoStore()
 const router = useRouter()
+
+// 页面加载时，从 localStorage 恢复用户信息
+const savedUser = localStorage.getItem('user')
+if (savedUser && localStorage.getItem('x-token')) {
+  try {
+    userInfoStore.setUserInfo(JSON.parse(savedUser))
+  } catch (e) {
+    // ignore parse error
+  }
+}
+
 const handlerLogout = () => {
   localStorage.removeItem('x-token')
   userInfoStore.clearUserInfo()

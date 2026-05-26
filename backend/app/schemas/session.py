@@ -7,7 +7,7 @@ from app.schemas.common import TimestampedModel
 
 
 class SessionCreate(TimestampedModel):
-    owner_id: str = Field(min_length=1, max_length=100)
+    owner_id: str | None = Field(default=None)
     title: str | None = Field(default=None, max_length=255)
     mode: Literal["single", "group"]
 

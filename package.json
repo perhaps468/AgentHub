@@ -6,6 +6,8 @@
     "dev:frontend": "pnpm --filter frontend dev",
     "dev:backend": "pnpm --filter backend dev",
     "build:frontend": "pnpm --filter frontend build"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.5"
   }
 }
-

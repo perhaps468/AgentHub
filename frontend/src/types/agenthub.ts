@@ -151,7 +151,6 @@ export interface PaginatedResponse<T> {
 }
 
 export interface CreateSessionPayload {
-  owner_id: string
   title?: string | null
   mode: ConversationMode
 }

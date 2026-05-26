@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.agents import router as agents_router
+from app.api.auth import router as auth_router
 from app.api.sessions import router as sessions_router
 from app.api.ws import router as ws_router
 
@@ -65,6 +66,7 @@ def api_health() -> dict:
 
 
 # 恢复成原来的写法（正确）
+app.include_router(auth_router)
 app.include_router(ws_router)
 app.include_router(sessions_router)
 app.include_router(agents_router)

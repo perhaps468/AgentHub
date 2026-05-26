@@ -1,10 +1,11 @@
 import uuid
 from json import JSONDecodeError
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
 from app.agents.registry import get_default_agent
 from app.core.database import SessionLocal
+from app.core.security import decode_token
 from app.models.message import Message
 from app.models.session import ChatSession, utcnow
 from app.schemas.common import to_iso_z
@@ -168,9 +169,20 @@ def valid_send_message(payload: object, session_id: str) -> bool:
 async def session_websocket(
     websocket: WebSocket,
     session_id: str,
-    x_token: str | None = None,
 ) -> None:
     await websocket.accept()
+
+    token = websocket.query_params.get("x-token")
+    if not token:
+        await websocket.close(code=4001, reason="Missing authentication token")
+        return
+
+    try:
+        payload = decode_token(token)
+        user_id = str(payload.get("sub"))
+    except Exception:
+        await websocket.close(code=4002, reason="Invalid or expired token")
+        return
 
     agent = get_default_agent()
 
@@ -180,6 +192,11 @@ async def session_websocket(
         if session is None:
             await _send_error(websocket, "session_not_found", "Session not found", stream_id=str(uuid.uuid4()), agent_role=agent.role)
             await websocket.close()
+            return
+
+        if session.owner_id != user_id:
+            await _send_error(websocket, "forbidden", "Forbidden: session does not belong to current user", stream_id=str(uuid.uuid4()), agent_role=agent.role)
+            await websocket.close(code=4003, reason="Forbidden")
             return
 
         while True:

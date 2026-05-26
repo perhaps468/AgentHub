@@ -6,7 +6,7 @@ import axios, {
 } from 'axios'
 import { useGlobalStore } from '../store/module/useGlobalStore'
 
-const SERVICE_URL = import.meta.env.VITE_HTTP_URL as string
+const SERVICE_URL = (import.meta.env.VITE_HTTP_URL as string | undefined) || ''
 export { SERVICE_URL }
 
 type RequestParams = Record<string, unknown>

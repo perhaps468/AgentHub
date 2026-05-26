@@ -207,11 +207,6 @@ class WsClient {
       return
     }
 
-    if (msg.type === 'error') {
-      console.error('[WsClient] Server error:', msg.error_code, msg.error_message)
-      return
-    }
-
     console.log('[WsClient] Message:', msg)
     this.messageListeners.forEach((cb) => cb(msg))
   }

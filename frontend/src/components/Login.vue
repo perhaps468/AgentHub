@@ -206,7 +206,7 @@ const loging = async () => {
       userStore.setUserInfo(res.data as UserInfo)
       localStorage.setItem('user', JSON.stringify(res.data))
       ElMessage.success('登录成功')
-      router.push('/zhu')
+      window.location.href = '/#/zhu'
       return
     }
 
