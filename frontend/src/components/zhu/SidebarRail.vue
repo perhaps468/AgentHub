@@ -69,32 +69,35 @@ defineEmits<{
 </script>
 
 <style scoped>
+/* ==================== 侧边栏图标栏容器 ==================== */
 .sidebar-rail {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 16px 12px;
-  background: rgb(var(--surface-muted));
-  border-right: 1px solid rgb(var(--border-color));
+  gap: 10px;
+  padding: 20px 12px;
+  background: transparent;
 }
 
+/* ==================== 头像容器 ==================== */
 .rail-avatar-wrapper {
   position: relative;
 }
 
+/* ==================== 头像与按钮基础样式 ==================== */
 .rail-avatar,
 .rail-button {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 14px;
-  color: rgb(var(--text-secondary));
-  background: transparent;
-  border: none;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(59, 130, 246, 0.1);
   cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .rail-button :deep(svg) {
@@ -102,95 +105,131 @@ defineEmits<{
   height: 22px;
 }
 
+/* ==================== 激活与悬停状态 ==================== */
 .rail-button.active,
-.rail-button:hover,
-.rail-avatar:hover {
-  background: rgb(var(--primary-soft));
-  color: rgb(var(--primary-strong));
+.rail-button:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.1));
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.3);
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
 }
 
-/* 用户弹框 */
+.rail-avatar:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.15));
+  border-color: rgba(59, 130, 246, 0.4);
+  transform: scale(1.08);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.25);
+}
+
+/* ==================== 用户信息弹框 ==================== */
 .user-popover {
   position: absolute;
   top: 0;
-  left: 56px;
+  left: 58px;
   z-index: 100;
-  width: 240px;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
-  padding: 16px;
+  width: 280px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  box-shadow:
+    0 20px 50px rgba(59, 130, 246, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.08);
+  padding: 24px;
+  border: 1px solid rgba(59, 130, 246, 0.1);
+  animation: popoverFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-12px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* ==================== 弹框头部 ==================== */
 .user-popover-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.1);
 }
 
 .user-popover-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 
 .user-popover-name {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: #1e293b;
 }
 
 .user-popover-email {
-  font-size: 12px;
-  color: #666;
+  font-size: 13px;
+  color: #94a3b8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* ==================== 弹框操作按钮 ==================== */
 .user-popover-actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .user-popover-btn {
   width: 100%;
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-  background: #fff;
-  color: #333;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  background: rgba(59, 130, 246, 0.05);
+  color: #475569;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s ease;
 }
 
 .user-popover-btn:hover {
-  background: #f5f5f5;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.08));
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
+  transform: translateY(-1px);
 }
 
 .user-popover-btn.logout {
-  color: #e53935;
-  border-color: #ffcdd2;
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.2);
+  background: rgba(239, 68, 68, 0.05);
 }
 
 .user-popover-btn.logout:hover {
-  background: #ffebee;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  color: #dc2626;
 }
 
-/* 弹框过渡动画 */
+/* ==================== 弹框过渡动画 ==================== */
 .popover-fade-enter-active,
 .popover-fade-leave-active {
-  transition: opacity 0.2s, transform 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .popover-fade-enter-from,
 .popover-fade-leave-to {
   opacity: 0;
-  transform: translateX(-8px);
+  transform: translateX(-12px) scale(0.95);
 }
 </style>

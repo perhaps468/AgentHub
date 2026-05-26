@@ -345,6 +345,7 @@ document.addEventListener('click', () => {
 </script>
 
 <style scoped>
+/* ==================== 侧边栏头部 ==================== */
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -354,104 +355,163 @@ document.addEventListener('click', () => {
 
 .sidebar-header h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
-  line-height: 1.2;
+  color: #1e40af;
+  letter-spacing: -0.01em;
 }
 
+/* 版本标签 */
 .version-tag {
-  font-size: 12px;
-  color: #9c27b0;
-  font-weight: 500;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.08));
+  color: #3b82f6;
+  font-weight: 600;
+  border: 1px solid rgba(59, 130, 246, 0.15);
 }
 
+/* ==================== 工具栏 ==================== */
 .toolbar-row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
+/* 新建对话按钮 */
 .new-session-btn {
   flex: 1;
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: 1px solid #1a1a1a;
-  background: #1a1a1a;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:
+    0 4px 14px rgba(59, 130, 246, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.new-session-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.new-session-btn:hover::before {
+  left: 100%;
 }
 
 .new-session-btn:hover {
-  background: #333;
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 20px rgba(59, 130, 246, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
+/* 工具栏按钮 */
 .toolbar-btn {
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-  background: #fff;
-  color: #666;
-  font-size: 13px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  background: rgba(255, 255, 255, 0.5);
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+  transition: all 0.2s ease;
 }
 
 .toolbar-btn:hover {
-  background: #f5f5f5;
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
 }
 
-/* 列表分区 */
+/* ==================== 列表分区 ==================== */
 .list-section {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .section-title {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
-  color: #666;
-  margin-bottom: 8px;
+  color: #94a3b8;
+  margin-bottom: 10px;
   padding-left: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
+/* ==================== 会话列表 ==================== */
 .conversation-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-height: 85%;
   overflow-y: auto;
+  padding-right: 4px;
 }
 
+.conversation-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.conversation-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.conversation-list::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 2px;
+}
+
+/* 加载与空状态 */
 .loading-hint,
 .empty-hint {
   text-align: center;
-  color: rgb(var(--text-muted));
+  color: #94a3b8;
   font-size: 13px;
-  padding: 20px 0;
+  padding: 40px 0;
+  font-weight: 500;
 }
 
+/* ==================== 会话项 ==================== */
 .conversation-item {
   display: flex;
   align-items: flex-start;
   gap: 12px;
   width: 100%;
-  padding: 12px;
-  border-radius: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
   border: 1px solid transparent;
   text-align: left;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.4);
   cursor: pointer;
   position: relative;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.conversation-item:hover {
-  background: #f9f9f9;
-}
 
 .conversation-item.is-active {
-  background: #e3f2fd;
-  border-color: #1976d2;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08));
+  border-color: rgba(59, 130, 246, 0.25);
+  z-index: 1;
+  transform: translateX(4px);
+  box-shadow:
+    0 4px 12px rgba(59, 130, 246, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .conversation-copy {
@@ -463,66 +523,70 @@ document.addEventListener('click', () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   flex-wrap: wrap;
 }
 
 .conversation-title {
-  color: #1a1a1a;
+  color: #1e293b;
   font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 160px;
 }
 
+/* 模式标签 */
 .mode-tag {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 500;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 600;
 }
 
 .mode-tag.single {
-  background: #e3f2fd;
-  color: #1976d2;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.1));
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.2);
 }
 
 .mode-tag.group {
-  background: #fff3e0;
-  color: #e65100;
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.15), rgba(249, 115, 22, 0.1));
+  color: #ea580c;
+  border: 1px solid rgba(251, 146, 60, 0.2);
 }
 
 .mode-tag.archived {
-  background: #f5f5f5;
-  color: #999;
+  background: rgba(100, 116, 139, 0.1);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.15);
 }
 
 .conversation-snippet {
-  color: #999;
+  color: #94a3b8;
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* ==================== ... 操作菜单 ==================== */
+/* ==================== 更多操作菜单 ==================== */
 .item-more-wrapper {
   position: relative;
   flex-shrink: 0;
 }
 
 .item-more-btn {
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 6px 10px;
+  border-radius: 8px;
   border: none;
   background: transparent;
-  color: #999;
+  color: #94a3b8;
   font-size: 16px;
   cursor: pointer;
-  line-height: 1;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: all 0.2s ease;
 }
 
 .conversation-item:hover .item-more-btn {
@@ -530,68 +594,78 @@ document.addEventListener('click', () => {
 }
 
 .item-more-btn:hover {
-  background: #e8e8e8;
-  color: #333;
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
 }
 
 .item-more-menu {
   position: absolute;
   right: 0;
-  top: calc(100% + 4px);
-  z-index: 200;
-  min-width: 120px;
-  background: #fff;
-  border: 1px solid #e8e8e8;
-  border-radius: 10px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-  padding: 4px 0;
+  top: calc(100% + 6px);
+  z-index: 999;
+  min-width: 140px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(59, 130, 246, 0.1);
+  border-radius: 14px;
+  box-shadow:
+    0 15px 35px rgba(59, 130, 246, 0.12),
+    0 5px 15px rgba(0, 0, 0, 0.08);
+  padding: 6px;
 }
 
 .more-action {
   display: block;
+  position: relative;
   width: 100%;
-  padding: 8px 14px;
+  padding: 10px 14px;
   border: none;
   background: transparent;
-  color: #333;
+  color: #475569;
   font-size: 13px;
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s;
+  border-radius: 10px;
+  transition: all 0.15s ease;
+  z-index: 999;
 }
 
 .more-action:hover {
-  background: #f5f5f5;
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+  z-index: 999;
 }
 
 .more-action.danger {
-  color: #e53935;
+  color: #ef4444;
 }
 
 .more-action.danger:hover {
-  background: #ffebee;
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
 }
 
 .more-divider {
   height: 1px;
   margin: 4px 0;
-  background: #f0f0f0;
+  background: rgba(59, 130, 246, 0.08);
 }
 
-/* 能力标签 */
+/* ==================== 能力标签 ==================== */
 .capability-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .capability-tag {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #f5f5f5;
-  color: #666;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+  font-weight: 500;
+  border: 1px solid rgba(59, 130, 246, 0.12);
 }
 </style>

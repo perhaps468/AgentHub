@@ -43,25 +43,26 @@ const onOk = () => {
 
 <style lang="less" scoped>
 .custom-dialog {
-  width: 380px;
-  height: 180px;
-  background-color: #ffffff;
-  border-radius: 5px;
-  padding: 15px;
+  width: 400px;
+  background-color: rgb(var(--surface-color));
+  border-radius: var(--radius-md);
+  padding: 24px;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
 
   .close-icon {
     background-color: transparent;
+    transition: all 0.15s ease;
 
     &:hover {
-      color: #ffffff;
-      background: #ff4c4c;
+      color: rgb(var(--danger-color));
+      background: rgba(239, 68, 68, 0.08);
     }
   }
 
   @media screen and (max-width: 500px) {
-    width: 80%;
+    width: 90%;
   }
 }
 </style>

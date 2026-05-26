@@ -1,8 +1,10 @@
 <template>
-  <div class="connection-status" :class="state">
-    <span class="dot" />
+  <div class="connection-status" :class="currentStatus">
+    <!-- 状态指示灯 -->
+    <span class="dot"></span>
     <span class="label">{{ label }}</span>
-    <button v-if="state === 'failed'" class="retry-btn" type="button" @click="$emit('retry')">
+    <!-- 重试按钮 -->
+    <button v-if="currentStatus === 'failed' && reconnectAttempt > 0" class="retry-btn" @click="$emit('retry')">
       重试
     </button>
   </div>
@@ -10,48 +12,53 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ConnectionState } from '@/utils/ws-client'
 
 const props = defineProps<{
-  state: ConnectionState
-  reconnectAttempt?: number
+  // 支持 state 或 status 两种属性名
+  status?: 'connected' | 'connecting' | 'disconnected' | 'reconnecting' | 'failed'
+  state?: 'connected' | 'connecting' | 'disconnected' | 'reconnecting' | 'failed'
+  reconnectAttempt: number
 }>()
 
 defineEmits<{
-  retry: []
+  (e: 'retry'): void
 }>()
 
+// 兼容 state 和 status 两种属性名
+const currentStatus = computed(() => props.status || props.state || 'disconnected')
+
 const label = computed(() => {
-  switch (props.state) {
+  switch (currentStatus.value) {
     case 'connected':
-      return '在线'
+      return '已连接'
     case 'connecting':
-      return '连接中...'
+      return '连接中'
     case 'disconnected':
       return '已断开'
-    case 'reconnecting': {
-      const n = props.reconnectAttempt ?? 1
-      return `重连中... (${n}/5)`
-    }
+    case 'reconnecting':
+      return `重连中 (${props.reconnectAttempt})`
     case 'failed':
       return '连接失败'
     default:
-      return ''
+      return '未知'
   }
 })
 </script>
 
 <style scoped>
+/* ==================== 连接状态容器 ==================== */
 .connection-status {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 8px;
+  padding: 6px 14px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
-  background: rgb(var(--surface-muted));
-  border: 1px solid rgb(var(--border-color));
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  backdrop-filter: blur(10px);
+  transition: all 0.25s ease;
 }
 
 .dot {
@@ -61,55 +68,73 @@ const label = computed(() => {
   flex-shrink: 0;
 }
 
-/* States */
+/* ==================== 状态颜色 ==================== */
+/* 已连接 - 绿色 */
 .connection-status.connected .dot {
-  background: rgb(var(--success-color, #22c55e));
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
 }
 .connection-status.connected .label {
-  color: rgb(var(--success-color, #22c55e));
+  color: #22c55e;
 }
 
+/* 连接中 / 已断开 - 灰色 */
 .connection-status.connecting .dot,
 .connection-status.disconnected .dot {
-  background: rgb(var(--text-muted));
+  background: #94a3b8;
 }
 .connection-status.connecting .label,
 .connection-status.disconnected .label {
-  color: rgb(var(--text-secondary));
+  color: #94a3b8;
 }
 
+/* 重连中 - 橙色脉冲 */
 .connection-status.reconnecting .dot {
-  background: rgb(var(--warning-color, #f59e0b));
+  background: #f59e0b;
   animation: pulse 1.2s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
 }
 .connection-status.reconnecting .label {
-  color: rgb(var(--warning-color, #f59e0b));
+  color: #f59e0b;
 }
 
+/* 连接失败 - 红色 */
 .connection-status.failed .dot {
-  background: rgb(var(--danger-color, #ef4444));
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
 }
 .connection-status.failed .label {
-  color: rgb(var(--danger-color, #ef4444));
+  color: #ef4444;
 }
 
+/* ==================== 重试按钮 ==================== */
 .retry-btn {
-  padding: 2px 8px;
+  padding: 4px 10px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
-  color: rgb(var(--danger-color, #ef4444));
-  background: transparent;
-  border: 1px solid rgb(var(--danger-color, #ef4444));
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .retry-btn:hover {
-  background: rgba(var(--danger-color, #ef4444), 0.1);
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+  transform: translateY(-1px);
 }
 
+/* ==================== 脉冲动画 ==================== */
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
 }
 </style>

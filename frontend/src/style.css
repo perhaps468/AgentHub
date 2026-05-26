@@ -5,23 +5,27 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --background-color: 248, 250, 248;
+  /* Notion 风格配色 - 白蓝黑系 */
+  --background-color: 249, 250, 252;
   --surface-color: 255, 255, 255;
-  --surface-muted: 244, 247, 244;
-  --border-color: 224, 230, 224;
-  --border-strong: 208, 218, 208;
-  --text-color: 23, 28, 24;
-  --text-secondary: 0, 0, 0;
-  --text-muted: 148, 156, 149;
-  --primary-color: 103, 194, 135;
-  --primary-soft: 230,230,238;
-  --primary-strong:255,255,255;
-  --danger-color: 215, 96, 96;
-  --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.04);
-  --radius-xs: 10px;
-  --radius-sm: 14px;
-  --radius-md: 18px;
-  --radius-lg: 24px;
+  --surface-muted: 248, 250, 252;
+  --border-color: 229, 231, 235;
+  --border-strong: 203, 213, 225;
+  --text-color: 30, 41, 59;
+  --text-secondary: 71, 85, 105;
+  --text-muted: 148, 163, 184;
+  --primary-color: 59, 130, 246;
+  --primary-soft: 239, 246, 255;
+  --primary-strong: 37, 99, 235;
+  --success-color: 34, 197, 94;
+  --warning-color: 245, 158, 11;
+  --danger-color: 239, 68, 68;
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 }
 
 *,

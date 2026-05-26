@@ -13,35 +13,40 @@ const props = defineProps({
 <style lang="less" scoped>
 .custom-button {
   width: 70px;
-  height: 28px;
+  height: 32px;
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: rgba(var(--primary-color));
-  border-radius: 5px;
+  background-color: rgb(var(--primary-color));
+  border-radius: var(--radius-sm);
   color: #ffffff;
   user-select: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
 
   &:hover {
-    background-color: rgba(76, 155, 255, 0.8);
+    background-color: rgb(var(--primary-strong));
+    transform: translateY(-1px);
   }
 
   &.minor {
-    color: #1f1f1f;
-    background-color: #edf2f9;
+    color: rgb(var(--text-secondary));
+    background-color: rgb(var(--surface-muted));
+    border: 1px solid rgb(var(--border-color));
 
     &:hover {
-      background-color: #e3ecff;
+      background-color: rgb(var(--surface-color));
+      border-color: rgb(--border-strong);
     }
   }
 
   &.error {
-    background-color: #ff4c4c;
+    background-color: rgb(var(--danger-color));
 
     &:hover {
-      background-color: rgba(255, 76, 76, 0.6);
+      background-color: rgba(239, 68, 68, 0.85);
     }
   }
 }

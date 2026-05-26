@@ -56,23 +56,28 @@ defineEmits<{
 </script>
 
 <style scoped>
+/* ==================== 聊天区主容器 ==================== */
 .chat-shell {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
   min-width: 0;
   overflow: hidden;
-  background: rgb(var(--surface-color));
-  border-right: 1px solid rgb(var(--border-color));
+  background: transparent;
 }
 
 .chat-stream-panel {
   min-height: 0;
   flex: 1;
   overflow: hidden;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 16px;
+  margin: 0 4px;
 }
 
 .chat-composer-panel {
-  border-top: 1px solid rgb(var(--border-color));
+  border-top: none;
+  background: transparent;
+  padding-top: 8px;
 }
 </style>

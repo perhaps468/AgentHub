@@ -152,7 +152,7 @@ const insertEmoji = (emoji: string) => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid rgb(var(--border-color));
   background: rgb(var(--surface-muted));
 }
@@ -160,7 +160,7 @@ const insertEmoji = (emoji: string) => {
 .reference-copy {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   flex: 1;
 }
@@ -170,7 +170,7 @@ const insertEmoji = (emoji: string) => {
   height: 16px;
   flex-shrink: 0;
   margin-top: 2px;
-  color: rgb(var(--primary-strong));
+  color: rgb(var(--primary-color));
 }
 
 .ref-content {
@@ -181,9 +181,9 @@ const insertEmoji = (emoji: string) => {
 }
 
 .reference-label {
-  color: rgb(var(--primary-strong));
+  color: rgb(var(--primary-color));
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -200,11 +200,11 @@ const insertEmoji = (emoji: string) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
   color: rgb(var(--text-muted));
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: all 0.15s ease;
 }
 
 .reference-clear svg {
@@ -214,7 +214,7 @@ const insertEmoji = (emoji: string) => {
 
 .reference-clear:hover {
   color: rgb(var(--danger-color));
-  background: rgba(215, 96, 96, 0.08);
+  background: rgba(239, 68, 68, 0.08);
 }
 
 /* Composer row */
@@ -230,7 +230,7 @@ const insertEmoji = (emoji: string) => {
 .composer-toolbar {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex-shrink: 0;
   padding-bottom: 4px;
 }
@@ -239,11 +239,11 @@ const insertEmoji = (emoji: string) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
   color: rgb(var(--text-secondary));
-  transition: background 0.14s ease, color 0.14s ease;
+  transition: all 0.15s ease;
 }
 
 .tool-btn svg {
@@ -252,7 +252,7 @@ const insertEmoji = (emoji: string) => {
 }
 
 .tool-btn:hover {
-  color: rgb(var(--primary-strong));
+  color: rgb(var(--primary-color));
   background: rgb(var(--primary-soft));
 }
 
@@ -270,33 +270,31 @@ const insertEmoji = (emoji: string) => {
   justify-content: center;
   width: 38px;
   height: 38px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--surface-muted));
   color: rgb(var(--text-muted));
   cursor: not-allowed;
-  transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
+  transition: all 0.18s ease;
 }
 
 .send-btn svg {
-  width: 17px;
-  height: 17px;
+  width: 18px;
+  height: 18px;
 }
 
 .send-btn.active {
   background: rgb(var(--primary-color));
   color: #fff;
   cursor: pointer;
-  box-shadow: 0 3px 10px rgba(103, 194, 135, 0.35);
 }
 
 .send-btn.active:hover {
   background: rgb(var(--primary-strong));
-  transform: scale(1.06);
-  box-shadow: 0 4px 14px rgba(103, 194, 135, 0.45);
+  transform: scale(1.05);
 }
 
 .send-btn.active:active {
-  transform: scale(0.96);
+  transform: scale(0.95);
 }
 
 /* Emoji panel */
@@ -305,12 +303,10 @@ const insertEmoji = (emoji: string) => {
   left: 16px;
   bottom: calc(100% + 10px);
   z-index: 20;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   border: 1px solid rgb(var(--border-color));
   background: rgb(var(--surface-color));
-  box-shadow:
-    0 0 0 4px rgba(103, 194, 135, 0.04),
-    0 8px 24px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 
@@ -328,16 +324,16 @@ const insertEmoji = (emoji: string) => {
   justify-content: center;
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 8px;
-  font-size: 22px;
+  border-radius: var(--radius-sm);
+  font-size: 20px;
   line-height: 1;
-  transition: background 0.12s ease, transform 0.12s ease;
+  transition: all 0.12s ease;
   cursor: pointer;
 }
 
 .emoji-item:hover {
   background: rgb(var(--primary-soft));
-  transform: scale(1.18);
+  transform: scale(1.15);
 }
 
 .emoji-item:active {

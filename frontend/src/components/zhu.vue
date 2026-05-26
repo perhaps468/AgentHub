@@ -1,55 +1,66 @@
 <template>
-  <!-- 三栏布局容器：左侧列表区 | 中间聊天区 | 右侧预览区 -->
+  <!-- ==================== 三栏布局容器：左侧列表区 | 中间聊天区 | 右侧预览区 ==================== -->
   <div class="workspace">
-    <!-- 左侧列表区 -->
-    <LeftSidebarArea
-      :show-left="showLeft"
-      :current-user="currentUser"
-      :active-panel="activeSidebarPanel"
-      :show-user-popover="showUserPopover"
-      :search-value="searchValue"
-      :agent-search-value="agentSearchValue"
-      :filtered-sessions="sessionStore.sessionList ?? []"
-      :current-session-id="sessionStore.currentSessionId || ''"
-      :is-loading-list="sessionStore.isLoadingList"
-      :agents="sidebarAgents"
-      :filtered-agents="filteredAgentList"
-      :selected-agent-id="selectedAgentId"
-      :format-time="formatTime"
-      @update:activePanel="activeSidebarPanel = $event"
-      @update:showUserPopover="showUserPopover = $event"
-      @update:searchValue="searchValue = $event"
-      @update:agentSearchValue="agentSearchValue = $event"
-      @new-session="showNewConversationDialog = true"
-      @select-session="selectSession"
-      @toggle-pin="togglePin"
-      @toggle-archive="toggleArchive"
-      @add-agent="showAddAgentDialog = true"
-      @select-agent="handleSelectAgent"
-      @delete-session="handleDeleteSession"
-      @edit-profile="handleEditProfile"
-      @logout="handlerLogout"
-    />
+    <!-- 动态背景光晕效果 -->
+    <div class="glow-orb glow-orb-1"></div>
+    <div class="glow-orb glow-orb-2"></div>
+    <div class="glow-orb glow-orb-3"></div>
 
-    <!-- 中间聊天区 -->
-    <ChatWorkspace
-      :current-session="sessionStore.currentSession"
-      :current-session-id="sessionStore.currentSessionId || ''"
-      :connection-state="sessionStore.connectionState"
-      :reconnect-attempt="reconnectAttempt"
-      :is-loading-messages="sessionStore.isLoadingMessages"
-      :is-send-loading="isSendLoading"
-      :format-time="formatTime"
-      @open-left="showLeft = true"
-      @retry="handleRetry"
-      @send="handleSend"
-    />
+    <!-- 装饰性网格点阵 -->
+    <div class="grid-pattern"></div>
 
-    <!-- 右侧预览区 -->
-    <PreviewPanel
-      :preview-state="previewState"
-      @close="closePreview"
-    />
+    <!-- 玻璃态主容器 -->
+    <div class="glass-container">
+      <!-- 左侧列表区 -->
+      <LeftSidebarArea
+        :show-left="showLeft"
+        :current-user="currentUser"
+        :active-panel="activeSidebarPanel"
+        :show-user-popover="showUserPopover"
+        :search-value="searchValue"
+        :agent-search-value="agentSearchValue"
+        :filtered-sessions="sessionStore.sessionList ?? []"
+        :current-session-id="sessionStore.currentSessionId || ''"
+        :is-loading-list="sessionStore.isLoadingList"
+        :agents="sidebarAgents"
+        :filtered-agents="filteredAgentList"
+        :selected-agent-id="selectedAgentId"
+        :format-time="formatTime"
+        @update:activePanel="activeSidebarPanel = $event"
+        @update:showUserPopover="showUserPopover = $event"
+        @update:searchValue="searchValue = $event"
+        @update:agentSearchValue="agentSearchValue = $event"
+        @new-session="showNewConversationDialog = true"
+        @select-session="selectSession"
+        @toggle-pin="togglePin"
+        @toggle-archive="toggleArchive"
+        @add-agent="showAddAgentDialog = true"
+        @select-agent="handleSelectAgent"
+        @delete-session="handleDeleteSession"
+        @edit-profile="handleEditProfile"
+        @logout="handlerLogout"
+      />
+
+      <!-- 中间聊天区 -->
+      <ChatWorkspace
+        :current-session="sessionStore.currentSession"
+        :current-session-id="sessionStore.currentSessionId || ''"
+        :connection-state="sessionStore.connectionState"
+        :reconnect-attempt="reconnectAttempt"
+        :is-loading-messages="sessionStore.isLoadingMessages"
+        :is-send-loading="isSendLoading"
+        :format-time="formatTime"
+        @open-left="showLeft = true"
+        @retry="handleRetry"
+        @send="handleSend"
+      />
+
+      <!-- 右侧预览区 -->
+      <PreviewPanel
+        :preview-state="previewState"
+        @close="closePreview"
+      />
+    </div>
   </div>
 
   <!-- 用户资料编辑弹窗 -->
@@ -77,12 +88,7 @@
 <script lang="ts" setup>
 /**
  * zhu.vue - 页面容器
- *
- * 职责：
- * - 三栏布局编排（左侧列表区 / 中间聊天区 / 右侧预览区）
- * - 跨区域状态协调（当前会话、连接状态、预览状态）
- * - 与全局 Store / WebSocket 的 orchestration
- * - 不承载大段列表 DOM、弹窗 DOM 或聊天区 DOM
+ * 高级玻璃态设计，白色为主，带动态效果
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -490,44 +496,156 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ==================== 三栏基础布局 ==================== */
+/* ==================== 工作区容器 ==================== */
 .workspace {
   position: relative;
   height: 100vh;
   overflow: hidden;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f4ff 50%, #e8f0fe 100%);
+}
+
+/* ==================== 动态光晕效果 ==================== */
+.glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  animation: float 10s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* 右上角蓝色光晕 */
+.glow-orb-1 {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+  top: -200px;
+  right: -100px;
+  animation-delay: 0s;
+}
+
+/* 左下角紫色光晕 */
+.glow-orb-2 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, transparent 70%);
+  bottom: -150px;
+  left: -100px;
+  animation-delay: -4s;
+}
+
+/* 中心青色光晕 */
+.glow-orb-3 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.1) 0%, transparent 70%);
+  top: 40%;
+  left: 30%;
+  transform: translate(-50%, -50%);
+  animation-delay: -7s;
+}
+
+/* 光晕浮动动画 */
+@keyframes float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(40px, -40px) scale(1.08);
+  }
+  66% {
+    transform: translate(-30px, 30px) scale(0.95);
+  }
+}
+
+/* ==================== 装饰性网格点阵 ==================== */
+.grid-pattern {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.06) 1px, transparent 0);
+  background-size: 50px 50px;
+  pointer-events: none;
+}
+
+/* ==================== 玻璃态主容器 ==================== */
+.glass-container {
+  position: relative;
+  z-index: 10;
+  height: 100%;
   display: grid;
-  grid-template-columns: 400px minmax(0, 1fr) 280px;
+  grid-template-columns: 400px minmax(0, 1fr) 340px;
   gap: 0;
-  padding: 0;
-  background: rgb(var(--surface-color));
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* 玻璃态效果：毛玻璃 + 半透明背景 */
+.glass-container > :deep(*) {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  box-shadow:
+    0 8px 32px rgba(59, 130, 246, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+/* 悬停时轻微上浮 */
+.glass-container > :deep(*):hover {
+  box-shadow:
+    0 12px 40px rgba(59, 130, 246, 0.12),
+    0 4px 12px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* ==================== 响应式断点 ==================== */
+@media (max-width: 1400px) {
+  .glass-container {
+    grid-template-columns: 72px 300px minmax(0, 1fr) 300px;
+    padding: 12px;
+  }
+}
+
 @media (max-width: 1200px) {
-  .workspace {
-    grid-template-columns: 304px minmax(0, 1fr);
+  .glass-container {
+    grid-template-columns: 72px 300px minmax(0, 1fr);
+    padding: 12px;
   }
 }
 
 @media (max-width: 900px) {
-  .workspace {
+  .glass-container {
     grid-template-columns: 1fr;
+    padding: 8px;
+  }
+
+  .glass-container > :deep(*) {
+    border-radius: 16px;
   }
 }
 
 /* ==================== Element Plus 弹窗样式覆盖 ==================== */
 :deep(.el-dialog) {
-  border-radius: 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(59, 130, 246, 0.1);
+  box-shadow:
+    0 25px 50px rgba(59, 130, 246, 0.15),
+    0 10px 20px rgba(0, 0, 0, 0.08);
 }
 
 :deep(.el-dialog__header) {
   padding: 20px 24px 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.08);
 }
 
 :deep(.el-dialog__title) {
   font-size: 18px;
   font-weight: 600;
+  color: #1e40af;
 }
 
 :deep(.el-dialog__body) {
@@ -536,16 +654,19 @@ onUnmounted(() => {
 
 :deep(.el-dialog__footer) {
   padding: 16px 24px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid rgba(59, 130, 246, 0.08);
 }
 
 :deep(.el-button--primary) {
-  background: #1a1a1a;
-  border-color: #1a1a1a;
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  transition: all 0.3s ease;
 }
 
 :deep(.el-button--primary:hover) {
-  background: #333;
-  border-color: #333;
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
 }
 </style>

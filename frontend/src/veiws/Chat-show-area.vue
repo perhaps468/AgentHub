@@ -172,42 +172,58 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ==================== 聊天展示区容器 ==================== */
 .chat-show-area {
   position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   overflow-y: auto;
   padding: 20px 24px;
-  background: rgb(var(--surface-muted));
+  background: transparent;
 }
 
+/* 滚动条样式 */
+.chat-show-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-show-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-show-area::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 3px;
+}
+
+/* ==================== 加载更多按钮 ==================== */
 .load-more-row {
   display: flex;
   justify-content: center;
 }
 
 .load-more-btn {
-  padding: 6px 16px;
+  padding: 8px 18px;
   border-radius: 999px;
-  border: 1px solid rgb(var(--border-color));
-  background: rgb(var(--surface-color));
-  color: rgb(var(--text-secondary));
-  font-size: 13px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: rgba(255, 255, 255, 0.6);
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.25s ease;
 }
 
 .load-more-btn:hover {
-  background: rgb(var(--primary-soft));
-  color: rgb(var(--primary-strong));
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.08));
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #3b82f6;
+  transform: translateY(-1px);
 }
 
-.msg-item {
-  display: flex;
-  width: 100%;
-}
-
+/* ==================== 加载中状态 ==================== */
 .loading-row {
   display: flex;
   width: 100%;
@@ -215,17 +231,34 @@ onMounted(() => {
   align-items: center;
 }
 
+/* ==================== 消息项 ==================== */
+.msg-item {
+  display: flex;
+  width: 100%;
+}
+
+/* ==================== 新消息提示按钮 ==================== */
 .new-msg-count {
   position: sticky;
-  bottom: 8px;
+  bottom: 12px;
   align-self: center;
-  padding: 6px 14px;
+  padding: 8px 18px;
   border-radius: 999px;
-  border: 1px solid rgba(var(--primary-color), 0.24);
-  background: rgba(255, 255, 255, 0.96);
-  color: rgb(var(--primary-strong));
-  font-size: 13px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  color: #3b82f6;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.15);
+}
+
+.new-msg-count:hover {
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
 }
 </style>

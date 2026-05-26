@@ -8,6 +8,12 @@
          padding:${props.padding};
          background-color: ${props.backgroundColor};`"
   >
+    <!-- 搜索图标 -->
+    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="8"/>
+      <path d="M21 21l-4.35-4.35"/>
+    </svg>
+
     <div v-if="props.label" class="input-label">{{ props.label }}</div>
     <input
       ref="inputRef"
@@ -44,26 +50,27 @@ const props = defineProps({
   },
   height: {
     type: String,
-    default: '50px',
+    default: '42px',
   },
   fontSize: {
     type: String,
-    default: '18px',
+    default: '14px',
   },
   radius: {
     type: String,
-    default: '5px',
+    default: '10px',
   },
   padding: {
     type: String,
-    default: '0 10px',
+    default: '0 12px',
   },
   backgroundColor: {
     type: String,
-    default: 'rgb(var(--background-color))',
+    default: 'rgba(255, 255, 255, 0.6)',
   },
 })
-//简化 v-model 的双向绑定实现
+
+// 简化 v-model 的双向绑定实现
 const value = defineModel('value')
 
 const handleInput = (event) => {
@@ -89,31 +96,59 @@ const emit = defineEmits(['keydown.enter'])
 
 <style scoped lang="less">
 .input-wrapper {
-  padding: 0 10px;
+  position: relative;
+  padding: 0 12px;
   width: 100%;
-  height: 50px;
-  font-size: 18px;
-  background-color: rgb(var(--background-color));
-  border: rgba(var(--background-color), 0.5) 2px solid;
+  height: 42px;
+  font-size: 14px;
+  background-color: rgba(255, 255, 255, 0.6);
+  border: 1.5px solid rgba(59, 130, 246, 0.15);
+  border-radius: 10px;
   display: flex;
   align-items: center;
-  color: rgb(var(--text-color));
+  color: #1e293b;
+  transition: all 0.25s ease;
+
+  &:focus-within {
+    background-color: rgba(255, 255, 255, 0.9);
+    border-color: #3b82f6;
+    box-shadow:
+      0 0 0 3px rgba(59, 130, 246, 0.1),
+      0 4px 12px rgba(59, 130, 246, 0.08);
+  }
+
+  .search-icon {
+    width: 18px;
+    height: 18px;
+    margin-right: 8px;
+    color: #94a3b8;
+    flex-shrink: 0;
+    transition: color 0.2s ease;
+  }
+
+  &:focus-within .search-icon {
+    color: #3b82f6;
+  }
 
   .input-label {
     margin-right: 10px;
     min-width: 70px;
     max-width: 70px;
-    font-weight: 600;
+    font-weight: 500;
     flex-shrink: 1;
+    color: #64748b;
   }
 
   .input {
     width: 100%;
     outline: none;
     background-color: transparent;
-    border: none; 
+    border: none;
+    color: #1e293b;
+    font-size: 14px;
+
     &::placeholder {
-      color: rgba(var(--text-color), 0.7);
+      color: #94a3b8;
     }
   }
 
@@ -121,7 +156,9 @@ const emit = defineEmits(['keydown.enter'])
     width: 50px;
     flex-shrink: 1;
     display: flex;
-    justify-content: end;
+    justify-content: flex-end;
+    color: #94a3b8;
+    font-size: 12px;
   }
 }
 </style>

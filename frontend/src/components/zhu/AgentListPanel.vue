@@ -91,6 +91,7 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
 </script>
 
 <style scoped>
+/* ==================== 侧边栏头部 ==================== */
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -100,70 +101,129 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
 
 .sidebar-header h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
-  line-height: 1.2;
+  color: #1e40af;
+  letter-spacing: -0.01em;
 }
 
+/* 版本标签 */
 .version-tag {
-  font-size: 12px;
-  color: #9c27b0;
-  font-weight: 500;
-}
-
-.new-Agent-session-btn {
-  padding: 10px 16px;
+  font-size: 11px;
+  padding: 4px 10px;
   border-radius: 8px;
-  border: 1px solid #1a1a1a;
-  background: #1a1a1a;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.08));
+  color: #3b82f6;
+  font-weight: 600;
+  border: 1px solid rgba(59, 130, 246, 0.15);
 }
 
+/* ==================== 添加 Agent 按钮 ==================== */
+.new-Agent-session-btn {
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:
+    0 4px 14px rgba(59, 130, 246, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.new-Agent-session-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.new-Agent-session-btn:hover::before {
+  left: 100%;
+}
+
+.new-Agent-session-btn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 8px 20px rgba(59, 130, 246, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* ==================== Agent 列表 ==================== */
 .agent-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   min-height: 0;
   overflow-y: auto;
+  padding-right: 4px;
 }
 
+.agent-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.agent-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.agent-list::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 2px;
+}
+
+/* 空状态 */
 .empty-hint {
   text-align: center;
-  color: rgb(var(--text-muted));
+  color: #94a3b8;
   font-size: 13px;
-  padding: 20px 0;
+  padding: 40px 0;
+  font-weight: 500;
 }
 
+/* ==================== Agent 项 ==================== */
 .agent-item {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  padding: 14px;
-  border-radius: 12px;
+  padding: 16px;
+  border-radius: 14px;
   border: 1px solid transparent;
   text-align: left;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.4);
   cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .agent-item:hover {
-  background: #f9f9f9;
+  background: rgba(59, 130, 246, 0.06);
+  border-color: rgba(59, 130, 246, 0.12);
+  transform: translateX(4px);
 }
 
 .agent-item.is-selected {
-  background: #f3e5f5;
-  border-color: rgba(156, 39, 176, 0.2);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08));
+  border-color: rgba(59, 130, 246, 0.25);
+  box-shadow:
+    0 4px 12px rgba(59, 130, 246, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
+/* ==================== Agent 信息 ==================== */
 .agent-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   min-width: 0;
   flex: 1;
 }
@@ -171,31 +231,35 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
 .agent-name {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: #1e293b;
 }
 
 .agent-desc {
   font-size: 12px;
-  color: #999;
+  color: #94a3b8;
 }
 
+/* ==================== 能力标签 ==================== */
 .capability-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .capability-tag {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #f5f5f5;
-  color: #666;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+  font-weight: 500;
+  border: 1px solid rgba(59, 130, 246, 0.12);
 }
 
 .capability-tag.more {
-  background: #e0e0e0;
-  color: #999;
+  background: rgba(100, 116, 139, 0.1);
+  color: #64748b;
+  border-color: rgba(100, 116, 139, 0.15);
 }
 </style>

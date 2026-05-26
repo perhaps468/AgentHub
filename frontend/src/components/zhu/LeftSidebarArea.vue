@@ -80,34 +80,52 @@ defineEmits<{
 </script>
 
 <style scoped>
+/* ==================== 侧边栏布局 ==================== */
 .sidebar {
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr);
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
-  background: rgb(var(--surface-color));
-  border-right: 1px solid rgb(var(--border-color));
+  background: transparent;
 }
 
+/* ==================== 侧边栏面板区域 ==================== */
 .sidebar-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 20px 18px 18px;
+  gap: 16px;
+  padding: 20px 16px;
   min-width: 0;
   overflow-y: auto;
+  background: transparent;
 }
 
+/* 滚动条样式 */
+.sidebar-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-panel::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 2px;
+}
+
+/* ==================== 响应式适配 ==================== */
 @media (max-width: 900px) {
   .sidebar {
     position: fixed;
     top: 0;
     left: 0;
     bottom: 0;
-    width: min(320px, 88vw);
+    width: min(340px, 90vw);
     z-index: 30;
     transform: translateX(-100%);
-    transition: transform 0.25s ease;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 8px 0 32px rgba(59, 130, 246, 0.15);
   }
 
   .sidebar.is-open {

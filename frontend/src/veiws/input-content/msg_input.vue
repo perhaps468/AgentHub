@@ -552,9 +552,9 @@ defineExpose({
     max-height: 140px;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 9px 14px;
-    border-radius: 12px;
-    border: 1.5px solid rgb(var(--border-color));
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgb(var(--border-color));
     background: rgb(var(--surface-muted));
     color: rgb(var(--text-color));
     font-size: 14px;
@@ -564,16 +564,13 @@ defineExpose({
     white-space: pre-wrap;
     word-wrap: break-word;
     word-break: break-all;
-    transition:
-      border-color 0.18s ease,
-      background 0.18s ease,
-      box-shadow 0.18s ease;
+    transition: all 0.15s ease;
     cursor: text;
 
     &:focus {
       border-color: rgb(var(--primary-color));
       background: rgb(var(--surface-color));
-      box-shadow: 0 0 0 3px rgba(103, 194, 135, 0.12);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
   }
 }
@@ -582,7 +579,7 @@ defineExpose({
   display: inline;
   background: transparent;
   border: none;
-  color: rgb(var(--primary-strong));
+  color: rgb(var(--primary-color));
   cursor: default;
   padding: 0 2px;
   margin: 0 2px;
@@ -595,32 +592,34 @@ defineExpose({
 .at-mentions-popup {
   position: fixed;
   width: 180px;
-  max-height: 150px;
+  max-height: 160px;
   transform: translateY(-100%);
   background-color: rgb(var(--surface-color));
-  border-radius: 10px;
-  padding: 5px;
+  border-radius: var(--radius-md);
+  padding: 6px;
   overflow-y: auto;
   color: rgb(var(--text-color));
   border: 1px solid rgb(var(--border-color));
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-md);
 
   .user-item {
-    padding: 6px 10px;
+    padding: 8px 12px;
     display: flex;
     align-items: center;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     font-size: 14px;
-    transition: background 0.12s ease;
+    color: rgb(var(--text-secondary));
+    transition: all 0.12s ease;
 
     &:hover {
       background-color: rgb(var(--primary-soft));
+      color: rgb(var(--primary-color));
       cursor: pointer;
     }
 
     &.selected {
       background-color: rgb(var(--primary-soft));
-      color: rgb(var(--primary-strong));
+      color: rgb(var(--primary-color));
     }
   }
 }

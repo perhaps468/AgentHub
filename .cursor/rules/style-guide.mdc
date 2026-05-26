@@ -1,0 +1,221 @@
+---
+description: Notion风格UI样式规范
+globs: frontend/src/**/*.{vue,ts,tsx,css,scss} **/*.{vue,html}
+alwaysApply: false
+---
+
+# Notion 风格 UI 设计规范
+
+## 设计理念
+
+追求简洁、高效、优雅的 Notion 风格界面。
+
+## 色彩系统
+
+### 主色调
+
+| 用途 | Tailwind Class | 色值 |
+|------|----------------|------|
+| 主背景 | `bg-white` | `#ffffff` |
+| 页面背景 | `bg-gray-50` | `#f9fafb` |
+| 边框线条 | `border-gray-200` | `#e5e7eb` |
+| 悬停背景 | `hover:bg-gray-100` | `#f3f4f6` |
+
+### 蓝色系 (辅助色)
+
+| 用途 | Tailwind Class | 色值 |
+|------|----------------|------|
+| 主按钮 | `bg-blue-500` | `#3b82f6` |
+| 按钮悬停 | `hover:bg-blue-600` | `#2563eb` |
+| 文字链接 | `text-blue-500` | `#3b82f6` |
+| 链接悬停 | `hover:text-blue-600` | `#2563eb` |
+| 图标色 | `text-blue-500` | `#3b82f6` |
+
+### 深色系 (黑色辅助)
+
+| 用途 | Tailwind Class | 色值 |
+|------|----------------|------|
+| 主标题 | `text-gray-900` | `#111827` |
+| 正文文字 | `text-gray-700` | `#374151` |
+| 次要文字 | `text-gray-500` | `#6b7280` |
+| 占位符 | `text-gray-400` | `#9ca3af` |
+
+## 排版规范
+
+```vue
+<!-- 主标题 -->
+<h1 class="text-2xl font-semibold text-gray-900 tracking-tight">
+  标题
+</h1>
+
+<!-- 副标题 -->
+<h2 class="text-lg font-medium text-gray-700">
+  副标题
+</h2>
+
+<!-- 正文 -->
+<p class="text-sm text-gray-600 leading-relaxed">
+  正文内容，保持舒适的阅读体验
+</p>
+
+<!-- 辅助文字 -->
+<span class="text-xs text-gray-400">
+  辅助说明
+</span>
+```
+
+## 组件规范
+
+### 按钮
+
+```vue
+<!-- 主要按钮 -->
+<button class="
+  px-4 py-2 
+  bg-blue-500 text-white 
+  rounded-lg 
+  hover:bg-blue-600 
+  transition-colors duration-200
+  font-medium text-sm
+">
+  主操作
+</button>
+
+<!-- 次要按钮 -->
+<button class="
+  px-4 py-2 
+  bg-white text-gray-700 
+  border border-gray-200 
+  rounded-lg 
+  hover:bg-gray-50 hover:border-gray-300
+  transition-colors duration-200
+  font-medium text-sm
+">
+  次要操作
+</button>
+
+<!-- 文字按钮 -->
+<button class="
+  px-3 py-1.5
+  text-blue-500 
+  hover:text-blue-600 hover:bg-blue-50
+  rounded-md 
+  transition-colors duration-200
+  font-medium text-sm
+">
+  文字按钮
+</button>
+```
+
+### 卡片
+
+```vue
+<div class="
+  bg-white 
+  border border-gray-200 
+  rounded-xl 
+  p-6 
+  shadow-sm
+  hover:shadow-md 
+  transition-shadow duration-200
+">
+  <h3 class="text-lg font-semibold text-gray-900 mb-2">
+    卡片标题
+  </h3>
+  <p class="text-sm text-gray-600 leading-relaxed">
+    卡片内容描述
+  </p>
+</div>
+```
+
+### 输入框
+
+```vue
+<input class="
+  w-full px-4 py-2.5
+  bg-white 
+  border border-gray-200 
+  rounded-lg
+  text-gray-900 text-sm
+  placeholder-gray-400
+  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+  transition-all duration-200
+" placeholder="输入框占位符" />
+```
+
+### 标签/徽章
+
+```vue
+<span class="
+  inline-flex items-center px-2.5 py-1
+  bg-gray-100 text-gray-600
+  rounded-full text-xs font-medium
+">
+  标签
+</span>
+
+<span class="
+  inline-flex items-center px-2.5 py-1
+  bg-blue-50 text-blue-600
+  rounded-full text-xs font-medium
+">
+  蓝色标签
+</span>
+```
+
+## 间距系统
+
+| 用途 | Class |
+|------|-------|
+| 卡片内边距 | `p-5` 或 `p-6` |
+| 组件间距 | `gap-4` 或 `gap-6` |
+| 页面边距 | `px-6` 或 `px-8` |
+| 列表项间距 | `py-3` 或 `py-4` |
+
+## 圆角规范
+
+| 元素 | 圆角 |
+|------|------|
+| 按钮 | `rounded-lg` |
+| 卡片 | `rounded-xl` |
+| 输入框 | `rounded-lg` |
+| 标签/徽章 | `rounded-full` |
+| 头像 | `rounded-full` |
+| 图片 | `rounded-lg` |
+
+## 阴影规范
+
+```vue
+<!-- 轻微阴影 (默认) -->
+<div class="shadow-sm">
+
+<!-- 卡片阴影 -->
+<div class="shadow-sm hover:shadow-md">
+
+<!-- 弹窗阴影 -->
+<div class="shadow-xl">
+```
+
+## 设计原则
+
+1. **留白优先**：保持足够的呼吸空间，不要过度拥挤
+2. **层次分明**：通过字重和颜色区分信息层级
+3. **简洁克制**：避免过度装饰，功能大于形式
+4. **一致的圆角**：全站统一 `rounded-lg` 或 `rounded-xl`
+5. **微交互**：添加平滑的过渡动画提升体验
+
+## 错误状态
+
+```vue
+<!-- 输入框错误 -->
+<input class="
+  border-red-300 
+  focus:ring-red-500 
+  text-red-600
+" />
+
+<!-- 错误提示 -->
+<p class="text-sm text-red-500 mt-1">
+  错误提示文字
+</p>
+```

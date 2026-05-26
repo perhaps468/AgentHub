@@ -18,7 +18,7 @@ const isOpen = defineModel('isOpen')
   width: 100%;
   height: 100%;
   z-index: 999;
-  background-color: rgba(31, 31, 31, 0.1);
+  background-color: rgba(0, 0, 0, 0.1);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -26,7 +26,7 @@ const isOpen = defineModel('isOpen')
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.2s ease;
 }
 
 .fade-enter-from,
