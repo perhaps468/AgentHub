@@ -44,10 +44,7 @@ def login(body: LoginRequest, db: _db) -> LoginResponse:
 def register(body: LoginRequest, db: _db):
     existing = db.query(User).filter(User.username == body.userName).first()
     if existing is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="用户名已存在",
-        )
+        return {"code": 409, "msg": "用户名已存在", "data": None}
     new_user = User(username=body.userName, password=body.password)
     db.add(new_user)
     db.commit()
