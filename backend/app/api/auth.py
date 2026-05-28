@@ -38,3 +38,18 @@ def login(body: LoginRequest, db: _db) -> LoginResponse:
             "token": token,
         },
     )
+
+
+@router.post("/register")
+def register(body: LoginRequest, db: _db):
+    existing = db.query(User).filter(User.username == body.userName).first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="用户名已存在",
+        )
+    new_user = User(username=body.userName, password=body.password)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"code": 0, "msg": "注册成功", "data": None}
