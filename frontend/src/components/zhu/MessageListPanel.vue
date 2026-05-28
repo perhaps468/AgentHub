@@ -222,9 +222,16 @@
         </button>
       </template>
 
-      <!-- 空状态 -->
+      <!-- 空状态：无搜索结果 -->
       <div
-        v-if="!isLoading && !showArchivedView && allActiveSessions.length === 0"
+        v-if="!isLoading && searchValue && filteredSessions.length === 0"
+        class="empty-hint"
+      >
+        未找到匹配的会话
+      </div>
+      <!-- 空状态：无会话 -->
+      <div
+        v-else-if="!isLoading && !showArchivedView && allActiveSessions.length === 0"
         class="empty-hint"
       >
         暂无会话

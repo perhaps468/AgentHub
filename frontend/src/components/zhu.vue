@@ -19,7 +19,7 @@
         :show-user-popover="showUserPopover"
         :search-value="searchValue"
         :agent-search-value="agentSearchValue"
-        :filtered-sessions="sessionStore.sessionList ?? []"
+        :filtered-sessions="filteredSessions"
         :current-session-id="sessionStore.currentSessionId || ''"
         :is-loading-list="sessionStore.isLoadingList"
         :agents="sidebarAgents"
@@ -125,6 +125,18 @@ const activeSidebarPanel = ref<SidebarPanel>('messages')
 const searchValue = ref('')
 /** Agent 列表搜索关键字 */
 const agentSearchValue = ref('')
+
+/** 会话列表过滤（按搜索关键字过滤标题和摘要） */
+const filteredSessions = computed(() => {
+  const list = sessionStore.sessionList ?? []
+  if (!searchValue.value) return list
+  const q = searchValue.value.toLowerCase()
+  return list.filter(
+    (s) =>
+      s.title?.toLowerCase().includes(q) ||
+      s.description?.toLowerCase().includes(q),
+  )
+})
 
 // ==================== 用户弹框 & 编辑资料 ====================
 /** 用户信息弹框显隐 */
