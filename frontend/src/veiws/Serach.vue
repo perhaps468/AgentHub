@@ -99,7 +99,7 @@ const emit = defineEmits(['keydown.enter'])
   position: relative;
   padding: 0 12px;
   width: 100%;
-  height: 42px;
+  flex-shrink: 0;
   font-size: 14px;
   background-color: rgba(255, 255, 255, 0.6);
   border: 1.5px solid rgba(59, 130, 246, 0.15);

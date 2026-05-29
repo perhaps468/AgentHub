@@ -35,20 +35,6 @@
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <button type="button" class="tool-btn" aria-label="语音通话" title="语音通话" @click="msgInputRef?.startAudioCall?.()">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M5 4v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <path d="M3 10v1a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <path d="M8 15v3M16 15v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <rect x="5" y="16" width="14" height="4" rx="2" stroke="currentColor" stroke-width="1.6"/>
-          </svg>
-        </button>
-        <button type="button" class="tool-btn" aria-label="视频通话" title="视频通话" @click="msgInputRef?.startVideoCall?.()">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="2" y="5" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.6"/>
-            <path d="M16 9l5-3v12l-5-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
       </div>
 
       <!-- Input editor -->
@@ -66,14 +52,10 @@
       <button
         type="button"
         class="send-btn"
-        :class="{ active: canSend && !props.disabled }"
-        :disabled="!canSend || props.disabled"
         aria-label="发送消息"
         @click="handlerSubmitMsg"
       >
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+       ➤
       </button>
     </div>
 
@@ -268,27 +250,18 @@ const insertEmoji = (emoji: string) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
+  width: 45px;
+  font-size: 20px;
+  height: 45px;
   border-radius: var(--radius-sm);
-  background: rgb(var(--surface-muted));
-  color: rgb(var(--text-muted));
-  cursor: not-allowed;
-  transition: all 0.18s ease;
-}
-
-.send-btn svg {
-  width: 18px;
-  height: 18px;
-}
-
-.send-btn.active {
   background: rgb(var(--primary-color));
   color: #fff;
   cursor: pointer;
+  transition: all 0.18s ease;
 }
 
-.send-btn.active:hover {
+
+.send-btn:hover {
   background: rgb(var(--primary-strong));
   transform: scale(1.05);
 }

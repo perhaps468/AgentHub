@@ -25,32 +25,43 @@
       </Transition>
     </div>
 
-    <!-- 消息列表入口按钮 -->
     <button
       class="rail-button"
-      :class="{ active: activePanel === 'messages' }"
-      type="button"
-      title="消息列表"
-      @click="$emit('update:activePanel', 'messages')"
+      :class="{ 'is-collapsed': isCollapsed }"
+      title="收起侧边栏"
+      v-if="isCollapsed===true"
+      @click="handleToggleCollapse"
     >
-      <ChatDotRound />
+      <el-icon><component :is="isCollapsed ? Expand : Fold" /></el-icon>
     </button>
+    <div v-else class="rail-button-group">
+        <!-- 消息列表入口按钮 -->
+        <button
+          class="rail-button"
+          :class="{ active: activePanel === 'messages' }"
+          type="button"
+          title="消息列表"
+          @click="$emit('update:activePanel', 'messages')"
+        >
+          <ChatDotRound />
+        </button>
 
-    <!-- Agent 列表入口按钮 -->
-    <button
-      class="rail-button"
-      :class="{ active: activePanel === 'agents' }"
-      type="button"
-      title="Agent 列表"
-      @click="$emit('update:activePanel', 'agents')"
-    >
-      <User />
-    </button>
+        <!-- Agent 列表入口按钮 -->
+        <button
+          class="rail-button"
+          :class="{ active: activePanel === 'agents' }"
+          type="button"
+          title="Agent 列表"
+          @click="$emit('update:activePanel', 'agents')"
+        >
+          <User />
+        </button>
+    </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { ChatDotRound, User } from '@element-plus/icons-vue'
+import { ChatDotRound, User, Fold, Expand } from '@element-plus/icons-vue'
 import type { SidebarPanel, SidebarUser } from '../../types/agenthub'
 import avatar from '../../veiws/img/avatar.vue'
 
@@ -58,14 +69,20 @@ defineProps<{
   currentUser: SidebarUser
   activePanel: SidebarPanel
   showUserPopover: boolean
+  isCollapsed: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'update:activePanel', panel: SidebarPanel): void
   (e: 'update:showUserPopover', value: boolean): void
   (e: 'edit-profile'): void
   (e: 'logout'): void
+  (e: 'toggle-collapse'): void
 }>()
+
+const handleToggleCollapse = () => {
+  emit('toggle-collapse')
+}
 </script>
 
 <style scoped>
@@ -82,6 +99,13 @@ defineEmits<{
 /* ==================== 头像容器 ==================== */
 .rail-avatar-wrapper {
   position: relative;
+}
+
+/* 按钮组容器 */
+.rail-button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 /* ==================== 头像与按钮基础样式 ==================== */
@@ -107,6 +131,7 @@ defineEmits<{
 
 /* ==================== 激活与悬停状态 ==================== */
 .rail-button.active,
+.rail-button.is-collapsed,
 .rail-button:hover {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.1));
   color: #3b82f6;
