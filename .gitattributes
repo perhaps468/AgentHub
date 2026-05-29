@@ -1,5 +1,24 @@
-# Force all text files to use LF line endings
+# Force all text files to use LF line endings and UTF-8 encoding
 * text=auto eol=lf
+
+# Ensure all text files are treated as UTF-8
+*.md text encoding=UTF-8
+*.py text encoding=UTF-8
+*.js text encoding=UTF-8
+*.ts text encoding=UTF-8
+*.tsx text encoding=UTF-8
+*.json text encoding=UTF-8
+*.yaml text encoding=UTF-8
+*.yml text encoding=UTF-8
+*.toml text encoding=UTF-8
+*.cfg text encoding=UTF-8
+*.ini text encoding=UTF-8
+*.txt text encoding=UTF-8
+*.html text encoding=UTF-8
+*.css text encoding=UTF-8
+*.sh text encoding=UTF-8
+*.bat text encoding=UTF-8
+*.ps1 text encoding=UTF-8
 
 # Binary files
 *.png binary

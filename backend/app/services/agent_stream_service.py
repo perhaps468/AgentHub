@@ -1,5 +1,21 @@
 """流式编排服务 (Agent Stream Service)。
 
+---
+
+## ⚠️ 废弃声明（M0 现状收口）
+
+本文 件 **`agent_stream_service.py`** 是旧试验性链路，**不是当前主链路**。
+
+- **当前主链路**：`backend/app/api/ws.py` + `FixedAgentResponder`
+- **本文 件**：`agent_stream_service.py` — 既往试验性流式链路尝试
+- **消息字段不兼容**：本文 件使用 `content_type`、`delivery_status`，与现有 `Message` 模型不一致
+- **后续里程碑不得以此文件作为新 Runtime 的实施基座**
+- **最终替代者**：M5 新增 `runtime_agent_service.py`（接入 `react_agent.py` 后）
+
+可参考本文 件的"句子聚合 / typing 生命周期"思路，但不得继续扩展。
+
+---
+
 将 Provider 的原始 delta 升级为句段级业务事件流：
 - typing 生命周期管理
 - 句段聚合（委托给 SentenceChunker）

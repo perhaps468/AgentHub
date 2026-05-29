@@ -37,6 +37,8 @@ export type WsIncomingMessage = {
   status?: string
   error_code?: string
   error_message?: string
+  // final_content: extracted answer from task_complete (avoids leaking ReAct/XML)
+  final_content?: string
   // Legacy / generic
   content?: string
   content_type?: string
@@ -71,7 +73,7 @@ class WsClient {
     this.setState('connecting')
 
     const token = localStorage.getItem('x-token')
-    const url = `${WS_BASE_URL}/${sessionId}${token ? `?x-token=${token}` : ''}`
+    const url = `${WS_BASE_URL}/${sessionId}${token ? `?x-token=${encodeURIComponent(token)}` : ''}`
     console.log(`[WsClient] Connecting to ${url}`)
     console.log(`[WsClient] WS_BASE_URL=${WS_BASE_URL}, sessionId=${sessionId}, token=${token}`)
 

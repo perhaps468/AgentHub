@@ -1,15 +1,22 @@
+import os
 import uuid
 from json import JSONDecodeError
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
 from app.agents.registry import get_default_agent
+from app.core.config import load_env_file
 from app.core.database import SessionLocal
 from app.core.security import decode_token
 from app.models.message import Message
 from app.models.session import ChatSession, utcnow
 from app.schemas.common import to_iso_z
 from app.services.fixed_agent_responder import FixedAgentResponder
+
+def runtime_use_runtime_agent() -> bool:
+    """Read the runtime-switch flag after loading project .env files."""
+    load_env_file()
+    return os.getenv("RUNTIME_USE_RUNTIME_AGENT", "0") in ("1", "true", "True")
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
@@ -124,15 +131,19 @@ async def ws_send_message_end(
     stream_id: str,
     message_id: str,
     status: str,
+    final_content: str | None = None,
 ) -> None:
-    await websocket.send_json({
+    payload = {
         "type": "message_end",
         "agent_role": agent_role,
         "timestamp": _utcnow_iso(),
         "stream_id": stream_id,
         "message_id": message_id,
         "status": status,
-    })
+    }
+    if final_content is not None:
+        payload["final_content"] = final_content
+    await websocket.send_json(payload)
 
 
 async def ws_send_message_error(
@@ -239,63 +250,139 @@ async def session_websocket(
             db.commit()
 
             try:
-                responder = FixedAgentResponder(
-                    session_id=session_id,
-                    user_message=content,
-                    agent_role=agent.role,
-                    db=db,
-                    stream_id=stream_id,
-                )
-
                 active_stream_id = stream_id
                 active_agent_role = agent.role
                 active_message_id: str | None = None
+                active_error_code = "unknown"
 
-                async for event in responder.stream_events():
-                    if event.type == "message_start":
-                        active_stream_id = event.stream_id
-                        active_agent_role = event.agent_role
-                        active_message_id = event.message.id
-                        await ws_send_message_start(
-                            websocket,
-                            agent_role=event.agent_role,
-                            stream_id=event.stream_id,
-                            message=event.message,
-                        )
-                    elif event.type == "message_delta":
-                        active_stream_id = event.stream_id
-                        active_agent_role = event.agent_role
-                        active_message_id = event.message_id
-                        await ws_send_message_delta(
-                            websocket,
-                            agent_role=event.agent_role,
-                            stream_id=event.stream_id,
-                            message_id=event.message_id,
-                            delta=event.delta,
-                        )
-                    elif event.type == "message_end":
-                        active_stream_id = event.stream_id
-                        active_agent_role = event.agent_role
-                        active_message_id = event.message_id
-                        await ws_send_message_end(
-                            websocket,
-                            agent_role=event.agent_role,
-                            stream_id=event.stream_id,
-                            message_id=event.message_id,
-                            status=event.status,
-                        )
-                    elif event.type == "message_error":
-                        active_stream_id = event.stream_id
-                        active_agent_role = event.agent_role
-                        active_message_id = event.message_id
-                        await ws_send_message_error(
-                            websocket,
-                            agent_role=event.agent_role,
-                            stream_id=event.stream_id,
-                            message_id=event.message_id,
-                            error_code=event.error_code,
-                            error_message=event.error_message,
-                        )
+                if runtime_use_runtime_agent():
+                    # M5: Real runtime path via RuntimeAgentService
+                    from app.runtime.runtime_agent_service import RuntimeAgentService, load_session_history
+                    from app.runtime.llm_adapter import LLMAdapter
+                    from app.providers.openai_compatible import QwenProvider
+                    from app.core.config import get_settings
+
+                    settings = get_settings()
+                    provider = QwenProvider(settings)
+                    llm_adapter = LLMAdapter(provider=provider)
+
+                    # T1: Load session history from DB, excluding the current human message
+                    # (which is already committed and will be the user_message input).
+                    session_history = load_session_history(db, session_id)
+
+                    runtime_service = RuntimeAgentService(
+                        session_id=session_id,
+                        user_message=content,
+                        agent_role=agent.role,
+                        llm_adapter=llm_adapter,
+                        db=db,
+                        stream_id=stream_id,
+                        session_history=session_history,
+                    )
+
+                    async for event in runtime_service.stream_events():
+                        if event.type == "message_start":
+                            active_stream_id = event.stream_id
+                            active_agent_role = event.agent_role
+                            active_message_id = event.message.id
+                            await ws_send_message_start(
+                                websocket,
+                                agent_role=event.agent_role,
+                                stream_id=event.stream_id,
+                                message=event.message,
+                            )
+                        elif event.type == "message_delta":
+                            active_stream_id = event.stream_id
+                            active_agent_role = event.agent_role
+                            active_message_id = event.message_id
+                            await ws_send_message_delta(
+                                websocket,
+                                agent_role=event.agent_role,
+                                stream_id=event.stream_id,
+                                message_id=event.message_id,
+                                delta=event.delta,
+                            )
+                        elif event.type == "message_end":
+                            active_stream_id = event.stream_id
+                            active_agent_role = event.agent_role
+                            active_message_id = event.message_id
+                            await ws_send_message_end(
+                                websocket,
+                                agent_role=event.agent_role,
+                                stream_id=event.stream_id,
+                                message_id=event.message_id,
+                                status=event.status,
+                                final_content=getattr(event, "final_content", None),
+                            )
+                        elif event.type == "message_error":
+                            active_stream_id = event.stream_id
+                            active_agent_role = event.agent_role
+                            active_message_id = event.message_id
+                            active_error_code = event.error_code
+                            await ws_send_message_error(
+                                websocket,
+                                agent_role=event.agent_role,
+                                stream_id=event.stream_id,
+                                message_id=event.message_id,
+                                error_code=event.error_code,
+                                error_message=event.error_message,
+                            )
+                else:
+                    # Fallback: FixedAgentResponder (default)
+                    responder = FixedAgentResponder(
+                        session_id=session_id,
+                        user_message=content,
+                        agent_role=agent.role,
+                        db=db,
+                        stream_id=stream_id,
+                    )
+
+                    async for event in responder.stream_events():
+                        if event.type == "message_start":
+                            active_stream_id = event.stream_id
+                            active_agent_role = event.agent_role
+                            active_message_id = event.message.id
+                            await ws_send_message_start(
+                                websocket,
+                                agent_role=event.agent_role,
+                                stream_id=event.stream_id,
+                                message=event.message,
+                            )
+                        elif event.type == "message_delta":
+                            active_stream_id = event.stream_id
+                            active_agent_role = event.agent_role
+                            active_message_id = event.message_id
+                            await ws_send_message_delta(
+                                websocket,
+                                agent_role=event.agent_role,
+                                stream_id=event.stream_id,
+                                message_id=event.message_id,
+                                delta=event.delta,
+                            )
+                        elif event.type == "message_end":
+                            active_stream_id = event.stream_id
+                            active_agent_role = event.agent_role
+                            active_message_id = event.message_id
+                            await ws_send_message_end(
+                                websocket,
+                                agent_role=event.agent_role,
+                                stream_id=event.stream_id,
+                                message_id=event.message_id,
+                                status=event.status,
+                            )
+                        elif event.type == "message_error":
+                            active_stream_id = event.stream_id
+                            active_agent_role = event.agent_role
+                            active_message_id = event.message_id
+                            active_error_code = "fixed_responder_failed"
+                            await ws_send_message_error(
+                                websocket,
+                                agent_role=event.agent_role,
+                                stream_id=event.stream_id,
+                                message_id=event.message_id,
+                                error_code=event.error_code,
+                                error_message=event.error_message,
+                            )
             except Exception as exc:
                 if active_message_id:
                     agent_message = db.get(Message, active_message_id)
@@ -308,7 +395,7 @@ async def session_websocket(
                     agent_role=active_agent_role,
                     stream_id=active_stream_id,
                     message_id=active_message_id or "",
-                    error_code="fixed_responder_failed",
+                    error_code=active_error_code,
                     error_message=str(exc),
                 )
             finally:
