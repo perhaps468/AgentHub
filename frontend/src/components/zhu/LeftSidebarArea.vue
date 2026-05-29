@@ -1,13 +1,15 @@
 <template>
-  <aside class="sidebar" :class="{ 'is-open': showLeft }">
+  <aside class="sidebar" :class="{ 'is-open': showLeft, 'is-collapsed': isCollapsed }">
     <SidebarRail
       :current-user="currentUser"
       :active-panel="activePanel"
       :show-user-popover="showUserPopover"
+      :is-collapsed="isCollapsed"
       @update:active-panel="$emit('update:activePanel', $event)"
       @update:show-user-popover="$emit('update:showUserPopover', $event)"
       @edit-profile="$emit('edit-profile')"
       @logout="$emit('logout')"
+      @toggle-collapse="$emit('toggle-collapse')"
     />
 
     <div class="sidebar-panel">
@@ -25,6 +27,7 @@
         @toggle-pin="$emit('toggle-pin', $event)"
         @toggle-archive="$emit('toggle-archive', $event)"
         @delete-session="$emit('delete-session', $event)"
+        @toggle-collapse="$emit('toggle-collapse')"
       />
 
       <AgentListPanel
@@ -32,9 +35,11 @@
         :search-value="agentSearchValue"
         :agents="filteredAgents"
         :selected-agent-id="selectedAgentId"
+        :is-collapsed="isCollapsed"
         @update:search-value="$emit('update:agentSearchValue', $event)"
         @add-agent="$emit('add-agent')"
         @select-agent="$emit('select-agent', $event)"
+        @toggle-collapse="$emit('toggle-collapse')"
       />
     </div>
   </aside>
@@ -48,6 +53,7 @@ import SidebarRail from './SidebarRail.vue'
 
 defineProps<{
   showLeft: boolean
+  isCollapsed: boolean
   currentUser: SidebarUser
   activePanel: SidebarPanel
   showUserPopover: boolean
@@ -76,28 +82,44 @@ defineEmits<{
   (e: 'delete-session', item: ConversationItem): void
   (e: 'edit-profile'): void
   (e: 'logout'): void
+  (e: 'toggle-collapse'): void
 }>()
 </script>
 
 <style scoped>
 /* ==================== 侧边栏布局 ==================== */
 .sidebar {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  display: flex;
   height: 100%;
   overflow: hidden;
   background: transparent;
 }
 
-/* ==================== 侧边栏面板区域 ==================== */
+/* 图标栏固定宽度 */
+.sidebar > :deep(*:first-child) {
+  flex-shrink: 0;
+  width: 72px;
+}
+
+/* 收起状态：隐藏面板区域 */
 .sidebar-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px 16px;
+  gap: 20px;
+  flex: 1;
   min-width: 0;
+  width: 328px;
+  padding: 10px 16px;
   overflow-y: auto;
   background: transparent;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
+
+/* 收起状态 */
+.sidebar.is-collapsed .sidebar-panel {
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
 }
 
 /* 滚动条样式 */

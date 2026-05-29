@@ -10,10 +10,11 @@
     <div class="grid-pattern"></div>
 
     <!-- 玻璃态主容器 -->
-    <div class="glass-container">
+    <div class="glass-container" :class="{ 'sidebar-collapsed': isCollapsed }">
       <!-- 左侧列表区 -->
       <LeftSidebarArea
         :show-left="showLeft"
+        :is-collapsed="isCollapsed"
         :current-user="currentUser"
         :active-panel="activeSidebarPanel"
         :show-user-popover="showUserPopover"
@@ -39,6 +40,7 @@
         @delete-session="handleDeleteSession"
         @edit-profile="handleEditProfile"
         @logout="handlerLogout"
+        @toggle-collapse="isCollapsed = !isCollapsed"
       />
 
       <!-- 中间聊天区 -->
@@ -123,6 +125,9 @@ const showToast = useToast()
 // ==================== 布局状态 ====================
 /** 左侧栏显示开关（移动端控制） */
 const showLeft = ref(true)
+
+/** 左侧栏收起状态 */
+const isCollapsed = ref(false)
 
 /** 左侧栏当前面板：消息列表 / Agent 列表 */
 const activeSidebarPanel = ref<SidebarPanel>('messages')
@@ -719,6 +724,21 @@ onUnmounted(() => {
   .glass-container {
     grid-template-columns: 72px 300px minmax(0, 1fr);
     padding: 12px;
+  }
+}
+
+/* ==================== 侧边栏收起状态 ==================== */
+.glass-container.sidebar-collapsed {
+  grid-template-columns: 72px minmax(0, 1fr) 340px;
+}
+@media (max-width: 1400px) {
+  .glass-container.sidebar-collapsed {
+    grid-template-columns: 72px minmax(0, 1fr) 300px;
+  }
+}
+@media (max-width: 1200px) {
+  .glass-container.sidebar-collapsed {
+    grid-template-columns: 72px minmax(0, 1fr);
   }
 }
 

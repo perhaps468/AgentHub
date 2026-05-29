@@ -5,20 +5,24 @@
       <div>
         <h1>消息列表</h1>
       </div>
-      <span class="version-tag">v1.1.3</span>
+      <span class="version-tag" :class="{ 'is-collapsed': isCollapsed }" title="点击收缩侧边栏" @click="$emit('toggle-collapse')">
+        <el-icon><component :is=" props.isCollapsed ? Expand : Fold" /></el-icon>
+      </span>
     </div>
 
     <!-- 搜索框 -->
-    <Search
-      :value="searchValue"
-      placeholder="搜索用户/会话"
-      height="38px"
-      width="100%"
-      radius="12px"
-      font-size="14px"
-      background-color="rgb(var(--surface-muted))"
-      @update:value="$emit('update:searchValue', $event)"
-    />
+    <div class="search-wrapper">
+      <Search
+        :value="searchValue"
+        placeholder="搜索用户/会话"
+        height="38px"
+        width="100%"
+        radius="12px"
+        font-size="20px"
+        background-color="rgb(var(--surface-muted))"
+        @update:value="$emit('update:searchValue', $event)"
+      />
+    </div>
 
     <!-- 工具栏：新建对话 + 切换归档视图 -->
     <div class="toolbar-row">
@@ -55,8 +59,6 @@
             <div class="conversation-copy">
               <div class="conversation-title-row">
                 <span class="conversation-title">{{ item.title || '未命名会话' }}</span>
-                <span class="mode-tag single">单聊</span>
-                <dot_hint v-if="item.is_pinned" text="置顶" />
               </div>
               <div v-if="getAgentTags(item, agents).length > 0" class="capability-tags">
                 <span
@@ -82,9 +84,8 @@
             </div>
           </button>
         </div>
-
         <div v-if="unpinnedAgentSessions.length > 0" class="list-section">
-          <div v-if="pinnedAgentSessions.length > 0" class="section-title">Agent 单聊</div>
+          <div v-if="pinnedAgentSessions.length > 0" class="section-title">Agent对话</div>
           <button
             v-for="item in unpinnedAgentSessions"
             :key="item.id"
@@ -100,7 +101,6 @@
             <div class="conversation-copy">
               <div class="conversation-title-row">
                 <span class="conversation-title">{{ item.title || '未命名会话' }}</span>
-                <span class="mode-tag single">单聊</span>
               </div>
               <div v-if="getAgentTags(item, agents).length > 0" class="capability-tags">
                 <span
@@ -246,6 +246,7 @@ import type { ConversationItem, SidebarAgent, SidebarPanel } from '../../types/a
 import avatar from '../../veiws/img/avatar.vue'
 import dot_hint from '../../veiws/left/dot-hint.vue'
 import Search from '../../veiws/Serach.vue'
+import { Fold, Expand } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   activePanel: SidebarPanel
@@ -255,6 +256,7 @@ const props = defineProps<{
   isLoading: boolean
   agents: SidebarAgent[]
   formatTime: (iso: string) => string
+  isCollapsed: boolean
 }>()
 
 const emit = defineEmits<{
@@ -264,6 +266,7 @@ const emit = defineEmits<{
   (e: 'toggle-pin', item: ConversationItem): void
   (e: 'toggle-archive', item: ConversationItem): void
   (e: 'delete-session', item: ConversationItem): void
+  (e: 'toggle-collapse'): void
 }>()
 
 // ==================== 归档视图开关 ====================
@@ -352,31 +355,25 @@ document.addEventListener('click', () => {
 </script>
 
 <style scoped>
+
 /* ==================== 侧边栏头部 ==================== */
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
 .sidebar-header h1 {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   color: #1e40af;
   letter-spacing: -0.01em;
 }
-
-/* 版本标签 */
-.version-tag {
-  font-size: 11px;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.08));
-  color: #3b82f6;
-  font-weight: 600;
-  border: 1px solid rgba(59, 130, 246, 0.15);
+/* ==================== 搜索框容器 ==================== */
+.search-wrapper {
+  flex-shrink: 0;
 }
 
 /* ==================== 工具栏 ==================== */
@@ -417,6 +414,23 @@ document.addEventListener('click', () => {
 
 .new-session-btn:hover::before {
   left: 100%;
+}
+
+.version-tag {
+  font-size: 25px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  color: #3b82f6;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.version-tag:hover,
+.version-tag.is-collapsed {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.15));
+  border-color: rgba(59, 130, 246, 0.3);
 }
 
 .new-session-btn:hover {
@@ -576,6 +590,7 @@ document.addEventListener('click', () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-top: 10px;
 }
 
 /* ==================== 更多操作菜单 ==================== */

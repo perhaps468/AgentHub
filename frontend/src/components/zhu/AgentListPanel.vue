@@ -4,7 +4,9 @@
       <div>
         <h1>Agent 列表</h1>
       </div>
-      <span class="version-tag">v1.1.3</span>
+      <span class="version-tag" :class="{ 'is-collapsed': isCollapsed }" title="点击收缩侧边栏" @click="$emit('toggle-collapse')">
+        <el-icon><component :is=" props.isCollapsed ? Expand : Fold" /></el-icon>
+      </span>
     </div>
 
     <Search
@@ -49,21 +51,24 @@
 </template>
 
 <script lang="ts" setup>
+import { Fold, Expand } from '@element-plus/icons-vue'
 import type { SidebarAgent, SidebarPanel } from '../../types/agenthub'
 import Search from '../../veiws/Serach.vue'
 import avatar from '../../veiws/img/avatar.vue'
 
-defineProps<{
+const props = defineProps<{
   activePanel: SidebarPanel
   searchValue: string
   agents: SidebarAgent[]
   selectedAgentId: string
+  isCollapsed: boolean
 }>()
 
 defineEmits<{
   (e: 'update:searchValue', value: string): void
   (e: 'add-agent'): void
   (e: 'select-agent', agent: SidebarAgent): void
+  (e: 'toggle-collapse'): void
 }>()
 
 const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
@@ -107,15 +112,21 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
   letter-spacing: -0.01em;
 }
 
-/* 版本标签 */
 .version-tag {
-  font-size: 11px;
+  font-size: 25px;
   padding: 4px 10px;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.08));
   color: #3b82f6;
   font-weight: 600;
-  border: 1px solid rgba(59, 130, 246, 0.15);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.version-tag:hover,
+.version-tag.is-collapsed {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.15));
+  border-color: rgba(59, 130, 246, 0.3);
 }
 
 /* ==================== 添加 Agent 按钮 ==================== */

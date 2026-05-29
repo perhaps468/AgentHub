@@ -7,10 +7,10 @@
         <Avatar :info="displayUser" size="40px" class="msg-avatar" />
         <div class="msg-box-info">
           <div class="msg-user-row">
-            <div class="msg-username">
+            <div class="msg-username" v-if="!isOwn">
               {{ displayUser?.name || '未知用户' }}
             </div>
-            <div class="msg-role">
+            <div class="msg-role" v-if="!isOwn">
               {{ roleLabel }}
             </div>
             <div v-if="props.msg.deliveryStatus === 'interrupted'" class="msg-status-badge interrupted">
@@ -59,7 +59,6 @@ const isOwn = computed(() => props.msg?.fromId === userStore.userId)
 const displayUser = computed(() => props.user || props.msg?.fromInfo)
 
 const roleLabel = computed(() => {
-  if (isOwn.value) return 'me'
   return agentStore.agent?.role ?? '成员'
 })
 </script>
@@ -74,7 +73,8 @@ const roleLabel = computed(() => {
 }
 
 .msg-time {
-  margin-left: 52px;
+  text-align: center;
+  justify-content: center;
 }
 
 .msg-box-wrapper {
@@ -83,10 +83,24 @@ const roleLabel = computed(() => {
   gap: 12px;
 }
 
+.is-own .msg-box-wrapper {
+  flex-direction: row-reverse;
+}
+
+.is-own .msg-avatar {
+  margin-left: 0;
+}
+
 .recall-msg {
   margin-left: 52px;
   color: rgb(var(--text-muted));
   font-size: 12px;
+}
+
+.is-own .recall-msg {
+  margin-left: 0;
+  margin-right: 52px;
+  text-align: right;
 }
 
 .msg-avatar {

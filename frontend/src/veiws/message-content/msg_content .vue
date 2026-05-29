@@ -156,10 +156,14 @@ onBeforeUnmount(() => {
 <style scoped>
 .msg {
   position: relative;
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   align-items: flex-start;
   max-width: min(680px, 100%);
+}
+
+.msg.is-own {
+  align-items: flex-end;
 }
 
 .msg-content {
