@@ -1,1 +1,14 @@
 * text=auto eol=lf
+
+# Ensure all text files are treated as UTF-8
+*.md text encoding=UTF-8
+*.py text encoding=UTF-8
+*.js text encoding=UTF-8
+*.ts text encoding=UTF-8
+*.tsx text encoding=UTF-8
+*.json text encoding=UTF-8
+*.yaml text encoding=UTF-8
+*.yml text encoding=UTF-8
+*.txt text encoding=UTF-8
+*.html text encoding=UTF-8
+*.css text encoding=UTF-8

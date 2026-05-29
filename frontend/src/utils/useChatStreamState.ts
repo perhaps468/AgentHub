@@ -104,7 +104,7 @@ export function useChatStreamState() {
   }
 
   function handleMessageEnd(event: any, sessionId: string) {
-    const { stream_id, status, message_id } = event
+    const { stream_id, status, message_id, final_content } = event
 
     if (!stream_id) return
 
@@ -112,6 +112,13 @@ export function useChatStreamState() {
     if (!stream) {
       console.warn('[StreamState] message_end but no stream:', stream_id)
       return
+    }
+
+    // Prefer final_content (extracted answer from task_complete) over accumulated XML
+    if (final_content !== undefined && final_content !== null) {
+      stream.accumulated_content = final_content
+      stream.content = final_content
+      stream.payload.text = final_content
     }
 
     stream.ui_status = status === 'completed' ? 'done' : 'syncing_interrupted'

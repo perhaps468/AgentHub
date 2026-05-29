@@ -4,14 +4,14 @@ from pathlib import Path
 
 
 def load_env_file() -> None:
-    env_path = Path(__file__).resolve().parents[2] / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
+    project_env = Path(__file__).resolve().parents[3] / ".env"
+    if project_env.exists():
+        for line in project_env.read_text(encoding="utf-8").splitlines():
             if not line or line.strip().startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
             os.environ.setdefault(key.strip(), value.strip())
-    backend_env = Path(__file__).resolve().parents[1] / ".env"
+    backend_env = Path(__file__).resolve().parents[2] / ".env"
     if backend_env.exists():
         for line in backend_env.read_text(encoding="utf-8").splitlines():
             if not line or line.strip().startswith("#") or "=" not in line:
