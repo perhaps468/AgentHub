@@ -165,6 +165,139 @@ async def ws_send_message_error(
     })
 
 
+# ---- Task A: Runtime 扩展事件发送函数 ----
+
+
+async def ws_send_tool_event(
+    websocket: WebSocket,
+    tool_name: str,
+    arguments: dict,
+    response: str | None,
+    status: str,
+    stream_id: str,
+    message_id: str,
+) -> None:
+    """Send a structured tool_event notification to the WebSocket client.
+
+    Notifies the frontend when a tool execution starts or finishes,
+    enabling runtime process visibility and minimal replay.
+    """
+    payload = {
+        "type": "tool_event",
+        "timestamp": _utcnow_iso(),
+        "stream_id": stream_id,
+        "message_id": message_id,
+        "tool_name": tool_name,
+        "status": status,  # "started" | "finished"
+        "arguments": arguments,
+    }
+    if response is not None:
+        payload["response"] = response
+    await websocket.send_json(payload)
+
+
+async def ws_send_runtime_state(
+    websocket: WebSocket,
+    stream_id: str,
+    message_id: str,
+    state: str,
+    timestamp: str,
+) -> None:
+    """Send a runtime_state notification to the WebSocket client.
+
+    Notifies the frontend when the agent moves between execution phases
+    (thinking, calling_tool, observing, responding, finished, error).
+    """
+    await websocket.send_json({
+        "type": "runtime_state",
+        "stream_id": stream_id,
+        "message_id": message_id,
+        "state": state,
+        "timestamp": timestamp,
+    })
+
+
+async def ws_send_change_preview(
+    websocket: WebSocket,
+    stream_id: str,
+    message_id: str,
+    change_id: str,
+    operation: str,
+    path: str,
+    unified_diff: str,
+    status: str,
+    timestamp: str,
+) -> None:
+    """Send a change_preview notification to the WebSocket client.
+
+    Notifies the frontend when a file write/replace produces a PendingChange.
+    This enables the frontend to display the diff and provide a confirm button.
+    """
+    await websocket.send_json({
+        "type": "change_preview",
+        "stream_id": stream_id,
+        "message_id": message_id,
+        "change_id": change_id,
+        "operation": operation,
+        "path": path,
+        "unified_diff": unified_diff,
+        "status": status,
+        "timestamp": timestamp,
+    })
+
+
+async def ws_send_preview_result(
+    websocket: WebSocket,
+    preview_id: str,
+    workspace_id: str,
+    preview_url: str,
+    status: str,
+    message_id: str,
+    stream_id: str,
+    timestamp: str,
+) -> None:
+    """Send a preview_result notification to the WebSocket client.
+
+    Notifies the frontend when a preview is ready for display.
+    """
+    await websocket.send_json({
+        "type": "preview_result",
+        "preview_id": preview_id,
+        "workspace_id": workspace_id,
+        "preview_url": preview_url,
+        "status": status,
+        "message_id": message_id,
+        "stream_id": stream_id,
+        "timestamp": timestamp,
+    })
+
+
+async def ws_send_repair_state(
+    websocket: WebSocket,
+    state: str,
+    attempt: int,
+    max_attempts: int,
+    message: str,
+    stream_id: str,
+    message_id: str,
+    timestamp: str,
+) -> None:
+    """Send a repair_state notification to the WebSocket client.
+
+    Notifies the frontend when self-repair state changes occur.
+    """
+    await websocket.send_json({
+        "type": "repair_state",
+        "state": state,
+        "attempt": attempt,
+        "max_attempts": max_attempts,
+        "message": message,
+        "stream_id": stream_id,
+        "message_id": message_id,
+        "timestamp": timestamp,
+    })
+
+
 def valid_send_message(payload: object, session_id: str) -> bool:
     if not isinstance(payload, dict):
         return False
@@ -257,7 +390,13 @@ async def session_websocket(
 
                 if runtime_use_runtime_agent():
                     # M5: Real runtime path via RuntimeAgentService
-                    from app.runtime.runtime_agent_service import RuntimeAgentService, load_session_history
+                    from app.runtime.runtime_agent_service import (
+                        RuntimeAgentService,
+                        load_session_history,
+                        WorkspaceNotBoundError,
+                        WorkspaceAccessDeniedError,
+                        WorkspaceRootInvalidError,
+                    )
                     from app.runtime.llm_adapter import LLMAdapter
                     from app.providers.openai_compatible import QwenProvider
                     from app.core.config import get_settings
@@ -326,6 +465,68 @@ async def session_websocket(
                                 message_id=event.message_id,
                                 error_code=event.error_code,
                                 error_message=event.error_message,
+                            )
+                        # Task A: Runtime 扩展事件转发
+                        elif event.type == "tool_event":
+                            active_stream_id = event.stream_id
+                            active_message_id = event.message_id
+                            await ws_send_tool_event(
+                                websocket,
+                                tool_name=event.tool_name,
+                                arguments=event.arguments,
+                                response=event.response,
+                                status=event.status,
+                                stream_id=event.stream_id,
+                                message_id=event.message_id,
+                            )
+                        elif event.type == "runtime_state":
+                            active_stream_id = event.stream_id
+                            active_message_id = event.message_id
+                            await ws_send_runtime_state(
+                                websocket,
+                                stream_id=event.stream_id,
+                                message_id=event.message_id,
+                                state=event.state,
+                                timestamp=event.timestamp,
+                            )
+                        # Task C-2: change_preview event forwarding
+                        elif event.type == "change_preview":
+                            active_stream_id = event.stream_id
+                            active_message_id = event.message_id
+                            await ws_send_change_preview(
+                                websocket,
+                                stream_id=event.stream_id,
+                                message_id=event.message_id,
+                                change_id=event.change_id,
+                                operation=event.operation,
+                                path=event.path,
+                                unified_diff=event.unified_diff,
+                                status=event.status,
+                                timestamp=event.timestamp,
+                            )
+                        # Task 3: preview_result event forwarding
+                        elif event.type == "preview_result":
+                            await ws_send_preview_result(
+                                websocket,
+                                preview_id=event.preview_id,
+                                workspace_id=event.workspace_id,
+                                preview_url=event.preview_url,
+                                status=event.status,
+                                message_id=event.message_id,
+                                stream_id=event.stream_id,
+                                timestamp=event.timestamp,
+                            )
+                        # Task 3: repair_state event forwarding
+                        elif event.type == "repair_state":
+                            await ws_send_repair_state(
+                                websocket,
+                                state=event.state,
+                                attempt=event.attempt,
+                                max_attempts=event.max_attempts,
+                                message=event.message,
+                                stream_id=event.stream_id,
+                                message_id=event.message_id,
+                                timestamp=event.timestamp,
                             )
                 else:
                     # Fallback: FixedAgentResponder (default)

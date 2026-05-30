@@ -719,8 +719,99 @@ class TestRegressionHelloworldFlow:
             assert matched, f"Input '{user_input}' should match at least one keyword"
 
 
+class TestPreviewResultEventForwarding:
+    """Task 3: preview_result event tests.
+
+    验收条件:
+    - P3: preview 结果进入 runtime / ws / message 流的主通路
+    """
+
+    def test_preview_result_event_structure(self):
+        """Task 3: PreviewResultEvent must have correct structure."""
+        from app.runtime.event_bridge import PreviewResultEvent
+
+        event = PreviewResultEvent(
+            preview_id="prev-123",
+            workspace_id="ws-456",
+            preview_url="http://localhost:3000/preview/prev-123",
+            status="ready",
+            message_id="msg-789",
+            stream_id="stream-abc",
+        )
+
+        assert event.type == "preview_result"
+        assert event.preview_id == "prev-123"
+        assert event.workspace_id == "ws-456"
+        assert event.preview_url == "http://localhost:3000/preview/prev-123"
+        assert event.status == "ready"
+
+    def test_preview_result_event_serialization(self):
+        """Task 3: PreviewResultEvent must serialize to JSON."""
+        from app.runtime.event_bridge import PreviewResultEvent
+
+        event = PreviewResultEvent(
+            preview_id="prev-456",
+            workspace_id="ws-789",
+            preview_url="http://localhost:3000/preview/prev-456",
+            status="generating",
+        )
+
+        data = event.to_dict()
+        import json
+        json_str = json.dumps(data)
+        parsed = json.loads(json_str)
+
+        assert parsed["type"] == "preview_result"
+        assert parsed["preview_id"] == "prev-456"
+
+
+class TestRepairStateEventForwarding:
+    """Task 3: repair_state event tests.
+
+    验收条件:
+    - P3: 自修复循环有明确次数限制和可观察过程
+    """
+
+    def test_repair_state_event_structure(self):
+        """Task 3: RepairStateEvent must have correct structure."""
+        from app.runtime.repair_state import RepairStateEvent
+
+        event = RepairStateEvent(
+            state="ANALYZING_FAILURE",
+            attempt=1,
+            max_attempts=3,
+            message="Analyzing test failure...",
+        )
+
+        assert event.type == "repair_state"
+        assert event.state == "ANALYZING_FAILURE"
+        assert event.attempt == 1
+        assert event.max_attempts == 3
+        assert event.message == "Analyzing test failure..."
+
+    def test_repair_state_event_serialization(self):
+        """Task 3: RepairStateEvent must serialize to dict."""
+        from app.runtime.repair_state import RepairStateEvent
+
+        event = RepairStateEvent(
+            state="GENERATING_FIX",
+            attempt=2,
+            max_attempts=3,
+            message="Generating fix...",
+        )
+
+        data = event.to_dict()
+        import json
+        json_str = json.dumps(data)
+        parsed = json.loads(json_str)
+
+        assert parsed["type"] == "repair_state"
+        assert parsed["state"] == "GENERATING_FIX"
+        assert parsed["attempt"] == 2
+
+
 # =============================================================================
-# Task 2: Diff Apply And Command Result Formal Event Flow
+# Task 3: Diff Apply And Command Result Formal Event Flow
 # =============================================================================
 
 class TestApplyResultEventPayload:

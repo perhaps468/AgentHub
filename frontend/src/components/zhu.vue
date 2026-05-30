@@ -50,9 +50,13 @@
         :is-loading-messages="sessionStore.isLoadingMessages"
         :is-send-loading="isSendLoading"
         :format-time="formatTime"
+        :workspace="currentWorkspace"
+        :pending-changes="pendingChanges"
         @open-left="showLeft = true"
         @retry="handleRetry"
         @send="handleSend"
+        @confirm-change="handleConfirmChange"
+        @cancel-change="handleCancelChange"
       />
 
       <!-- 右侧预览区 -->
@@ -90,13 +94,13 @@
  * zhu.vue - 页面容器
  * 高级玻璃态设计，白色为主，带动态效果
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
 import { useAgentStore } from '../store/index'
-import type { ConversationItem, ConversationMode, PreviewState, SidebarAgent, SidebarPanel, SidebarUser } from '../types/agenthub'
+import type { ConversationItem, ConversationMode, PreviewState, SidebarAgent, SidebarPanel, SidebarUser, Workspace } from '../types/agenthub'
 import { wsClient, getWsClientReconnectAttempt } from '../utils/ws-client'
 import { useToast } from '../veiws/useToast'
 import AddAgentDialog from './zhu/AddAgentDialog.vue'
@@ -105,6 +109,9 @@ import LeftSidebarArea from './zhu/LeftSidebarArea.vue'
 import NewConversationDialog from './zhu/NewConversationDialog.vue'
 import PreviewPanel from './zhu/PreviewPanel.vue'
 import UserProfileDialog from './zhu/UserProfileDialog.vue'
+import { fetchWorkspace } from '../api/modules/workspace'
+import { applyPendingChange } from '../api/modules/pendingChanges'
+import type { PendingChange } from '../types/agenthub'
 
 // ==================== Store ====================
 const userInfoStore = useUserInfoStore()
@@ -139,6 +146,62 @@ const showNewConversationDialog = ref(false)
 // ==================== 添加自建 Agent ====================
 /** 添加 Agent 弹框显隐 */
 const showAddAgentDialog = ref(false)
+
+// ==================== Task B: 当前会话 workspace ====================
+/** 当前会话绑定的 workspace 对象（从后端获取） */
+const currentWorkspace = ref<Workspace | null>(null)
+
+// ==================== Task C-2: Pending Changes ====================
+/** 当前会话的待确认变更列表 */
+const pendingChanges = computed<PendingChange[]>(() => {
+  return sessionStore.streamState.pendingChanges.value
+    ? Array.from(sessionStore.streamState.pendingChanges.value.values())
+    : []
+})
+
+/** 确认变更 */
+const handleConfirmChange = async (changeId: string) => {
+  try {
+    const result = await applyPendingChange(changeId)
+    if (result.success) {
+      showToast('文件已成功写入')
+      sessionStore.streamState.removePendingChange(changeId)
+    } else {
+      showToast(`应用失败: ${result.message}`, true)
+      sessionStore.streamState.updatePendingChangeStatus(changeId, 'rejected')
+    }
+  } catch (e) {
+    console.error('确认变更失败', e)
+    showToast('确认变更失败', true)
+  }
+}
+
+/** 取消变更 */
+const handleCancelChange = (changeId: string) => {
+  sessionStore.streamState.removePendingChange(changeId)
+  showToast('已取消写入')
+}
+
+async function loadSessionWorkspace(session: ConversationItem | null) {
+  if (!session?.workspace_id) {
+    currentWorkspace.value = null
+    return
+  }
+  try {
+    currentWorkspace.value = await fetchWorkspace(session.workspace_id)
+  } catch {
+    currentWorkspace.value = null
+  }
+}
+
+// Watch currentSession changes to reload workspace
+watch(
+  () => sessionStore.currentSession,
+  (session) => {
+    loadSessionWorkspace(session)
+  },
+  { immediate: true },
+)
 
 // ==================== 发送状态 ====================
 /** 正在发送消息（显示 AI 回复 loading） */
@@ -288,12 +351,14 @@ const handleDeleteSession = async (item: ConversationItem) => {
 
 /**
  * 创建新会话并连接 WebSocket
+ * Task B+C-1: 从后端返回的 session 中获取 workspace 信息
  */
 const handleCreateConversation = async (payload: {
   mode: ConversationMode
   title: string
   agentId?: string
   participantAgentIds?: string[]
+  workspace_id?: string | null
 }) => {
   if (payload.mode === 'single' && !payload.agentId) {
     showToast('请先选择一个 Agent', true)
@@ -303,13 +368,22 @@ const handleCreateConversation = async (payload: {
     showToast('请至少选择一个 Agent', true)
     return
   }
+  if (!payload.workspace_id) {
+    showToast('请先选择工作空间', true)
+    return
+  }
 
   try {
     const session = await sessionStore.createSession({
       owner_id: userInfoStore.userId || 'dev_user',
       title: payload.title,
       mode: payload.mode,
+      workspace_id: payload.workspace_id,
     })
+    // Task B+C-1: Use workspace info from session response
+    if (session.workspace) {
+      currentWorkspace.value = session.workspace as Workspace
+    }
     sessionStore.setCurrentSessionId(session.id)
     await sessionStore.fetchMessages(session.id, { page: 1, page_size: 20 })
     wsClient.connect(session.id)
@@ -481,6 +555,27 @@ onMounted(async () => {
     } else if (msg.type === 'message_error') {
       sessionStore.streamState.handleMessageError(msg, currentSessionId)
       isSendLoading.value = false
+    } else if (msg.type === 'tool_event') {
+      sessionStore.streamState.handleToolEvent(msg, currentSessionId)
+    } else if (msg.type === 'runtime_state') {
+      sessionStore.streamState.handleRuntimeState(msg, currentSessionId)
+    } else if (msg.type === 'change_preview') {
+      // Task C-2: Handle pending change preview events
+      sessionStore.streamState.handleChangePreview(msg, currentSessionId)
+    } else if (msg.type === 'apply_result') {
+      // Task C-4: Handle apply result events
+      sessionStore.streamState.handleApplyResult(msg)
+    } else if (msg.type === 'preview_result') {
+      // Task 3: Handle preview result events
+      previewState.value = {
+        type: 'web',
+        title: 'Runtime Preview',
+        url: msg.preview_url || '',
+        description: msg.status || 'ready',
+      }
+    } else if (msg.type === 'repair_state') {
+      // Task D-2: Handle repair state events
+      sessionStore.streamState.handleRepairState(msg)
     } else if (msg.type === 'error') {
       console.error('[WsClient] Server error:', msg.error_code, msg.error_message)
       isSendLoading.value = false
