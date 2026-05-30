@@ -10,6 +10,10 @@
         <p class="chat-header-subtitle">
           {{ currentSession ? `创建于 ${formatTime(currentSession.created_at)}` : '点击左侧新建会话开始聊天' }}
         </p>
+        <div v-if="workspace" class="workspace-badge" :title="workspace.root_path">
+          <span class="workspace-icon">&#128193;</span>
+          <span class="workspace-name">{{ workspace.name || workspaceRootName }}</span>
+        </div>
       </div>
     </div>
     <ConnectionStatus
@@ -22,22 +26,30 @@
 </template>
 
 <script lang="ts" setup>
+import { computed } from 'vue'
 import ConnectionStatus from '../ConnectionStatus.vue'
-import type { ConversationItem } from '../../types/agenthub'
+import type { ConversationItem, Workspace } from '../../types/agenthub'
 import type { ConnectionState } from '../../utils/ws-client'
 
-defineProps<{
+const props = defineProps<{
   currentSession: ConversationItem | null | undefined
   currentSessionId: string
   connectionState: ConnectionState
   reconnectAttempt: number
   formatTime: (iso: string) => string
+  workspace: Workspace | null
 }>()
 
 defineEmits<{
   (e: 'open-left'): void
   (e: 'retry'): void
 }>()
+
+const workspaceRootName = computed(() => {
+  if (!props.workspace) return ''
+  const parts = props.workspace.root_path.split(/[/\\]/)
+  return parts[parts.length - 1] || props.workspace.root_path
+})
 </script>
 
 <style scoped>
@@ -81,6 +93,30 @@ defineEmits<{
   margin: 0;
   color: #94a3b8;
   font-size: 12px;
+}
+
+.workspace-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.workspace-icon {
+  font-size: 12px;
+}
+
+.workspace-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-icon {

@@ -19,6 +19,10 @@ from typing import Optional
 from app.runtime.pending_change import ChangeStatus, PendingChange
 from app.runtime.tools.tool import Tool, ToolArgument
 
+# Module-level registry shared by all ApplyChangeTool instances
+# C-2: Use module-level dict instead of class attribute to avoid Pydantic v2 issues
+_PENDING_CHANGE_REGISTRY: dict[str, PendingChange] = {}
+
 
 class ApplyChangeTool(Tool):
     """Tool to formally apply a previously previewed PendingChange.
@@ -39,15 +43,12 @@ class ApplyChangeTool(Tool):
     description: str = (
         "Formally applies a PendingChange that was previously returned by "
         "write_file or replace_in_file. The agent must call this tool with "
-        "the change_id from the PendingChange to commit the change. "
+        "the same change_id to commit the change. "
         "If the file was modified externally since preview, the apply is rejected."
     )
     need_validation: bool = False
 
-    _workspace_root: Optional[Path] = None
-    # T3: In-memory registry of pending changes. In production, this could
-    # be backed by a DB table or Redis. The key is change_id, value is PendingChange.
-    _registry: dict[str, PendingChange] = {}
+    _workspace_root: Optional["Path"] = None
 
     arguments: list[ToolArgument] = [
         ToolArgument(
@@ -73,18 +74,18 @@ class ApplyChangeTool(Tool):
         Returns:
             The change_id of the registered change.
         """
-        cls._registry[pending_change.change_id] = pending_change
+        _PENDING_CHANGE_REGISTRY[pending_change.change_id] = pending_change
         return pending_change.change_id
 
     @classmethod
     def get_change(cls, change_id: str) -> Optional[PendingChange]:
         """Retrieve a registered PendingChange by its change_id."""
-        return cls._registry.get(change_id)
+        return _PENDING_CHANGE_REGISTRY.get(change_id)
 
     @classmethod
     def clear_registry(cls) -> None:
         """Clear all registered pending changes. Used for testing."""
-        cls._registry.clear()
+        _PENDING_CHANGE_REGISTRY.clear()
 
     def execute(self, change_id: str) -> str:
         """Apply a pending change by its change_id.
@@ -101,7 +102,7 @@ class ApplyChangeTool(Tool):
         if not change_id or not change_id.strip():
             return "[Error] change_id cannot be empty."
 
-        pending = self._registry.get(change_id)
+        pending = _PENDING_CHANGE_REGISTRY.get(change_id)
         if pending is None:
             return f"[Error] No pending change found with change_id='{change_id}'. The change may have already been applied or the ID is invalid."
 
@@ -116,7 +117,7 @@ class ApplyChangeTool(Tool):
 
         if success:
             # Remove from registry after successful apply
-            del self._registry[change_id]
+            del _PENDING_CHANGE_REGISTRY[change_id]
             return (
                 f"[Applied] {pending.operation.value.upper()} {pending.path} "
                 f"(change_id={change_id})."

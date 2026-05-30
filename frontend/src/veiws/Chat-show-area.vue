@@ -93,10 +93,10 @@ const msgRecord = computed(() => {
     .filter((s) => !s.message_id || !historicalMessages.some((m) => m.id === s.message_id))
     .map((s) => {
       const senderId = `agent_${s.sender_role ?? 'default'}`
-      const displayContent = s.ui_status === 'thinking' 
-        ? `${s.sender_role || 'AI'} 正在思考...` 
+      const displayContent = s.ui_status === 'thinking'
+        ? `${s.sender_role || 'AI'} 正在思考...`
         : s.content
-      
+
       return {
         id: s.message_id || s.stream_id,
         fromId: senderId,
@@ -118,6 +118,9 @@ const msgRecord = computed(() => {
         updateTime: s.created_at,
         isStreaming: true,
         streamStatus: s.ui_status,
+        // Task A: 运行时状态和节点
+        runtimeState: s.runtime_state,
+        runtimeNodes: s.runtime_nodes,
       }
     })
 

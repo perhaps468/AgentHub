@@ -21,6 +21,15 @@
             </div>
             <div v-if="props.msg.isStreaming && props.msg.streamStatus === 'streaming'" class="msg-status-badge streaming">
               <span class="streaming-dot"></span>
+              <span v-if="props.msg.runtimeState === 'calling_tool'" class="tool-running-label">
+                执行工具...
+              </span>
+              <span v-else-if="props.msg.runtimeState === 'observing'" class="tool-running-label">
+                观察结果...
+              </span>
+              <span v-else-if="props.msg.runtimeState === 'responding'" class="tool-running-label">
+                生成回复...
+              </span>
             </div>
           </div>
           <msg_content :right="isOwn" :msg="props.msg" />
@@ -163,5 +172,11 @@ const roleLabel = computed(() => {
     opacity: 0.5;
     transform: scale(0.8);
   }
+}
+
+.tool-running-label {
+  color: rgb(var(--primary-color));
+  font-size: 11px;
+  white-space: nowrap;
 }
 </style>

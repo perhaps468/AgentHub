@@ -1,0 +1,55 @@
+---
+description: Encoding and file format rules
+globs: "**/*"
+alwaysApply: true
+---
+
+# 编码与文件格式规则
+
+## UTF-8 强制
+
+所有文本文件的读写必须使用 UTF-8 编码。不得使用 GBK、Latin-1、ASCII 或其他任何编码。
+
+**强制要求**：
+- 读取文件时显式指定 `encoding='utf-8'`
+- 写入文件时显式指定 `encoding='utf-8'`
+- Python 内置 `open()` 调用必须始终带 `encoding='utf-8'`
+- 禁止依赖系统默认编码（Windows 上默认编码是 CP936/GBK，不支持中文）
+
+**正确示例**：
+```python
+# 读取
+with open(path, 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# 写入
+with open(path, 'w', encoding='utf-8', newline='') as f:
+    f.write(content)
+```
+
+**错误示例**：
+```python
+# 缺少 encoding=，依赖系统默认
+open(path).read()          # 错误
+open(path, 'w').write(x)   # 错误
+
+# 显式指定了错误编码
+open(path, 'w', encoding='gbk')  # 错误
+```
+
+## Cursor Agent 工具写入
+
+当使用 Write / StrReplace 等工具写入包含非 ASCII 字符（中文、日文、韩文、emoji 等）的文件时：
+- 必须确保工具内部使用 UTF-8 编码
+- 如果工具链在 Windows 上无法保证 UTF-8，必须通过 Python 脚本中转写入：
+  ```bash
+  python -c "open('path','w','utf-8').write(content)"
+  ```
+- 写入后必须验证：`data.decode('utf-8')` 不抛出异常，且包含预期字符
+
+## 文件头编码声明
+
+对于必须兼容多种编码环境的关键文件（如 Python 脚本），在文件顶部添加编码声明：
+```python
+# -*- coding: utf-8 -*-
+```

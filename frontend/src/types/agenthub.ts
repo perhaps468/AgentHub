@@ -43,6 +43,25 @@ export interface PersonProfile {
   role?: string
 }
 
+// ---------------------------------------------------------------------------
+// Workspace (Task B)
+// Task B+C-1: Added 'name' field for frontend display
+// ---------------------------------------------------------------------------
+
+export interface Workspace {
+  id: string
+  owner_id: string
+  root_path: string
+  name: string
+  created_at: string
+}
+
+export interface WorkspaceSummary {
+  id: string
+  name: string
+  root_path: string
+}
+
 export interface ConversationItem {
   id: string
   owner_id: string
@@ -50,6 +69,8 @@ export interface ConversationItem {
   mode: ConversationMode
   is_pinned: boolean
   is_archived: boolean
+  workspace_id: string | null
+  workspace: WorkspaceSummary | null
   created_at: string
   updated_at: string
 }
@@ -153,13 +174,19 @@ export interface PaginatedResponse<T> {
 export interface CreateSessionPayload {
   title?: string | null
   mode: ConversationMode
+  workspace_id: string  // Required - Task B+C-1
 }
 
 export interface UpdateSessionPayload {
   title?: string | null
   is_pinned?: boolean
   is_archived?: boolean
+  workspace_id?: string | null
 }
+
+// ---------------------------------------------------------------------------
+// Task C-2 - Pending Change Preview 事件类型
+// ---------------------------------------------------------------------------
 
 export interface SendMessagePayload {
   action: 'send_message'
@@ -185,3 +212,81 @@ export interface WsIncomingMessage {
   data?: unknown
 }
 
+// ---------------------------------------------------------------------------
+// Task A - Runtime 扩展事件类型
+// ---------------------------------------------------------------------------
+
+export type RuntimeStateValue =
+  | 'thinking'
+  | 'calling_tool'
+  | 'observing'
+  | 'responding'
+  | 'finished'
+  | 'error'
+
+export interface ToolEvent {
+  type: 'tool_event'
+  stream_id: string
+  message_id: string
+  tool_name: string
+  status: 'started' | 'finished'
+  arguments: Record<string, unknown>
+  response: string | null
+  timestamp?: string
+}
+
+export interface RuntimeStateEvent {
+  type: 'runtime_state'
+  stream_id: string
+  message_id: string
+  state: RuntimeStateValue
+  timestamp: string
+}
+
+// ---------------------------------------------------------------------------
+// Task A - Runtime 过程事件最小回放模型
+// ---------------------------------------------------------------------------
+
+export interface RuntimeProcessNode {
+  stream_id: string
+  message_id: string
+  timestamp: string
+  node_type: 'runtime_state' | 'tool_event'
+  state?: RuntimeStateValue
+  tool_name?: string
+  tool_status?: 'started' | 'finished'
+}
+
+export interface RuntimeProcessReplay {
+  stream_id: string
+  nodes: RuntimeProcessNode[]
+}
+
+// ---------------------------------------------------------------------------
+// Task C-2 - Pending Change Preview 事件类型
+// ---------------------------------------------------------------------------
+
+export interface ChangePreviewEvent {
+  type: 'change_preview'
+  stream_id: string
+  message_id: string
+  change_id: string
+  operation: 'create' | 'update' | 'delete'
+  path: string
+  unified_diff: string
+  status: 'pending_confirmation' | 'applied' | 'rejected'
+  timestamp: string
+}
+
+// Pending Change 状态管理
+export type PendingChangeStatus = 'pending_confirmation' | 'applied' | 'rejected' | 'failed'
+
+export interface PendingChange {
+  change_id: string
+  operation: 'create' | 'update' | 'delete'
+  path: string
+  unified_diff: string
+  status: PendingChangeStatus
+  stream_id: string
+  message_id: string
+}

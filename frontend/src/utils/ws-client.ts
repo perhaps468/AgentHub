@@ -43,6 +43,28 @@ export type WsIncomingMessage = {
   content?: string
   content_type?: string
   created_at?: string
+  // Task A: tool_event
+  tool_name?: string
+  arguments?: Record<string, unknown>
+  response?: string | null
+  // Task A: runtime_state
+  state?: string
+  // Task A: runtime process replay nodes (collected in stream state)
+  _runtime_nodes?: unknown[]
+  // Task C-2: change_preview
+  change_id?: string
+  operation?: 'create' | 'update' | 'delete'
+  path?: string
+  unified_diff?: string
+  // Task C-4: apply_result
+  success?: boolean
+  // Task D-1: preview_result
+  preview_id?: string
+  preview_url?: string
+  workspace_id?: string
+  // Task D-2: repair_state
+  attempt?: number
+  max_attempts?: number
 }
 
 type StateChangeHandler = (state: ConnectionState) => void

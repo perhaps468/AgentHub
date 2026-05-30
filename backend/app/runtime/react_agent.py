@@ -14,7 +14,7 @@ import os
 import re
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -803,6 +803,12 @@ class Agent(BaseModel):
             if tool.need_post_process:
                 response = self._post_process_tool_response(tool_name, response)
 
+            # Task C-2: If tool returned a PendingChange, emit change_preview event
+            if hasattr(response, 'change_id'):
+                from app.runtime.pending_change import PendingChange
+                if isinstance(response, PendingChange):
+                    self._emit_change_preview_from_pending_change(response)
+
             executed_tool = tool.name
         except Exception as e:
             response = f"Error executing tool: {tool_name}: {str(e)}\n"
@@ -979,6 +985,27 @@ class Agent(BaseModel):
         if data:
             event_data.update(data)
         self.event_emitter.emit(event_type, event_data)
+
+    def _emit_change_preview_from_pending_change(self, pending_change: "PendingChange") -> None:
+        """Emit a change_preview event when a write tool returns a PendingChange.
+
+        Task C-2: This enables the frontend to display the diff and provide
+        a confirm button before the change is actually applied.
+        """
+        # Ensure diff is computed
+        pending_change._compute_diff()
+
+        self._emit_event(
+            "change_preview",
+            {
+                "change_id": pending_change.change_id,
+                "operation": pending_change.operation.value,
+                "path": pending_change.path,
+                "unified_diff": pending_change.unified_diff,
+                "status": pending_change.status.value,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
     def _parse_tool_usage(self, content: str) -> dict:
         """Extract tool usage from the response content."""
@@ -1238,9 +1265,11 @@ class Agent(BaseModel):
                 variable_name = f"result_{executed_tool}_{iteration}"
                 self.variable_store[variable_name] = response
 
-                response_display = response
-                if len(response) > MAX_RESPONSE_LENGTH:
-                    response_display = response[:MAX_RESPONSE_LENGTH]
+                # Convert response to string for display (PendingChange etc. are not strings)
+                response_str = str(response) if not isinstance(response, str) else response
+                response_display = response_str
+                if len(response_str) > MAX_RESPONSE_LENGTH:
+                    response_display = response_str[:MAX_RESPONSE_LENGTH]
                     response_display += f"... (truncated, full content available in ${variable_name})"
 
                 return ObserveResponseResult(
@@ -1313,9 +1342,11 @@ class Agent(BaseModel):
         self, response: str, last_executed_tool: str, variable_name: str, iteration: int
     ) -> str:
         """Format the observation response with the given response, variable name, and iteration."""
-        response_display = response
-        if len(response) > MAX_RESPONSE_LENGTH:
-            response_display = response[:MAX_RESPONSE_LENGTH]
+        # Convert response to string for display (PendingChange etc. are not strings)
+        response_str = str(response) if not isinstance(response, str) else response
+        response_display = response_str
+        if len(response_str) > MAX_RESPONSE_LENGTH:
+            response_display = response_str[:MAX_RESPONSE_LENGTH]
             response_display += (
                 f"... content was truncated full content available by interpolation in variable {variable_name}"
             )

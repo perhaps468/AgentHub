@@ -33,11 +33,12 @@ class MockWebSocket:
         self.close_code: int | None = None
         self.sent_messages: list[dict] = []
         self.received_messages: list[dict] = []
+        self.query_params = {}
 
     async def accept(self) -> None:
         self.accepted = True
 
-    async def close(self, code: int = 1000) -> None:
+    async def close(self, code: int = 1000, **kwargs) -> None:
         self.closed = True
         self.close_code = code
 

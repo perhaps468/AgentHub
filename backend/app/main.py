@@ -7,7 +7,9 @@ from fastapi.responses import JSONResponse
 
 from app.api.agents import router as agents_router
 from app.api.auth import router as auth_router
+from app.api.pending_changes import router as pending_changes_router
 from app.api.sessions import router as sessions_router
+from app.api.workspaces import router as workspaces_router
 from app.api.ws import router as ws_router
 
 
@@ -70,3 +72,5 @@ app.include_router(auth_router)
 app.include_router(ws_router)
 app.include_router(sessions_router)
 app.include_router(agents_router)
+app.include_router(workspaces_router)
+app.include_router(pending_changes_router)

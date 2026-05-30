@@ -39,7 +39,8 @@ class ReplaceInFileTool(Tool):
         "⚠️ THIS TOOL MUST BE USED IN PRIORITY TO UPDATE AN EXISTING FILE. "
         "Returns a preview of the change; the change is not applied until explicitly confirmed."
     )
-    need_validation: bool = True
+    # C-2: Set to False - confirmation happens via apply_change tool, not validation prompt
+    need_validation: bool = False
     SIMILARITY_THRESHOLD: float = 0.85
 
     # Workspace root injected at construction time; defaults to process cwd
@@ -268,8 +269,13 @@ class ReplaceInFileTool(Tool):
             return PendingChange.make_error(resolved_str, "No changes needed (content already matches)")
 
         # Return PendingChange with preview
-        return PendingChange.make_update(
+        # C-2: Auto-register PendingChange for confirmed apply flow
+        from app.runtime.tools.apply_change_tool import ApplyChangeTool
+
+        pc = PendingChange.make_update(
             path=resolved_str,
             original_content=original_content,
             proposed_content=content,
         )
+        ApplyChangeTool.register_change(pc)
+        return pc
