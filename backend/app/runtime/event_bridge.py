@@ -108,6 +108,241 @@ class ToolEvent:
         self.message_id = message_id
 
 
+class RuntimeStateEvent:
+    """Task A - WS event: runtime execution state change notification.
+
+    Notifies the frontend when the agent moves between execution phases
+    (thinking, calling_tool, observing, responding, finished, error).
+    This enables runtime process visibility and minimal replay.
+
+    Attributes:
+        stream_id: Session stream identifier.
+        message_id: Message identifier.
+        state: One of thinking / calling_tool / observing / responding / finished / error.
+        timestamp: ISO8601 timestamp.
+    """
+
+    def __init__(
+        self,
+        stream_id: str = "",
+        message_id: str = "",
+        state: str = "thinking",
+        timestamp: str = "",
+    ) -> None:
+        self.type = "runtime_state"
+        self.stream_id = stream_id
+        self.message_id = message_id
+        self.state = state
+        self.timestamp = timestamp
+
+
+class ChangePreviewEvent:
+    """Task C-2 - WS event: pending change preview notification.
+
+    Notifies the frontend when a file write/replace produces a PendingChange.
+    This enables the frontend to display the diff and provide a confirm button.
+
+    Attributes:
+        stream_id: Session stream identifier.
+        message_id: Message identifier.
+        change_id: Unique identifier for this pending change.
+        operation: The type of change (create / update / delete).
+        path: Absolute path of the target file.
+        unified_diff: Human-readable unified diff string.
+        status: Always "pending_confirmation" for preview changes.
+        timestamp: ISO8601 timestamp.
+    """
+
+    def __init__(
+        self,
+        stream_id: str = "",
+        message_id: str = "",
+        change_id: str = "",
+        operation: str = "create",
+        path: str = "",
+        unified_diff: str = "",
+        status: str = "pending_confirmation",
+        timestamp: str = "",
+    ) -> None:
+        self.type = "change_preview"
+        self.stream_id = stream_id
+        self.message_id = message_id
+        self.change_id = change_id
+        self.operation = operation
+        self.path = path
+        self.unified_diff = unified_diff
+        self.status = status
+        self.timestamp = timestamp
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "type": self.type,
+            "stream_id": self.stream_id,
+            "message_id": self.message_id,
+            "change_id": self.change_id,
+            "operation": self.operation,
+            "path": self.path,
+            "unified_diff": self.unified_diff,
+            "status": self.status,
+            "timestamp": self.timestamp,
+        }
+
+
+# Task C-4: Apply Result Event
+class ApplyResultEvent:
+    """Task C-4 - WS event: apply result notification.
+
+    Notifies the frontend when a pending change has been applied or rejected.
+    This enables the frontend to update the diff card status.
+
+    Attributes:
+        change_id: Unique identifier for this pending change.
+        success: Whether the apply was successful.
+        status: Result status: "applied", "rejected", or "failed".
+        message: Human-readable result message.
+        timestamp: ISO8601 timestamp.
+    """
+
+    def __init__(
+        self,
+        change_id: str = "",
+        success: bool = True,
+        status: str = "applied",
+        message: str = "",
+        timestamp: str = "",
+    ) -> None:
+        self.type = "apply_result"
+        self.change_id = change_id
+        self.success = success
+        self.status = status
+        self.message = message
+        self.timestamp = timestamp
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "type": self.type,
+            "change_id": self.change_id,
+            "success": self.success,
+            "status": self.status,
+            "message": self.message,
+            "timestamp": self.timestamp,
+        }
+
+
+# Task C-5: Command Result Event
+class CommandResultEvent:
+    """Task C-5 - WS event: command execution result notification.
+
+    Notifies the frontend when a command has finished execution.
+    This enables the frontend to display command results with stdout/stderr/exit_code.
+
+    Attributes:
+        command: The executed command string.
+        cwd: Working directory where command was executed.
+        stdout: Standard output from the command.
+        stderr: Standard error from the command.
+        exit_code: Process exit code.
+        success: Whether the command succeeded (exit_code == 0).
+        timed_out: Whether the command timed out.
+        stream_id: Session stream identifier.
+        message_id: Message identifier.
+        timestamp: ISO8601 timestamp.
+    """
+
+    def __init__(
+        self,
+        command: str = "",
+        cwd: str = "",
+        stdout: str = "",
+        stderr: str = "",
+        exit_code: int = 0,
+        success: bool = True,
+        timed_out: bool = False,
+        stream_id: str = "",
+        message_id: str = "",
+        timestamp: str = "",
+    ) -> None:
+        self.type = "command_result"
+        self.command = command
+        self.cwd = cwd
+        self.stdout = stdout
+        self.stderr = stderr
+        self.exit_code = exit_code
+        self.success = success
+        self.timed_out = timed_out
+        self.stream_id = stream_id
+        self.message_id = message_id
+        self.timestamp = timestamp
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "type": self.type,
+            "command": self.command,
+            "cwd": self.cwd,
+            "stdout": self.stdout,
+            "stderr": self.stderr,
+            "exit_code": self.exit_code,
+            "success": self.success,
+            "timed_out": self.timed_out,
+            "stream_id": self.stream_id,
+            "message_id": self.message_id,
+            "timestamp": self.timestamp,
+        }
+
+
+# Task D-1: Preview Result Event
+class PreviewResultEvent:
+    """Task D-1 - WS event: preview result notification.
+
+    Notifies the frontend when a preview is ready for display.
+    This enables the frontend PreviewPanel to be data-driven.
+
+    Attributes:
+        preview_id: Unique identifier for this preview.
+        workspace_id: Workspace where preview was generated.
+        preview_url: URL to access the preview (optional for local previews).
+        status: Preview status: "ready", "generating", "error", "cancelled".
+        message_id: Associated message identifier.
+        stream_id: Session stream identifier.
+        timestamp: ISO8601 timestamp.
+    """
+
+    def __init__(
+        self,
+        preview_id: str = "",
+        workspace_id: str = "",
+        preview_url: str = "",
+        status: str = "ready",
+        message_id: str = "",
+        stream_id: str = "",
+        timestamp: str = "",
+    ) -> None:
+        self.type = "preview_result"
+        self.preview_id = preview_id
+        self.workspace_id = workspace_id
+        self.preview_url = preview_url
+        self.status = status
+        self.message_id = message_id
+        self.stream_id = stream_id
+        self.timestamp = timestamp
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "type": self.type,
+            "preview_id": self.preview_id,
+            "workspace_id": self.workspace_id,
+            "preview_url": self.preview_url,
+            "status": self.status,
+            "message_id": self.message_id,
+            "stream_id": self.stream_id,
+            "timestamp": self.timestamp,
+        }
+
+
 class EventBridge:
     """Maps runtime events to WS protocol events.
 
@@ -133,6 +368,8 @@ class EventBridge:
         on_message_error: Callable[..., None] | None = None,
         on_model_delta: Callable[..., None] | None = None,
         on_tool_event: Callable[..., None] | None = None,  # T4: structured tool events
+        on_runtime_state: Callable[..., None] | None = None,  # Task A: runtime state events
+        on_change_preview: Callable[..., None] | None = None,  # Task C-2: pending change preview
         agent_role: str = "PM",
         stream_id: str = "",
         message_id: str = "",
@@ -145,6 +382,10 @@ class EventBridge:
         self._on_model_delta = on_model_delta
         # T4: structured tool events
         self._on_tool_event = on_tool_event
+        # Task A: runtime state events
+        self._on_runtime_state = on_runtime_state
+        # Task C-2: pending change preview events
+        self._on_change_preview = on_change_preview
 
         self._agent_role = agent_role
         self._stream_id = stream_id
@@ -155,6 +396,8 @@ class EventBridge:
         self._accumulated_text: str = ""
         # Track whether message_start has been emitted
         self._message_start_emitted: bool = False
+        # Task A: Runtime replay nodes for minimal replay support
+        self._replay_nodes: list[dict[str, Any]] = []
 
     def set_message(self, message, message_id: str) -> None:
         """Inject message details from RuntimeAgentService before stream starts."""
@@ -190,6 +433,12 @@ class EventBridge:
         elif event_type in ("tool_execution_start", "tool_execution_end"):
             # T4: structured tool events routed to WS
             self._emit_tool_event(event_type, data)
+        elif event_type == "runtime_state":
+            # Task A: runtime state events routed to WS
+            self._emit_runtime_state(data)
+        elif event_type == "change_preview":
+            # Task C-2: pending change preview routed to WS
+            self._emit_change_preview(data)
         elif event_type in ("error_max_iterations_reached", "runtime_error"):
             self._emit_message_error(event_type, data)
         elif event_type == "task_complete":
@@ -286,6 +535,64 @@ class EventBridge:
             stream_id=self._stream_id,
             message_id=self._message_id,
         )
+        # Task A: Record tool event in replay nodes
+        self._push_replay_node({
+            "node_type": "tool_event",
+            "tool_name": tool_name,
+            "tool_status": status,
+            "stream_id": self._stream_id,
+            "message_id": self._message_id,
+            "timestamp": "",
+        })
+
+    def _emit_runtime_state(self, data: dict[str, Any]) -> None:
+        """Handle runtime state change events (Task A).
+
+        Emits runtime_state events to the WS layer via the on_runtime_state callback,
+        notifying the frontend of agent execution phase transitions.
+        """
+        if self._on_runtime_state is None:
+            return
+
+        state = data.get("state", "thinking")
+        timestamp = data.get("timestamp", "")
+
+        self._on_runtime_state(
+            event_type="runtime_state",
+            state=state,
+            stream_id=self._stream_id,
+            message_id=self._message_id,
+            timestamp=timestamp,
+        )
+        # Task A: Record runtime state in replay nodes
+        self._push_replay_node({
+            "node_type": "runtime_state",
+            "state": state,
+            "stream_id": self._stream_id,
+            "message_id": self._message_id,
+            "timestamp": timestamp,
+        })
+
+    def _emit_change_preview(self, data: dict[str, Any]) -> None:
+        """Handle pending change preview events (Task C-2).
+
+        Emits change_preview events to the WS layer via the on_change_preview callback,
+        notifying the frontend of pending file changes that need user confirmation.
+        """
+        if self._on_change_preview is None:
+            return
+
+        self._on_change_preview(
+            event_type="change_preview",
+            change_id=data.get("change_id", ""),
+            operation=data.get("operation", "create"),
+            path=data.get("path", ""),
+            unified_diff=data.get("unified_diff", ""),
+            status=data.get("status", "pending_confirmation"),
+            stream_id=self._stream_id,
+            message_id=self._message_id,
+            timestamp=data.get("timestamp", ""),
+        )
 
     def _emit_message_end(self, data: dict[str, Any]) -> None:
         if not self._on_message_end:
@@ -328,3 +635,13 @@ class EventBridge:
     def accumulated_text(self) -> str:
         """Return accumulated text across delta events."""
         return self._accumulated_text
+
+    # Task A: Runtime replay nodes property
+    @property
+    def replay_nodes(self) -> list[dict[str, Any]]:
+        """Return accumulated runtime replay nodes for minimal replay support."""
+        return list(self._replay_nodes)
+
+    def _push_replay_node(self, node: dict[str, Any]) -> None:
+        """Add a runtime replay node to the accumulated list."""
+        self._replay_nodes.append(node)

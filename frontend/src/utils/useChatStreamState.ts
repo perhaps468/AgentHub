@@ -1,5 +1,11 @@
 import { ref } from 'vue'
-import type { StreamingMessage } from '@/types/agenthub'
+import type {
+  StreamingMessage,
+  RuntimeStateValue,
+  RuntimeProcessNode,
+  ChangePreviewEvent,
+  PendingChange,
+} from '@/types/agenthub'
 import type { AgentRole } from '@shared/index'
 
 interface InFlightStream {
@@ -14,6 +20,10 @@ interface InFlightStream {
   metadata: Record<string, unknown>
   ui_status: 'thinking' | 'streaming' | 'done' | 'syncing_interrupted'
   created_at: string
+  // Task A: 运行时过程节点，用于最小回放
+  runtime_nodes: RuntimeProcessNode[]
+  // Task A: 当前 agent 执行阶段
+  runtime_state?: RuntimeStateValue
 }
 
 export function useChatStreamState() {
@@ -36,7 +46,11 @@ export function useChatStreamState() {
           created_at: stream.created_at,
           type: stream.type || 'text',
           payload: { text: stream.accumulated_content },
-          metadata: stream.metadata || {},
+          metadata: {
+            ...(stream.metadata || {}),
+            runtime_nodes: [...stream.runtime_nodes],
+            runtime_state: stream.runtime_state,
+          },
         })
       }
     })
@@ -63,6 +77,8 @@ export function useChatStreamState() {
       metadata: message.metadata || {},
       ui_status: 'streaming',
       created_at: timestamp || message.created_at || new Date().toISOString(),
+      runtime_nodes: [],  // Task A: 初始化运行时过程节点列表
+      runtime_state: undefined,  // Task A: 初始无阶段
     }
 
     // 创建新 Map 触发响应式更新
@@ -193,6 +209,225 @@ export function useChatStreamState() {
     return streams.value.get(streamId)
   }
 
+  // ---------------------------------------------------------------------------
+  // Task A: handleToolEvent — 记录工具执行事件到最小回放节点列表
+  // ---------------------------------------------------------------------------
+
+  function handleToolEvent(event: any, sessionId: string): any {
+    const { stream_id, tool_name, status, arguments: toolArgs, response } = event
+
+    if (!stream_id) return null
+
+    const stream = streams.value.get(stream_id)
+
+    const node: RuntimeProcessNode = {
+      stream_id,
+      message_id: event.message_id || stream?.message_id || '',
+      timestamp: event.timestamp || new Date().toISOString(),
+      node_type: 'tool_event',
+      tool_name,
+      tool_status: status,
+    }
+
+    if (stream) {
+      stream.runtime_nodes.push(node)
+      const newMap = new Map(streams.value)
+      newMap.set(stream_id, { ...stream })
+      streams.value = newMap
+    }
+
+    console.log(
+      `[StreamState] tool_event: ${tool_name} ${status}`,
+      stream_id
+    )
+
+    return { stream_id, tool_name, status, arguments: toolArgs, response }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Task A: handleRuntimeState — 记录运行时状态变化到最小回放节点列表
+  // ---------------------------------------------------------------------------
+
+  const STATE_TO_UI: Record<string, InFlightStream['ui_status']> = {
+    thinking: 'thinking',
+    calling_tool: 'streaming',
+    observing: 'thinking',
+    responding: 'streaming',
+    finished: 'done',
+    error: 'streaming',
+  }
+
+  function handleRuntimeState(event: any, sessionId: string): any {
+    const { stream_id, state, message_id, timestamp } = event
+
+    if (!stream_id) return null
+
+    const stream = streams.value.get(stream_id)
+
+    const node: RuntimeProcessNode = {
+      stream_id,
+      message_id: message_id || stream?.message_id || '',
+      timestamp: timestamp || new Date().toISOString(),
+      node_type: 'runtime_state',
+      state,
+    }
+
+    if (stream) {
+      stream.runtime_nodes.push(node)
+      stream.runtime_state = state
+      stream.ui_status = STATE_TO_UI[state] ?? 'streaming'
+      const newMap = new Map(streams.value)
+      newMap.set(stream_id, { ...stream })
+      streams.value = newMap
+    }
+
+    console.log(`[StreamState] runtime_state: ${state}`, stream_id)
+
+    return { stream_id, state, message_id: message_id || stream?.message_id, timestamp }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Task C-2: Pending Change 管理
+  // ---------------------------------------------------------------------------
+
+  // 待确认的 pending changes
+  const pendingChanges = ref<Map<string, PendingChange>>(new Map())
+
+  function handleChangePreview(event: ChangePreviewEvent, sessionId: string) {
+    const { change_id, operation, path, unified_diff, status, stream_id, message_id } = event
+
+    if (!change_id) return null
+
+    // 避免重复添加
+    if (pendingChanges.value.has(change_id)) return pendingChanges.value.get(change_id)
+
+    const change: PendingChange = {
+      change_id,
+      operation,
+      path,
+      unified_diff,
+      status,
+      stream_id,
+      message_id,
+    }
+
+    // 创建新 Map 触发响应式更新
+    const newMap = new Map(pendingChanges.value)
+    newMap.set(change_id, change)
+    pendingChanges.value = newMap
+
+    console.log('[StreamState] change_preview:', change_id, 'operation:', operation, 'path:', path)
+
+    return change
+  }
+
+  function getPendingChanges(sessionId: string): PendingChange[] {
+    const changes: PendingChange[] = []
+    pendingChanges.value.forEach((change) => {
+      if (change.message_id?.includes(sessionId) || change.stream_id?.includes(sessionId)) {
+        changes.push(change)
+      }
+    })
+    return changes
+  }
+
+  function updatePendingChangeStatus(changeId: string, status: PendingChange['status']) {
+    const change = pendingChanges.value.get(changeId)
+    if (!change) return
+
+    const newMap = new Map(pendingChanges.value)
+    newMap.set(changeId, { ...change, status })
+    pendingChanges.value = newMap
+  }
+
+  function removePendingChange(changeId: string) {
+    const newMap = new Map(pendingChanges.value)
+    newMap.delete(changeId)
+    pendingChanges.value = newMap
+    console.log('[StreamState] pending_change removed:', changeId)
+  }
+
+  function clearSessionPendingChanges(sessionId: string) {
+    const toDelete: string[] = []
+    pendingChanges.value.forEach((change, changeId) => {
+      if (change.message_id?.includes(sessionId) || change.stream_id?.includes(sessionId)) {
+        toDelete.push(changeId)
+      }
+    })
+
+    if (toDelete.length > 0) {
+      const newMap = new Map(pendingChanges.value)
+      toDelete.forEach((id) => newMap.delete(id))
+      pendingChanges.value = newMap
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Task C-4: apply_result 处理
+  // ---------------------------------------------------------------------------
+
+  interface ApplyResultEvent {
+    type: 'apply_result'
+    change_id: string
+    success: boolean
+    status: string
+    message: string
+  }
+
+  function handleApplyResult(event: ApplyResultEvent) {
+    const { change_id, success, status, message } = event
+
+    if (!change_id) return
+
+    console.log('[StreamState] apply_result:', change_id, 'success:', success, 'status:', status)
+
+    if (success) {
+      // 成功后从待确认列表移除
+      removePendingChange(change_id)
+    } else {
+      // 失败后更新状态
+      const newStatus = status as PendingChange['status']
+      updatePendingChangeStatus(change_id, newStatus)
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Task D-2: repair_state 处理
+  // ---------------------------------------------------------------------------
+
+  // 当前修复状态
+  const repairState = ref<{
+    state: string
+    attempt: number
+    maxAttempts: number
+    message: string
+  } | null>(null)
+
+  interface RepairStateEventData {
+    type: 'repair_state'
+    state: string
+    attempt: number
+    max_attempts: number
+    message: string
+  }
+
+  function handleRepairState(event: RepairStateEventData) {
+    const { state, attempt, max_attempts, message } = event
+
+    repairState.value = {
+      state: state || 'IDLE',
+      attempt: attempt || 0,
+      maxAttempts: max_attempts || 3,
+      message: message || '',
+    }
+
+    console.log('[StreamState] repair_state:', state, 'attempt:', attempt, '/', max_attempts)
+  }
+
+  function clearRepairState() {
+    repairState.value = null
+  }
+
   return {
     streams,
     getStreamingMessages,
@@ -204,5 +439,21 @@ export function useChatStreamState() {
     clearSession,
     hasInFlightStream,
     getStream,
+    // Task A: Runtime 扩展事件处理
+    handleToolEvent,
+    handleRuntimeState,
+    // Task C-2: Pending Change 管理
+    pendingChanges,
+    handleChangePreview,
+    getPendingChanges,
+    updatePendingChangeStatus,
+    removePendingChange,
+    clearSessionPendingChanges,
+    // Task C-4: apply_result 处理
+    handleApplyResult,
+    // Task D-2: repair_state 处理
+    repairState,
+    handleRepairState,
+    clearRepairState,
   }
 }

@@ -612,3 +612,313 @@ describe('full stream lifecycle', () => {
     expect(getStream('s-nonexistent')).toBeUndefined()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Phase 10: Task A - handleToolEvent (tool_event)
+// ---------------------------------------------------------------------------
+
+function makeToolEvent(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'tool_event',
+    agent_role: 'PM',
+    timestamp: '2026-05-29T10:00:01Z',
+    stream_id: 'stream-001',
+    message_id: 'msg-001',
+    tool_name: 'read_file_tool',
+    status: 'started',
+    arguments: { file_path: 'test.py' },
+    response: null,
+    ...overrides,
+  }
+}
+
+describe('handleToolEvent', () => {
+  it('useChatStreamState returns handleToolEvent function', () => {
+    const { handleToolEvent } = useChatStreamState()
+    expect(typeof handleToolEvent).toBe('function')
+  })
+
+  it('handleToolEvent accepts event and sessionId without throwing', () => {
+    const { handleToolEvent } = useChatStreamState()
+    expect(() =>
+      handleToolEvent(makeToolEvent({ stream_id: 's-tool' }), 'session-001')
+    ).not.toThrow()
+  })
+
+  it('handleToolEvent returns event info with tool_name, status, arguments, response', () => {
+    const { handleToolEvent } = useChatStreamState()
+    const result = handleToolEvent(
+      makeToolEvent({
+        stream_id: 's-tool-fields',
+        tool_name: 'replace_in_file_tool',
+        status: 'finished',
+        arguments: { path: 'a.py', diff: '...' },
+        response: '[UPDATE] a.py',
+      }),
+      'session-001'
+    )
+    expect(result).toBeDefined()
+    expect(result!.tool_name).toBe('replace_in_file_tool')
+    expect(result!.status).toBe('finished')
+    expect(result!.arguments).toEqual({ path: 'a.py', diff: '...' })
+    expect(result!.response).toBe('[UPDATE] a.py')
+  })
+
+  it('handleToolEvent on non-existent stream does not crash', () => {
+    const { handleToolEvent } = useChatStreamState()
+    expect(() =>
+      handleToolEvent(makeToolEvent({ stream_id: 's-no-stream' }), 'session-001')
+    ).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Phase 11: Task A - handleRuntimeState (runtime_state)
+// ---------------------------------------------------------------------------
+
+function makeRuntimeState(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'runtime_state',
+    agent_role: 'PM',
+    timestamp: '2026-05-29T10:00:01Z',
+    stream_id: 'stream-001',
+    message_id: 'msg-001',
+    state: 'thinking',
+    ...overrides,
+  }
+}
+
+describe('handleRuntimeState', () => {
+  it('useChatStreamState returns handleRuntimeState function', () => {
+    const { handleRuntimeState } = useChatStreamState()
+    expect(typeof handleRuntimeState).toBe('function')
+  })
+
+  it('handleRuntimeState accepts event and sessionId without throwing', () => {
+    const { handleRuntimeState } = useChatStreamState()
+    expect(() =>
+      handleRuntimeState(makeRuntimeState({ stream_id: 's-state' }), 'session-001')
+    ).not.toThrow()
+  })
+
+  it('handleRuntimeState returns event info with state, stream_id, message_id, timestamp', () => {
+    const { handleRuntimeState } = useChatStreamState()
+    const result = handleRuntimeState(
+      makeRuntimeState({
+        stream_id: 's-state-fields',
+        state: 'calling_tool',
+        timestamp: '2026-05-29T12:00:00Z',
+        message_id: 'msg-state-001',
+      }),
+      'session-001'
+    )
+    expect(result).toBeDefined()
+    expect(result!.state).toBe('calling_tool')
+    expect(result!.stream_id).toBe('s-state-fields')
+    expect(result!.message_id).toBe('msg-state-001')
+    expect(result!.timestamp).toBe('2026-05-29T12:00:00Z')
+  })
+
+  it('handleRuntimeState maps all valid state values', () => {
+    const { handleRuntimeState } = useChatStreamState()
+    const validStates = ['thinking', 'calling_tool', 'observing', 'responding', 'finished', 'error']
+    for (const state of validStates) {
+      const result = handleRuntimeState(
+        makeRuntimeState({ stream_id: `s-${state}`, state }),
+        'session-001'
+      )
+      expect(result!.state).toBe(state)
+    }
+  })
+
+  it('handleRuntimeState on non-existent stream does not crash', () => {
+    const { handleRuntimeState } = useChatStreamState()
+    expect(() =>
+      handleRuntimeState(makeRuntimeState({ stream_id: 's-no-state' }), 'session-001')
+    ).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Phase 12: Task A - Replay Persistence (runtime_nodes on final message)
+// ---------------------------------------------------------------------------
+
+describe('Task A: runtime replay persistence', () => {
+  it('persists runtime replay nodes onto the final assistant message', () => {
+    const { handleMessageStart, handleRuntimeState, handleMessageEnd } = useChatStreamState()
+
+    handleMessageStart(
+      {
+        type: 'message_start',
+        stream_id: 'stream-replay',
+        agent_role: 'PM',
+        message: {
+          id: 'msg-replay',
+          session_id: 's-1',
+          sender_type: 'agent',
+          sender_role: 'PM',
+          type: 'text',
+          content: '',
+          payload: {},
+          metadata: {},
+          status: 'streaming',
+          created_at: '2026-05-30T00:00:00Z',
+        },
+      },
+      's-1'
+    )
+
+    handleRuntimeState(
+      {
+        type: 'runtime_state',
+        stream_id: 'stream-replay',
+        message_id: 'msg-replay',
+        state: 'thinking',
+        timestamp: '2026-05-30T00:00:01Z',
+      },
+      's-1'
+    )
+
+    const finished = handleMessageEnd(
+      {
+        type: 'message_end',
+        stream_id: 'stream-replay',
+        message_id: 'msg-replay',
+        status: 'completed',
+        final_content: 'done',
+      },
+      's-1'
+    )
+
+    // After message_end, the returned stream should contain the replay nodes
+    expect(finished).toBeDefined()
+    expect(finished!.runtime_nodes).toBeDefined()
+    expect(finished!.runtime_nodes.length).toBeGreaterThan(0)
+    expect(finished!.runtime_nodes[0]!.node_type).toBe('runtime_state')
+  })
+
+  it('streams contain runtime_nodes in getStreamingMessages result', () => {
+    const { handleMessageStart, handleRuntimeState, handleToolEvent, getStreamingMessages } =
+      useChatStreamState()
+
+    handleMessageStart(
+      {
+        type: 'message_start',
+        stream_id: 'stream-replay-2',
+        agent_role: 'PM',
+        message: {
+          id: 'msg-replay-2',
+          session_id: 's-2',
+          sender_type: 'agent',
+          sender_role: 'PM',
+          type: 'text',
+          content: '',
+          payload: {},
+          metadata: {},
+          status: 'streaming',
+          created_at: '2026-05-30T00:00:00Z',
+        },
+      },
+      's-2'
+    )
+
+    handleRuntimeState(
+      {
+        type: 'runtime_state',
+        stream_id: 'stream-replay-2',
+        message_id: 'msg-replay-2',
+        state: 'calling_tool',
+        timestamp: '2026-05-30T00:00:01Z',
+      },
+      's-2'
+    )
+
+    handleToolEvent(
+      {
+        type: 'tool_event',
+        stream_id: 'stream-replay-2',
+        message_id: 'msg-replay-2',
+        tool_name: 'read_file_tool',
+        status: 'finished',
+        timestamp: '2026-05-30T00:00:02Z',
+      },
+      's-2'
+    )
+
+    // getStreamingMessages should return the stream with runtime_nodes
+    const messages = getStreamingMessages('s-2')
+    expect(messages.length).toBe(1)
+    expect(messages[0].metadata).toBeDefined()
+    // metadata should contain runtime replay info
+    expect(messages[0].metadata.runtime_nodes).toBeDefined()
+    expect(messages[0].metadata.runtime_nodes.length).toBe(2)
+  })
+
+  it('tool events are tracked in runtime_nodes alongside runtime_states', () => {
+    const { handleMessageStart, handleRuntimeState, handleToolEvent, handleMessageEnd } =
+      useChatStreamState()
+
+    handleMessageStart(
+      {
+        type: 'message_start',
+        stream_id: 'stream-mixed',
+        agent_role: 'PM',
+        message: {
+          id: 'msg-mixed',
+          session_id: 's-mixed',
+          sender_type: 'agent',
+          sender_role: 'PM',
+          type: 'text',
+          content: '',
+          payload: {},
+          metadata: {},
+          status: 'streaming',
+          created_at: '2026-05-30T00:00:00Z',
+        },
+      },
+      's-mixed'
+    )
+
+    // First a runtime state
+    handleRuntimeState(
+      {
+        type: 'runtime_state',
+        stream_id: 'stream-mixed',
+        message_id: 'msg-mixed',
+        state: 'thinking',
+        timestamp: '2026-05-30T00:00:01Z',
+      },
+      's-mixed'
+    )
+
+    // Then a tool event
+    handleToolEvent(
+      {
+        type: 'tool_event',
+        stream_id: 'stream-mixed',
+        message_id: 'msg-mixed',
+        tool_name: 'grep_tool',
+        status: 'finished',
+        timestamp: '2026-05-30T00:00:02Z',
+      },
+      's-mixed'
+    )
+
+    const finished = handleMessageEnd(
+      {
+        type: 'message_end',
+        stream_id: 'stream-mixed',
+        message_id: 'msg-mixed',
+        status: 'completed',
+        final_content: 'analysis complete',
+      },
+      's-mixed'
+    )
+
+    // Both node types should be preserved
+    expect(finished!.runtime_nodes).toHaveLength(2)
+    expect(finished!.runtime_nodes[0]!.node_type).toBe('runtime_state')
+    expect(finished!.runtime_nodes[1]!.node_type).toBe('tool_event')
+    expect(finished!.runtime_nodes[1]!.tool_name).toBe('grep_tool')
+  })
+})

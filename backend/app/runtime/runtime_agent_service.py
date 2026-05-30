@@ -33,7 +33,9 @@ from app.runtime.event_bridge import (
     MessageEndEvent,
     MessageErrorEvent,
     MessageStartEvent,
+    RuntimeStateEvent,  # Task A: runtime state events
     ToolEvent,  # T4: structured tool events
+    ChangePreviewEvent,  # Task C-2: pending change preview
 )
 from app.runtime.memory import AgentMemory, Message as RuntimeMessage
 
@@ -105,6 +107,30 @@ def _iso_now() -> str:
     return utcnow().isoformat().replace("+00:00", "Z")
 
 
+class WorkspaceNotBoundError(Exception):
+    """Raised when a session has no workspace binding and no fallback is available."""
+    pass
+
+
+class WorkspaceNotFoundError(Exception):
+    """Raised when the workspace referenced by a session does not exist."""
+    pass
+
+
+class WorkspaceAccessDeniedError(Exception):
+    """Raised when the workspace owner doesn't match the session owner."""
+    pass
+
+
+class WorkspaceRootInvalidError(Exception):
+    """Raised when the workspace root path is inaccessible or invalid."""
+
+    def __init__(self, root_path: str, reason: str):
+        self.root_path = root_path
+        self.reason = reason
+        super().__init__(f"Invalid workspace root '{root_path}': {reason}")
+
+
 class RuntimeAgentService:
     """Bridges ReactAgent to WS-compatible event stream.
 
@@ -140,9 +166,14 @@ class RuntimeAgentService:
         self.llm_adapter = llm_adapter
         self.db = db
         self.stream_id = stream_id or str(uuid.uuid4())
-        self.workspace_root = workspace_root
         # T1: pre-loaded session history to inject into agent memory
         self._session_history: list[RuntimeMessage] = session_history or []
+
+        # Task B: Resolve workspace from formal session binding first.
+        # Priority: 1) session workspace_id binding, 2) explicit workspace_root param,
+        # 3) WORKSPACE_ROOT env var (compatibility fallback).
+        self._resolved_workspace_root = self._resolve_workspace_root(workspace_root)
+        self.workspace_root = self._resolved_workspace_root
 
         self._agent = None  # Initialized lazily in stream_events
         self._bridge = None  # Initialized lazily in stream_events
@@ -154,8 +185,76 @@ class RuntimeAgentService:
         self._accumulated_content: str = ""
         self._error_emitted: bool = False  # prevent double-yielding error events
 
+    def _resolve_workspace_root(self, explicit_root: str | None) -> str:
+        """Resolve workspace root from formal session binding, with fallback hierarchy.
+
+        Priority (highest to lowest):
+        1. Formal session -> workspace_id binding (checked first, NOT overridden by env)
+        2. Explicit workspace_root parameter
+        3. WORKSPACE_ROOT environment variable (legacy compatibility fallback)
+
+        Raises:
+            WorkspaceNotBoundError: Session has no workspace binding and no fallback.
+            WorkspaceNotFoundError: Bound workspace does not exist.
+            WorkspaceAccessDeniedError: Workspace owner doesn't match session owner.
+            WorkspaceRootInvalidError: Workspace root path is inaccessible.
+        """
+        import os
+
+        from app.models.session import ChatSession
+        from app.services.workspace import WorkspaceService
+
+        # If db.get returns a MagicMock (test scenario), treat it as no session
+        session = self.db.get(ChatSession, self.session_id)
+        if session is None or not isinstance(session, ChatSession):
+            if explicit_root:
+                return os.path.abspath(os.path.expanduser(explicit_root))
+            env_root = os.environ.get("WORKSPACE_ROOT", "")
+            if env_root:
+                return os.path.abspath(os.path.expanduser(env_root))
+            raise WorkspaceNotBoundError(
+                f"No session found for session_id={self.session_id} and no workspace fallback available"
+            )
+
+        # Priority 1: Formal session workspace_id binding
+        # Guard against MagicMock: workspace_id must be a non-empty string
+        workspace_id = getattr(session, "workspace_id", None)
+        if workspace_id and isinstance(workspace_id, str):
+            ws_service = WorkspaceService(db=self.db)
+            ws = ws_service.get_workspace(workspace_id)
+            # Owner boundary: session owner and workspace owner must match
+            if ws.owner_id != session.owner_id:
+                raise WorkspaceAccessDeniedError(
+                    ws.id, ws.owner_id, session.owner_id
+                )
+            from pathlib import Path
+
+            try:
+                p = Path(ws.root_path).expanduser().resolve()
+            except (OSError, RuntimeError) as e:
+                raise WorkspaceRootInvalidError(ws.root_path, str(e))
+            if not p.exists():
+                raise WorkspaceRootInvalidError(ws.root_path, "workspace root path does not exist")
+            if not p.is_dir():
+                raise WorkspaceRootInvalidError(ws.root_path, "workspace root path is not a directory")
+            return str(p)
+
+        # Priority 2: Explicit workspace_root parameter
+        if explicit_root:
+            return os.path.abspath(os.path.expanduser(explicit_root))
+
+        # Priority 3: WORKSPACE_ROOT env (legacy fallback - only when session has no workspace_id)
+        env_root = os.environ.get("WORKSPACE_ROOT", "")
+        if env_root:
+            return os.path.abspath(os.path.expanduser(env_root))
+
+        raise WorkspaceNotBoundError(
+            f"Session {self.session_id} has no workspace binding and no fallback available. "
+            "Create a workspace and bind it to this session, or set WORKSPACE_ROOT."
+        )
+
     async def stream_events(self) -> AsyncIterator[
-        MessageStartEvent | MessageDeltaEvent | MessageEndEvent | MessageErrorEvent | ToolEvent  # T4: +ToolEvent
+        MessageStartEvent | MessageDeltaEvent | MessageEndEvent | MessageErrorEvent | ToolEvent | ChangePreviewEvent  # T4: +ToolEvent, C-2: +ChangePreviewEvent
     ]:
         """Drive the agent and yield WS-compatible events.
 
@@ -175,6 +274,8 @@ class RuntimeAgentService:
             on_message_error=self._on_message_error,
             on_model_delta=self._on_model_delta,  # T2: token-level streaming
             on_tool_event=self._on_tool_event,  # T4: structured tool events
+            on_runtime_state=self._on_runtime_state,  # Task A: runtime state events
+            on_change_preview=self._on_change_preview,  # Task C-2: pending change preview
             agent_role=self.agent_role,
             stream_id=self.stream_id,
         )
@@ -276,6 +377,14 @@ class RuntimeAgentService:
         """Handle structured tool events from EventBridge (T4)."""
         self._event_queue.put_nowait(("tool_event", kwargs))
 
+    def _on_runtime_state(self, **kwargs) -> None:
+        """Handle runtime state events from EventBridge (Task A)."""
+        self._event_queue.put_nowait(("runtime_state", kwargs))
+
+    def _on_change_preview(self, **kwargs) -> None:
+        """Handle pending change preview events from EventBridge (Task C-2)."""
+        self._event_queue.put_nowait(("change_preview", kwargs))
+
     async def _run_agent_in_background(self, done_future: asyncio.Future) -> None:
         """Run agent.solve_task() and propagate errors to event queue."""
         try:
@@ -345,17 +454,16 @@ class RuntimeAgentService:
         for msg in self._session_history:
             memory.add(msg)
 
-        configured_model = getattr(getattr(self.llm_adapter, "provider", None), "_model", "")
-        if configured_model:
-            from loguru import logger
-            logger.debug(
-                "RuntimeAgentService building agent with provider model='{}', session_history_count={}",
-                configured_model,
-                len(self._session_history),
-            )
+        configured_model = getattr(getattr(self.llm_adapter, "provider", None), "_model", "") or "qwen-plus"
+        from loguru import logger
+        logger.debug(
+            "RuntimeAgentService building agent with provider model='{}', session_history_count={}",
+            configured_model,
+            len(self._session_history),
+        )
 
         agent = Agent(
-            model_name="",
+            model_name=configured_model,
             llm_adapter=self.llm_adapter,
             memory=memory,
             tools=tools,
@@ -365,7 +473,11 @@ class RuntimeAgentService:
         return agent
 
     def _build_tools(self) -> list:
-        """Build tool list with workspace_root injected from environment or config."""
+        """Build tool list with workspace_root resolved from formal session binding.
+
+        All file/command tools receive the same workspace_root, ensuring consistent
+        boundary enforcement across the entire tool chain.
+        """
         from app.runtime.tools.task_complete_tool import TaskCompleteTool
         from app.runtime.tools.read_file_tool import ReadFileTool
         from app.runtime.tools.list_directory_tool import ListDirectoryTool
@@ -375,13 +487,11 @@ class RuntimeAgentService:
         from app.runtime.tools.unified_diff_tool import UnifiedDiffTool
         from app.runtime.tools.write_file_tool import WriteFileTool
         from app.runtime.tools.run_command_tool import RunCommandTool
+        from app.runtime.tools.apply_change_tool import ApplyChangeTool
 
         tools = []
 
         ws_root = self.workspace_root
-        if ws_root is None:
-            import os
-            ws_root = os.environ.get("WORKSPACE_ROOT", "")
 
         for tool_cls, extra_kwargs in [
             (ReadFileTool, {"workspace_root": ws_root}),
@@ -392,6 +502,8 @@ class RuntimeAgentService:
             (UnifiedDiffTool, {"workspace_root": ws_root}),
             (WriteFileTool, {"workspace_root": ws_root}),
             (RunCommandTool, {"workspace_root": ws_root}),
+            # T3: apply_change tool for confirmed write flow
+            (ApplyChangeTool, {"workspace_root": ws_root}),
             (TaskCompleteTool, {}),
         ]:
             try:
@@ -408,7 +520,7 @@ class RuntimeAgentService:
         self,
         event_type: str,
         data: dict[str, Any],
-    ) -> MessageDeltaEvent | MessageEndEvent | MessageErrorEvent | ToolEvent | None:  # T4: +ToolEvent
+    ) -> MessageDeltaEvent | MessageEndEvent | MessageErrorEvent | ToolEvent | RuntimeStateEvent | None:  # T4 + Task A
         """Convert bridge event data to WS event, update DB in-place."""
         if event_type == "message_start":
             return None
@@ -489,6 +601,24 @@ class RuntimeAgentService:
                 stream_id=self.stream_id,
                 message_id=self._message_id,
             )
+        elif event_type == "runtime_state":  # Task A: runtime state events
+            return RuntimeStateEvent(
+                stream_id=self.stream_id,
+                message_id=self._message_id,
+                state=data.get("state", "thinking"),
+                timestamp=data.get("timestamp", ""),
+            )
+        elif event_type == "change_preview":  # Task C-2: pending change preview
+            return ChangePreviewEvent(
+                stream_id=self.stream_id,
+                message_id=self._message_id,
+                change_id=data.get("change_id", ""),
+                operation=data.get("operation", "create"),
+                path=data.get("path", ""),
+                unified_diff=data.get("unified_diff", ""),
+                status=data.get("status", "pending_confirmation"),
+                timestamp=data.get("timestamp", ""),
+            )
         return None
 
     def _create_agent_message(self) -> Message:
@@ -531,6 +661,15 @@ class RuntimeAgentService:
         self._agent_message.content = final_text
         self._agent_message.payload = {"text": final_text}
         self._agent_message.status = status
+        # Task A: Persist runtime replay nodes for minimal replay support
+        runtime_nodes = []
+        if self._bridge is not None:
+            runtime_nodes = list(self._bridge.replay_nodes)
+        if runtime_nodes:
+            metadata = dict(self._agent_message.msg_metadata or {})
+            metadata["runtime_replay"] = runtime_nodes
+            metadata["runtime_path"] = "runtime_agent_service"
+            self._agent_message.msg_metadata = metadata
         self.db.add(self._agent_message)
         self.db.commit()
 
