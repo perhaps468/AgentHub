@@ -35,7 +35,6 @@ import { useAgentStore } from '../store/module/useAgentStore'
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
 import type { ChatMessage } from '../types/agenthub'
-import eventBus from '../utils/EventBus'
 import Msg from './message-content/msg.vue'
 import loading from './message-content/loading.vue'
 
@@ -154,20 +153,39 @@ watch(
   () => sessionStore.messageMap[props.targetId]?.length ?? 0,
   (newLen, oldLen) => {
     if (newLen > oldLen) {
-      const container = chatShowAreaRef.value
-      const isNearBottom =
-        container && container.scrollTop + container.clientHeight >= container.scrollHeight - 80
-      if (isNearBottom) {
-        scrollToBottom()
-      } else {
-        newMsgCount.value += newLen - oldLen
-      }
+      scrollToBottom()
     }
   },
 )
 
+// 监听流式消息，有就滚动（AI 回复过程中实时跟随）
+watch(
+  () => sessionStore.currentStreamingMessages,
+  () => {
+    const container = chatShowAreaRef.value
+    if (container && sessionStore.currentStreamingMessages.length > 0) {
+      container.scrollTop = container.scrollHeight
+    }
+  },
+)
+
+const handleScroll = () => {
+  const container = chatShowAreaRef.value
+  if (!container) return
+  if (container.scrollTop + container.clientHeight >= container.scrollHeight - 80) {
+    newMsgCount.value = 0
+  }
+}
+
 onMounted(() => {
-  scrollToBottom()
+  nextTick(() => {
+    scrollToBottom()
+    chatShowAreaRef.value?.addEventListener('scroll', handleScroll)
+  })
+})
+
+onUnmounted(() => {
+  chatShowAreaRef.value?.removeEventListener('scroll', handleScroll)
 })
 </script>
 
