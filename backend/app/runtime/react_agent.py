@@ -1057,7 +1057,6 @@ class Agent(BaseModel):
             "decision_matrix",
             "memory_pad",
             "context_analysis",
-            "thinking",
         ):
             value = extracted.get(tag_name, "").strip()
             normalized = self._collapse_visible_text(value)
@@ -1093,55 +1092,40 @@ class Agent(BaseModel):
         semantic = re.sub(r"[#>*`_\-\s~=\[\]\(\)\.:!|]+", "", stripped)
         return len(semantic) == 0
 
-    # Chinese and English opening phrases that are likely incomplete when they appear
-    # as the sole content — these are common LLM streaming prefixes.
-    _TRUNCATED_PHRASE_PATTERNS = (
-        # Chinese: short affirmative/opening phrases (exact matches only, no punctuation suffixes)
-        ("我能",), ("可以",), ("当然",), ("好的",), ("好的，",),
-        ("我来",), ("让我",), ("请稍等",), ("首先",),
-        ("我可以",), ("我会",), ("我将",), ("没问题",),
-        ("这个问",),
-        # English: short opening phrases (exact matches only)
-        ("Sure",), ("Okay",), ("I can",), ("Let me",),
-        ("I'll",), ("Certainly",), ("Of course",),
-    )
-
     def _is_incomplete_direct_reply(self, content: str) -> bool:
-        """Detect streaming outputs that look like truncated opening phrases.
+        """Detect streaming outputs that are likely truncated.
 
-        Short affirmative/opening phrases like '我能' or 'Sure' appearing alone
-        are almost certainly incomplete streaming artifacts, not finished answers.
-        We trigger fallback to get the full response.
+        We use a length-based heuristic instead of enumerating truncated phrases:
+        - If the response is very short (≤5 chars) and lacks a sentence-ending punctuation,
+          it is almost certainly a streaming artifact that got cut off.
+        - This catches all truncation patterns without needing a blacklist.
 
-        A phrase is flagged as incomplete ONLY when the entire content equals
-        the phrase (possibly followed only by whitespace). Content that merely
-        STARTS WITH a phrase but continues with more text is NOT flagged.
+        Exceptions: Common standalone replies like "好", "行", "嗯" are excluded.
         """
         if not isinstance(content, str):
             return False
 
         stripped = content.strip()
-        # Must be short (under ~15 chars after strip) to be suspicious
-        if len(stripped) > 15:
-            return False
-
-        if stripped in {"<", "</", "<a", "<t"}:
-            return True
-
-        # Empty / whitespace-only already caught by _is_low_signal_response
         if not stripped:
             return False
 
-        # Common identity-prefix truncation in Chinese, e.g. "你是谁" -> "我是"
-        if stripped == "我是":
-            return True
+        # Only flag short responses — anything meaningful should be longer.
+        # 15-char threshold was too loose (let "床前明月光" pass through).
+        if len(stripped) > 5:
+            return False
 
-        # Exact match with any truncated phrase
-        for phrase, in self._TRUNCATED_PHRASE_PATTERNS:
-            if stripped == phrase:
-                return True
+        # Check for sentence-ending punctuation in the last character.
+        # If there's a 。！？ or similar, it's likely a complete sentence.
+        if stripped and stripped[-1] in {"。", "！", "？", "！", ".", "!", "?"}:
+            return False
 
-        return False
+        # Exclude common standalone replies that are naturally short.
+        # These are valid complete responses, not truncation artifacts.
+        if stripped in {"好", "行", "嗯", "啊", "哦", "呀", "哈", "嗯嗯", "好的"}:
+            return False
+
+        # Anything else at this length is almost certainly truncated.
+        return True
 
     def _handle_tool_not_found(self, tool_name: str) -> ObserveResponseResult:
         """Handle the case where the tool is not found."""

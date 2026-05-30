@@ -53,6 +53,7 @@ const agentStore = useAgentStore()
 const userInfoStore = useUserInfoStore()
 const chatShowAreaRef = ref<HTMLElement>()
 const newMsgCount = ref(0)
+const isFirstLoad = ref(true)  // 标记是否首次加载
 
 // Map ChatMessage (backend format) → MessageRecord (Msg component format)
 const msgRecord = computed(() => {
@@ -127,15 +128,30 @@ watch(
   () => props.targetId,
   () => {
     newMsgCount.value = 0
+    isFirstLoad.value = true  // 切换 session 时重置
   },
 )
 
 const handleLoadMore = async () => {
+  const container = chatShowAreaRef.value
   const pageInfo = sessionStore.currentPageInfo
   if (!props.targetId || !pageInfo.hasMore) return
+
+  // 加载前记录滚动高度，加载后保持相对位置
+  const oldScrollHeight = container?.scrollHeight ?? 0
+
   await sessionStore.fetchMessages(props.targetId, {
     page: pageInfo.page + 1,
     page_size: 20,
+  })
+
+  // 加载后修正滚动位置：加上新增的高度差
+  nextTick(() => {
+    const newContainer = chatShowAreaRef.value
+    if (newContainer && oldScrollHeight > 0) {
+      const heightDiff = newContainer.scrollHeight - oldScrollHeight
+      newContainer.scrollTop += heightDiff
+    }
   })
 }
 
@@ -153,7 +169,11 @@ watch(
   () => sessionStore.messageMap[props.targetId]?.length ?? 0,
   (newLen, oldLen) => {
     if (newLen > oldLen) {
-      scrollToBottom()
+      // 仅首次加载时滚动到底部，加载更多时保持当前位置
+      if (isFirstLoad.value) {
+        isFirstLoad.value = false
+        scrollToBottom()
+      }
     }
   },
 )

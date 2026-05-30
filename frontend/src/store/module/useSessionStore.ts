@@ -34,6 +34,42 @@ export interface InFlightStream {
   created_at: string
 }
 
+/**
+ * 后端 desc() 排序时，消息顺序是 [A_n, H_n, A_(n-1), H_(n-1), ...]。
+ * 本函数按对话轮次重组：每对 H+A 为一轮，轮次内 H→A，新轮在前。
+ * 输入 desc 顺序 → 输出 asc 顺序（H→A，新在下）。
+ */
+function reorganizeByRounds(messages: ChatMessage[]): ChatMessage[] {
+  const rounds: ChatMessage[][] = []
+  // 两两一组（A, H），因为 desc 时 A 排在 H 前面
+  for (let i = 0; i < messages.length; i += 2) {
+    // 假设第 i 条是 agent，第 i+1 条是 human
+    const agentMsg = messages[i]
+    const humanMsg = messages[i + 1]
+    if (agentMsg && humanMsg) {
+      // 确保 H 在 A 前
+      if (agentMsg.sender_type === 'agent' && humanMsg.sender_type === 'human') {
+        rounds.push([humanMsg, agentMsg])
+      } else if (agentMsg.sender_type === 'human' && humanMsg?.sender_type === 'agent') {
+        // 边界情况：偶数条时最后一组可能顺序反了
+        rounds.push([agentMsg, humanMsg])
+      } else {
+        // 单条情况或其他组合，直接加
+        rounds.push([agentMsg])
+        if (humanMsg) rounds.push([humanMsg])
+      }
+    } else if (agentMsg) {
+      rounds.push([agentMsg])
+    } else if (humanMsg) {
+      rounds.push([humanMsg])
+    }
+  }
+  // rounds 本身是按最新轮次在前排列的 [[H_8, A_8], [H_7, A_7], ...]
+  // reverse rounds 数组让最新沉到末尾（但不破坏每对内部的 H→A 顺序）
+  // 再 flat: [[H_1, A_1], [H_2, A_2], ...] → [H_1, A_1, H_2, A_2, ...]
+  return rounds.reverse().flat()
+}
+
 export const useSessionStore = defineStore(
   'session',
   () => {
@@ -137,19 +173,28 @@ export const useSessionStore = defineStore(
         const res = await fetchConversationMessages(sessionId, opts)
 
         if (page === 1) {
-          const updatedList: ChatMessage[] = []
+          let updatedList: ChatMessage[] = []
           for (const msg of res.items) {
-            // Skip optimistic human messages
             if (msg.metadata?.source === 'optimistic_human') {
               continue
             }
             updatedList.push(msg)
           }
-
+          // 后端 desc() 排序会导致 A 在 H 前面，按轮次重组
+          updatedList = reorganizeByRounds(updatedList)
           messageMap.value[sessionId] = updatedList
         } else {
+          // page>1 时，加载更早的消息，追加到列表顶部
           const existing = messageMap.value[sessionId] ?? []
-          messageMap.value[sessionId] = [...existing, ...res.items]
+          const newItems: ChatMessage[] = []
+          for (const msg of res.items) {
+            if (msg.metadata?.source === 'optimistic_human') {
+              continue
+            }
+            newItems.push(msg)
+          }
+          const reorganized = reorganizeByRounds(newItems)
+          messageMap.value[sessionId] = [...reorganized, ...existing]
         }
 
         messagePageMap.value[sessionId] = {
