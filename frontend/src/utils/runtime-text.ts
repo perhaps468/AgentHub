@@ -10,7 +10,8 @@ const PROTOCOL_TAGS = [
 ]
 
 function collapseWhitespace(text: string): string {
-  return text.replace(/\s+/g, ' ').trim()
+  // 保留 \n\n 作为段落分隔符，只合并同一行内的空白
+  return text.replace(/[ \t]+\n/g, '\n').replace(/[ \t]{2,}/g, ' ').trim()
 }
 
 export function normalizeRuntimeTextForDisplay(text: string | null | undefined): string {
