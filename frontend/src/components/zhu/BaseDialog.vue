@@ -1,14 +1,26 @@
 <template>
   <Teleport to="body">
-    <Transition name="dialog-fade">
+    <Transition name="dialog-pop">
       <div v-if="modelValue" class="dialog-overlay" @click.self="handleClose">
         <div class="dialog-container">
+          <!-- 装饰背景 -->
+          <div class="dialog-bg-gradient"></div>
+
           <div class="dialog-header">
-            <span class="dialog-title">{{ title }}</span>
+            <div class="header-left">
+              <span class="header-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+              <span class="dialog-title">{{ title }}</span>
+            </div>
             <button class="dialog-close" type="button" @click="handleClose">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              </svg>
+              <span class="close-icon">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+              </span>
             </button>
           </div>
 
@@ -18,8 +30,11 @@
 
           <div class="dialog-footer">
             <slot name="footer">
-              <button class="dialog-btn" type="button" @click="handleClose">取消</button>
-              <button class="dialog-btn primary" type="button" @click="handleConfirm">确定</button>
+              <button class="dialog-btn secondary" type="button" @click="handleClose">取消</button>
+              <button class="dialog-btn primary" type="button" @click="handleConfirm">
+                <span class="btn-text">确定</span>
+                <span class="btn-shine"></span>
+              </button>
             </slot>
           </div>
         </div>
@@ -50,7 +65,8 @@ const handleConfirm = () => {
 }
 </script>
 
-<style scoped>
+<style scoped lang="less">
+/* 遮罩层 */
 .dialog-overlay {
   position: fixed;
   inset: 0;
@@ -58,123 +74,302 @@ const handleConfirm = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.4);
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 20px;
 }
 
+/* 弹窗容器 */
 .dialog-container {
   position: relative;
-  width:500px;
-  height: 500px;
+  width: 520px;
+  max-width: 95vw;
+  max-height: 85vh;
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  border-radius: 20px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  box-shadow:
+    0 25px 50px -12px rgba(59, 130, 246, 0.25),
+    0 0 0 1px rgba(59, 130, 246, 0.1);
 }
 
+/* 装饰渐变背景 */
+.dialog-bg-gradient {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 140px;
+  opacity: 0.06;
+  pointer-events: none;
+}
+
+/* 头部 */
 .dialog-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 20px 24px;
   flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.04) 0%, rgba(99, 102, 241, 0.02) 100%);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 120px;
+    height: 3px;
+    border-radius: 0 3px 3px 0;
+  }
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  color: #fff;
+  box-shadow:
+    0 4px 14px rgba(59, 130, 246, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow:
+      0 4px 14px rgba(59, 130, 246, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 4px 20px rgba(59, 130, 246, 0.5),
+      0 0 30px rgba(59, 130, 246, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
 }
 
 .dialog-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: #1a1a1a;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
+/* 关闭按钮 */
 .dialog-close {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   border: none;
-  background: transparent;
-  color: #8c8c8c;
+  background: rgba(59, 130, 246, 0.08);
+  border-radius: 10px;
   cursor: pointer;
-  border-radius: 4px;
-  transition: background-color 0.2s, color 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  .close-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    transition: all 0.25s ease;
+  }
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.1);
+    transform: rotate(90deg) scale(1.05);
+
+    .close-icon {
+      color: #ef4444;
+    }
+  }
+
+  &:active {
+    transform: rotate(90deg) scale(0.95);
+  }
 }
 
-.dialog-close:hover {
-  background: #f5f5f5;
-  color: #1a1a1a;
-}
-
+/* 内容区 */
 .dialog-body {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 24px;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.02) 0%, transparent 100%);
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #3b82f6, #6366f1);
+    border-radius: 3px;
+    opacity: 0.5;
+
+    &:hover {
+      opacity: 0.8;
+    }
+  }
 }
 
+/* 底部 */
 .dialog-footer {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
-  padding: 6px 8px;
-  border-top: 1px solid #f0f0f0;
+  gap: 12px;
+  padding: 18px 24px;
   flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.03) 0%, rgba(99, 102, 241, 0.01) 100%);
+  border-top: 1px solid rgba(59, 130, 246, 0.08);
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 24px;
+    right: 24px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.15), transparent);
+  }
 }
 
+/* 按钮 */
 .dialog-btn {
-  min-width: 48px;
-  padding: 4px 10px;
-  border: 1px solid #e0e0e0;
-  border-radius: 5px;
-  background: #fff;
-  color: #262626;
-  font-size: 12px;
-  line-height: 1.5;
+  position: relative;
+  min-width: 100px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &.secondary {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(99, 102, 241, 0.06));
+    color: #64748b;
+    border: 1px solid rgba(59, 130, 246, 0.15);
+
+    &:hover {
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.1));
+      color: #3b82f6;
+      border-color: rgba(59, 130, 246, 0.3);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+    }
+
+    &:active {
+      transform: translateY(0) scale(0.98);
+    }
+  }
+
+  &.primary {
+    background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+    color: #fff;
+    box-shadow:
+      0 4px 14px rgba(59, 130, 246, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+
+    .btn-text {
+      position: relative;
+      z-index: 1;
+    }
+
+    .btn-shine {
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.4),
+        transparent
+      );
+      transition: left 0.5s ease;
+    }
+
+    &:hover {
+      transform: translateY(-3px);
+      box-shadow:
+        0 8px 25px rgba(59, 130, 246, 0.5),
+        0 0 40px rgba(59, 130, 246, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+
+      .btn-shine {
+        left: 100%;
+      }
+    }
+
+    &:active {
+      transform: translateY(0) scale(0.98);
+    }
+  }
 }
 
-.dialog-btn:hover {
-  background: #f5f5f5;
-  border-color: #c0c0c0;
+/* 弹窗动画 */
+.dialog-pop-enter-active {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  .dialog-container {
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
 }
 
-.dialog-btn.primary {
-  border-color: #1a1a1a;
-  background: #1a1a1a;
-  color: #fff;
+.dialog-pop-leave-active {
+  transition: all 0.25s ease-out;
+
+  .dialog-container {
+    transition: all 0.25s ease-out;
+  }
 }
 
-.dialog-btn.primary:hover {
-  background: #333;
-}
-
-.dialog-btn.primary:active {
-  background: #000;
-}
-
-/* Transition */
-.dialog-fade-enter-active,
-.dialog-fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.dialog-fade-enter-active .dialog-container,
-.dialog-fade-leave-active .dialog-container {
-  transition: transform 0.2s ease, opacity 0.2s ease;
-}
-
-.dialog-fade-enter-from,
-.dialog-fade-leave-to {
+.dialog-pop-enter-from {
   opacity: 0;
+
+  .dialog-container {
+    transform: scale(0.8) translateY(30px) rotateX(10deg);
+    opacity: 0;
+    filter: blur(10px);
+  }
 }
 
-.dialog-fade-enter-from .dialog-container,
-.dialog-fade-leave-to .dialog-container {
-  transform: scale(0.95);
+.dialog-pop-leave-to {
   opacity: 0;
+
+  .dialog-container {
+    transform: scale(0.9) translateY(15px);
+    opacity: 0;
+  }
 }
 </style>

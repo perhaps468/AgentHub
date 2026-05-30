@@ -10,7 +10,7 @@
             <div class="msg-username" v-if="!isOwn">
               {{ displayUser?.name || '未知用户' }}
             </div>
-            <div class="msg-role" v-if="!isOwn">
+            <div class="msg-role" v-if="isGroup">
               {{ roleLabel }}
             </div>
             <div v-if="props.msg.deliveryStatus === 'interrupted'" class="msg-status-badge interrupted">
@@ -32,7 +32,7 @@
 
 <script setup>
 import { computed } from 'vue'
-
+import { MessageSource } from '../../types/messageSource'
 import { useAgentStore } from '../../store/module/useAgentStore'
 import { useUserInfoStore } from '../../store/module/useUserStore'
 import Avatar from '../img/avatar.vue'
@@ -47,6 +47,7 @@ const props = defineProps({
 const userStore = useUserInfoStore()
 const agentStore = useAgentStore()
 const isOwn = computed(() => props.msg?.fromId === userStore.userId)
+const isGroup = computed(() => props.msg?.source === MessageSource.Group)
 const displayUser = computed(() => props.user || props.msg?.fromInfo)
 
 const roleLabel = computed(() => {

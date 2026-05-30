@@ -18,7 +18,7 @@ const props = defineProps({
   color: #ffffff;
   font-size: 10px;
   line-height: 18px;
-  border-radius: 10px;
+  border-radius: 5px;
   text-align: center;
   margin-left: 5px;
   font-weight: 600;

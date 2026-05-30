@@ -760,7 +760,7 @@ const registering = async () => {
 /* 边框流动动画 */
 @keyframes border-flow {
   0% {
-    background-position: 0% 50%;
+    background-position: 0% 0%;
   }
   100% {
     background-position: 100% 50%;

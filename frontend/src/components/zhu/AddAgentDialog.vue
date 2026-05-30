@@ -67,14 +67,60 @@ const confirmAdd = () => {
 }
 </script>
 
-<style scoped>
+<style scoped lang="less">
 .edit-profile-form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-el-form{
- width: 100%;
-height: 100%;
+  gap: 18px;
+
+  :deep(.el-form-item) {
+    margin-bottom: 0;
+
+    .el-form-item__label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #3b82f6;
+      padding-bottom: 10px;
+      position: relative;
+
+      &::before {
+        display: none;
+      }
+    }
+
+    .el-input__wrapper {
+      border-radius: 12px;
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.15);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      padding: 12px 16px;
+
+      &:hover {
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+      }
+
+      &:focus-within {
+        box-shadow:
+          0 0 0 2px rgba(59, 130, 246, 0.3),
+          0 4px 14px rgba(59, 130, 246, 0.15);
+      }
+    }
+
+    .el-textarea__inner {
+      border-radius: 12px;
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.15);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      padding: 14px 16px;
+
+      &:hover {
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+      }
+
+      &:focus {
+        box-shadow:
+          0 0 0 2px rgba(59, 130, 246, 0.3),
+          0 4px 14px rgba(59, 130, 246, 0.15);
+      }
+    }
+  }
 }
 </style>

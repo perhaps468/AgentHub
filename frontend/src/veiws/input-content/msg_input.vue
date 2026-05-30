@@ -1,6 +1,33 @@
 <template>
   <div class="msg-input-wrapper">
     <teleport to="#app">
+      <!-- 表情面板 -->
+      <transition name="emoji-slide">
+        <div v-if="showEmoji" class="emoji-panel">
+          <div class="emoji-header">
+            <span class="emoji-title">表情</span>
+            <button type="button" class="emoji-close" @click="showEmoji = false">
+              <svg viewBox="0 0 16 16" fill="none">
+                <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
+          <div class="emoji-grid">
+            <button
+              v-for="e in emojis"
+              :key="e.icon"
+              type="button"
+              class="emoji-item"
+              :title="e.name"
+              @click="insertEmoji(e.icon)"
+            >
+              {{ e.icon }}
+            </button>
+          </div>
+        </div>
+      </transition>
+
+      <!-- @ 提及弹窗 -->
       <div
         v-if="isAtPopup && showMentionsPopup && userList.length > 0"
         class="at-mentions-popup"
@@ -18,30 +45,67 @@
         </div>
       </div>
     </teleport>
-    <div
-      ref="inputRef"
-      tabindex="0"
-      contenteditable
-      class="msg-input"
-      :class="{ 'is-empty': !hasContent }"
-      :data-placeholder="placeholder || '输入消息...'"
-      @keyup="onInputKeyUp"
-      @keydown="onInputKeyDown"
-      @input="onInputText"
-      @blur="onInputBlur"
-      @focus="onInputFocus"
-    ></div>
+
+    <div class="input-block">
+      <div
+        ref="inputRef"
+        tabindex="0"
+        contenteditable
+        class="msg-input"
+        :class="{ 'is-empty': !hasContent }"
+        :data-placeholder="placeholder || '输入消息...'"
+        @keyup="onInputKeyUp"
+        @keydown="onInputKeyDown"
+        @input="onInputText"
+        @blur="onInputBlur"
+        @focus="onInputFocus"
+      ></div>
+      <!-- Toolbar -->
+      <div class="composer-toolbar" role="toolbar" aria-label="消息工具">
+        <button type="button" class="tool-btn" aria-label="表情" title="表情" @click="showEmoji = !showEmoji">
+          <span class="tool-icon">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M8.5 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="currentColor"/>
+              <path d="M15.5 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="currentColor"/>
+              <path d="M8.5 16.5c.8 1 2.2 1.5 3.5 1.5s2.7-.5 3.5-1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="tool-ripple"></span>
+        </button>
+        <button type="button" class="tool-btn" aria-label="附件" title="发送文件" @click="triggerFileUpload">
+          <span class="tool-icon">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="tool-ripple"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 隐藏的文件上传 input -->
+    <input
+      ref="fileInputRef"
+      type="file"
+      class="file-input-hidden"
+      multiple
+      @change="handleFileSelect"
+    />
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useThemeStore } from '../../store/module/useThemeStore'
+import emojis from '../../utils/emoji/emoji'
 const themeStore = useThemeStore()
 
 const inputRef = ref()
+const fileInputRef = ref()
 const popupPosition = ref({ x: 0, y: 0 })
 const showMentionsPopup = ref(false)
+const showEmoji = ref(false)
 const searchKey = ref('')
 const selectedUserIndex = ref(0)
 
@@ -56,7 +120,7 @@ const selection = ref({
   offset: 0,
   text: '',
 })
-const emit = defineEmits(['send'])
+const emit = defineEmits(['send', 'file-selected'])
 
 const props = defineProps({
   user: Object,
@@ -537,8 +601,22 @@ defineExpose({
     return nodeList;
   },
   clear,
-   insertEmoji
-  })
+  insertEmoji
+})
+
+// 文件上传
+const triggerFileUpload = () => {
+  fileInputRef.value?.click()
+}
+
+const handleFileSelect = (event) => {
+  const files = event.target.files
+  if (files && files.length > 0) {
+    emit('file-selected', Array.from(files))
+  }
+  // 清空 input 以便再次选择相同文件
+  event.target.value = ''
+}
 </script>
 
 <style scoped lang="less">
@@ -546,16 +624,33 @@ defineExpose({
   position: relative;
   width: 100%;
 
+  .input-block {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background: rgb(var(--surface-color));
+    border-radius: var(--radius-lg);
+    border: 1px solid rgb(var(--border-color));
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:focus-within {
+      border-color: rgba(0, 112, 243, 0.4);
+      box-shadow:
+        0 0 0 3px rgba(0, 112, 243, 0.08),
+        0 4px 12px rgba(0, 112, 243, 0.1);
+          }
+        }
+
   .msg-input {
-    width: 100%;
+    flex: 1;
     min-height: 40px;
     max-height: 140px;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 10px 14px;
+    padding: 10px 10px;
     border-radius: var(--radius-md);
-    border: 1px solid rgb(var(--border-color));
-    background: rgb(var(--surface-muted));
+    border: none;
+    background: transparent;
     color: rgb(var(--text-color));
     font-size: 14px;
     line-height: 1.6;
@@ -566,13 +661,232 @@ defineExpose({
     word-break: break-all;
     transition: all 0.15s ease;
     cursor: text;
+  }
 
-    &:focus {
-      border-color: rgb(var(--primary-color));
-      background: rgb(var(--surface-color));
-      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  /* Toolbar */
+  .composer-toolbar {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+    flex-shrink: 0;
+    padding: 4px 2px;
+  }
+
+  .tool-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 20px;
+    color: rgb(var(--text-muted));
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    overflow: hidden;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+    .tool-icon {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+
+      svg {
+        width: 18px;
+        height: 18px;
+        transition: transform 0.2s ease;
+      }
+    }
+
+    .tool-ripple {
+      position: absolute;
+      inset: 0;
+      border-radius: 10px;
+      opacity: 0;
+      transform: scale(0.8);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 10px;
+      opacity: 0;
+      transform: scale(0);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    &:hover {
+      color: rgb(var(--primary-color));
+      border: 1px solid rgba(0, 112, 243, 0.4);
+      transform: translateY(-1px);
+
+      .tool-icon svg {
+        transform: scale(1.1);
+      }
+
+      .tool-ripple {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      &::before {
+        opacity: 0.5;
+        transform: scale(1);
+      }
+    }
+
+    &:active {
+      transform: translateY(0) scale(0.96);
+
+      .tool-icon svg {
+        transform: scale(0.95);
+      }
     }
   }
+}
+
+/* 隐藏的文件上传 input */
+.file-input-hidden {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 表情面板 */
+.emoji-panel {
+  position: fixed;
+  right: 10%;
+  bottom: 100px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  width: 340px;
+  max-height: 320px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 16px;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  box-shadow:
+    0 20px 40px rgba(99, 102, 241, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.emoji-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.08);
+
+  .emoji-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgb(var(--text-primary));
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .emoji-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: none;
+    background: rgba(99, 102, 241, 0.06);
+    color: rgb(var(--text-muted));
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.1);
+      color: #ef4444;
+    }
+  }
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  padding: 12px;
+  overflow-y: auto;
+  max-height: 260px;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 2px;
+  }
+}
+
+.emoji-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  font-size: 22px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:hover {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08));
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+  }
+
+  &:active {
+    transform: scale(0.9);
+  }
+}
+
+/* 表情面板动画 */
+.emoji-slide-enter-active,
+.emoji-slide-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.emoji-slide-enter-from,
+.emoji-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(20px) scale(0.9);
+}
+
+.emoji-slide-enter-to,
+.emoji-slide-leave-from {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
 }
 
 .mention-button {
