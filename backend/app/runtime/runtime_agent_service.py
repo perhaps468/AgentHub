@@ -27,6 +27,8 @@ from sqlalchemy.orm import Session
 
 from app.models.message import Message
 from app.models.session import utcnow
+from app.observability.audit_models import AuditContext
+from app.observability.audit_recorder import get_audit_recorder
 from app.runtime.context_hygiene import sanitize_history_messages
 from app.runtime.event_bridge import (
     EventBridge,
@@ -187,6 +189,39 @@ class RuntimeAgentService:
         self._error_emitted: bool = False  # prevent double-yielding error events
         self._pending_change_ids: set[str] = set()
 
+        # Audit: Create audit context for this session
+        self._audit_context = AuditContext(
+            session_id=session_id,
+            stream_id=self.stream_id,
+            agent_role=agent_role,
+            provider="qwen",
+            model="",
+        )
+        # Initialize audit recorder and set context
+        self._recorder = get_audit_recorder()
+
+    def _setup_audit_context(self) -> None:
+        """Set up audit context before streaming starts."""
+        # Update context with resolved workspace root
+        self._audit_context.session_id = self.session_id
+        self._audit_context.stream_id = self.stream_id
+        self._audit_context.agent_role = self.agent_role
+        self._audit_context.model = self._get_model_name()
+        # Set context in the recorder for propagation
+        self._recorder.set_context(self._audit_context)
+
+    def _get_model_name(self) -> str:
+        """Get the model name from the LLM adapter."""
+        try:
+            provider = getattr(self.llm_adapter, "provider", None)
+            if provider is not None:
+                model = getattr(provider, "_model", "")
+                if model:
+                    return model
+        except Exception:
+            pass
+        return "qwen-plus"
+
     def _resolve_workspace_root(self, explicit_root: str | None) -> str:
         """Resolve workspace root from formal session binding, with fallback hierarchy.
 
@@ -268,6 +303,16 @@ class RuntimeAgentService:
         """
         loop = asyncio.get_running_loop()
         done_future: asyncio.Future = asyncio.get_running_loop().create_future()
+
+        # Audit: Set up audit context and record session start
+        self._setup_audit_context()
+        self._recorder.record_runtime_session_start(
+            user_message=self.user_message,
+            workspace_root=self.workspace_root,
+            agent_role=self.agent_role,
+            model=self._get_model_name(),
+            context=self._audit_context,
+        )
 
         self._bridge = EventBridge(
             on_message_start=self._on_message_start,
@@ -377,14 +422,44 @@ class RuntimeAgentService:
 
     def _on_tool_event(self, **kwargs) -> None:
         """Handle structured tool events from EventBridge (T4)."""
+        # Audit: Record tool events
+        status = kwargs.get("status", "started")
+        tool_name = kwargs.get("tool_name", "unknown")
+        if status == "started":
+            self._recorder.record_tool_call_start(
+                tool_name=tool_name,
+                arguments=kwargs.get("arguments", {}),
+                context=self._audit_context,
+            )
+        else:
+            self._recorder.record_tool_call_finish(
+                tool_name=tool_name,
+                arguments=kwargs.get("arguments", {}),
+                response=kwargs.get("response", ""),
+                context=self._audit_context,
+            )
         self._event_queue.put_nowait(("tool_event", kwargs))
 
     def _on_runtime_state(self, **kwargs) -> None:
         """Handle runtime state events from EventBridge (Task A)."""
+        # Audit: Record runtime state changes
+        self._recorder.record_runtime_state(
+            state=kwargs.get("state", "thinking"),
+            context=self._audit_context,
+        )
         self._event_queue.put_nowait(("runtime_state", kwargs))
 
     def _on_change_preview(self, **kwargs) -> None:
         """Handle pending change preview events from EventBridge (Task C-2)."""
+        # Audit: Record change preview events
+        self._recorder.record_change_preview(
+            change_id=kwargs.get("change_id", ""),
+            operation=kwargs.get("operation", "create"),
+            path=kwargs.get("path", ""),
+            unified_diff=kwargs.get("unified_diff", ""),
+            status=kwargs.get("status", "pending_confirmation"),
+            context=self._audit_context,
+        )
         self._event_queue.put_nowait(("change_preview", kwargs))
 
     async def _run_agent_in_background(self, done_future: asyncio.Future) -> None:
@@ -545,6 +620,12 @@ class RuntimeAgentService:
             # Detect error strings returned by agent when LLM fails
             if isinstance(result, str) and result.startswith("Error:"):
                 self._finalize_agent_message("failed")
+                # Audit: Record message end with error status
+                self._recorder.record_message_end(
+                    final_content=result,
+                    status="failed",
+                    context=self._audit_context,
+                )
                 return MessageErrorEvent(
                     agent_role=self.agent_role,
                     stream_id=self.stream_id,
@@ -555,6 +636,12 @@ class RuntimeAgentService:
             # Also check accumulated text for error prefix
             if isinstance(accumulated, str) and accumulated.startswith("Error:"):
                 self._finalize_agent_message("failed")
+                # Audit: Record message end with error status
+                self._recorder.record_message_end(
+                    final_content=accumulated,
+                    status="failed",
+                    context=self._audit_context,
+                )
                 return MessageErrorEvent(
                     agent_role=self.agent_role,
                     stream_id=self.stream_id,
@@ -579,6 +666,12 @@ class RuntimeAgentService:
                     str(final_text)[:500].replace("\n", "\\n"),
                 )
             self._finalize_agent_message("completed", final_content=final_text)
+            # Audit: Record successful message end
+            self._recorder.record_message_end(
+                final_content=final_text or "",
+                status="completed",
+                context=self._audit_context,
+            )
             return MessageEndEvent(
                 agent_role=self.agent_role,
                 stream_id=self.stream_id,
@@ -588,6 +681,12 @@ class RuntimeAgentService:
             )
         elif event_type == "message_error":
             self._mark_message_failed()
+            # Audit: Record message error
+            self._recorder.record_message_error(
+                error_code=data.get("error_code", "runtime_error"),
+                error_message=data.get("error_message", ""),
+                context=self._audit_context,
+            )
             return MessageErrorEvent(
                 agent_role=self.agent_role,
                 stream_id=self.stream_id,

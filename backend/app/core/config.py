@@ -28,6 +28,10 @@ class Settings:
     qwen_api_key: str | None
     qwen_base_url: str
     qwen_model: str
+    # Audit settings
+    audit_enabled: bool
+    audit_log_path: str
+    audit_log_full_content: bool
 
 
 def get_settings() -> Settings:
@@ -44,4 +48,11 @@ def get_settings() -> Settings:
             "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
         ),
         qwen_model=os.getenv("QWEN_MODEL", "qwen-plus"),
+        # Audit configuration
+        audit_enabled=os.getenv("AUDIT_ENABLED", "true").lower() in ("true", "1", "yes"),
+        audit_log_path=os.getenv(
+            "AUDIT_LOG_PATH", "backend/.audit/llm_traces.jsonl"
+        ),
+        audit_log_full_content=os.getenv("AUDIT_LOG_FULL_CONTENT", "true").lower()
+        in ("true", "1", "yes"),
     )

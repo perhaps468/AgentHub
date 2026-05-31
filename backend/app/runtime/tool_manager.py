@@ -131,6 +131,21 @@ class ToolManager(BaseModel):
 
             value = provided_args[arg_name]
 
+            # Treat empty strings as "not provided" — fall back to default
+            if isinstance(value, str) and not value.strip():
+                if required:
+                    raise ValueError(f"Missing required argument: {arg_name}")
+                if default is None:
+                    continue
+                if arg_type in type_conversion:
+                    try:
+                        converted_args[arg_name] = type_conversion[arg_type](default)
+                    except (ValueError, TypeError):
+                        converted_args[arg_name] = default
+                else:
+                    converted_args[arg_name] = default
+                continue
+
             if arg_type in type_conversion:
                 try:
                     converted = type_conversion[arg_type](value)
