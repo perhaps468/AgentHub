@@ -446,9 +446,9 @@ class EventBridge:
             # Forward as task_solve_end so the WS layer receives message_end.
             # task_complete data uses "response" for the answer; task_solve_end uses "result".
             # Extract the answer and pass it as "result" so _emit_message_end works.
+            # Do NOT append to _accumulated_text — it already holds the correct final content
+            # (from model_delta streaming + fallback), while "response" may be truncated.
             response_text = data.get("response", "")
-            if response_text:
-                self._accumulated_text += response_text
             self._emit_message_end({**data, "result": response_text})
         # Other tool_* events (validation, etc.) are silently ignored
 

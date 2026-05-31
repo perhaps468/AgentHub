@@ -1,11 +1,17 @@
 <template>
+  <!-- 三栏布局：左侧列表区 | 中间聊天区 | 右侧预览区 -->
   <div class="workspace">
+    <!-- 动态背景光晕效果 -->
     <div class="glow-orb glow-orb-1"></div>
     <div class="glow-orb glow-orb-2"></div>
     <div class="glow-orb glow-orb-3"></div>
+
+    <!-- 装饰性网格点阵 -->
     <div class="grid-pattern"></div>
 
+    <!-- 玻璃态主容器 -->
     <div class="glass-container" :class="{ 'sidebar-collapsed': isCollapsed }">
+      <!-- 左侧列表区 -->
       <LeftSidebarArea
         :show-left="showLeft"
         :is-collapsed="isCollapsed"
@@ -37,6 +43,7 @@
         @toggle-collapse="isCollapsed = !isCollapsed"
       />
 
+      <!-- 中间聊天区 -->
       <ChatWorkspace
         :current-session="sessionStore.currentSession"
         :current-session-id="sessionStore.currentSessionId || ''"
@@ -54,18 +61,28 @@
         @cancel-change="handleCancelChange"
       />
 
-      <PreviewPanel :preview-state="previewState" @close="closePreview" />
+      <!-- 右侧预览区 -->
+      <PreviewPanel
+        :preview-state="previewState"
+        @close="closePreview"
+      />
     </div>
   </div>
 
+  <!-- 用户资料编辑弹窗 -->
   <UserProfileDialog
     v-model="showEditProfileDialog"
     :user="currentUser"
     @confirm="handleProfileUpdate"
   />
 
-  <AddAgentDialog v-model="showAddAgentDialog" @confirm="handleAddAgent" />
+  <!-- 添加自建 Agent 弹窗 -->
+  <AddAgentDialog
+    v-model="showAddAgentDialog"
+    @confirm="handleAddAgent"
+  />
 
+  <!-- 新建对话弹窗 -->
   <NewConversationDialog
     v-model="showNewConversationDialog"
     :agents="sidebarAgents"
@@ -75,7 +92,12 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+/**
+ * zhu.vue - 页面容器
+ * 高级玻璃态设计，白色为主，带动态效果
+ * 结合 V1 完整功能 + V3 清晰结构
+ */
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { applyPendingChange } from '../api/modules/pendingChanges'
@@ -94,7 +116,7 @@ import type {
   Workspace,
 } from '../types/agenthub'
 import { getWsClientReconnectAttempt, wsClient } from '../utils/ws-client'
-import { useToast } from '../veiws/useToast'
+import { useToast } from '../views/useToast'
 import AddAgentDialog from './zhu/AddAgentDialog.vue'
 import ChatWorkspace from './zhu/ChatWorkspace.vue'
 import LeftSidebarArea from './zhu/LeftSidebarArea.vue'
@@ -102,41 +124,60 @@ import NewConversationDialog from './zhu/NewConversationDialog.vue'
 import PreviewPanel from './zhu/PreviewPanel.vue'
 import UserProfileDialog from './zhu/UserProfileDialog.vue'
 
+// ==================== Store ====================
 const userInfoStore = useUserInfoStore()
 const sessionStore = useSessionStore()
 const agentStore = useAgentStore()
 const router = useRouter()
 const showToast = useToast()
 
+// ==================== 布局状态 ====================
+/** 左侧栏显示开关（移动端控制） */
 const showLeft = ref(true)
+
+/** 左侧栏收起状态 */
 const isCollapsed = ref(false)
+
+/** 左侧栏当前面板：消息列表 / Agent 列表 */
 const activeSidebarPanel = ref<SidebarPanel>('messages')
+
+// ==================== 搜索状态 ====================
+/** 消息列表搜索关键字 */
 const searchValue = ref('')
+/** Agent 列表搜索关键字 */
 const agentSearchValue = ref('')
+
+// ==================== 用户弹框 & 编辑资料 ====================
+/** 用户信息弹框显隐 */
 const showUserPopover = ref(false)
+/** 编辑资料弹框显隐 */
 const showEditProfileDialog = ref(false)
+
+// ==================== 新建对话 ====================
+/** 新建对话弹框显隐 */
 const showNewConversationDialog = ref(false)
+
+// ==================== 添加自建 Agent ====================
+/** 添加 Agent 弹框显隐 */
 const showAddAgentDialog = ref(false)
-const currentWorkspace = ref<Workspace | null>(null)
+
+// ==================== 发送状态 ====================
+/** 正在发送消息（显示 AI 回复 loading） */
 const isSendLoading = ref(false)
+
+// ==================== 预览状态 ====================
+/** 右侧预览区状态 */
 const previewState = ref<PreviewState>({ type: 'empty', title: '' })
+
+// ==================== Agent 列表选中 ====================
+/** 当前选中的 Agent ID（用于高亮） */
 const selectedAgentId = ref('')
 
-const filteredSessions = computed(() => {
-  const list = sessionStore.sessionList ?? []
-  if (!searchValue.value) return list
-  const q = searchValue.value.toLowerCase()
-  return list.filter(
-    (session) =>
-      session.title?.toLowerCase().includes(q) ||
-      session.description?.toLowerCase().includes(q),
-  )
-})
+// ==================== 工作空间 ====================
+/** 当前会话的工作空间 */
+const currentWorkspace = ref<Workspace | null>(null)
 
-const pendingChanges = computed<PendingChange[]>(() => {
-  return sessionStore.streamState.sessionPendingChanges.value
-})
-
+// ==================== Mock Agent 数据 ====================
 const sidebarAgents = ref<SidebarAgent[]>([
   {
     id: 'claude-code',
@@ -181,34 +222,59 @@ const sidebarAgents = ref<SidebarAgent[]>([
   },
 ])
 
+// ==================== 计算属性 ====================
+
+/** 会话列表过滤（按搜索关键字过滤标题和摘要） */
+const filteredSessions = computed(() => {
+  const list = sessionStore.sessionList ?? []
+  if (!searchValue.value) return list
+  const q = searchValue.value.toLowerCase()
+  return list.filter(
+    (s) =>
+      s.title?.toLowerCase().includes(q) ||
+      s.description?.toLowerCase().includes(q),
+  )
+})
+
+/** 待确认的代码变更 */
+const pendingChanges = computed<PendingChange[]>(() => {
+  return sessionStore.streamState.sessionPendingChanges.value
+})
+
+/** 当前用户信息 */
 const currentUser = computed<SidebarUser>(() => ({
   id: userInfoStore.userId || 'user-1',
   name: userInfoStore.userName || '管理员',
   avatar: userInfoStore.avatar || '',
-  email:
-    (userInfoStore as unknown as { email?: string }).email || 'admin@example.com',
-  bio:
-    (userInfoStore as unknown as { bio?: string }).bio || 'AgentHub 用户',
+  email: (userInfoStore as unknown as { email?: string }).email || 'admin@example.com',
+  bio: (userInfoStore as unknown as { bio?: string }).bio || 'AgentHub 用户',
 }))
 
+/** WebSocket 重连次数 */
 const reconnectAttempt = computed(() => getWsClientReconnectAttempt())
 
+/** Agent 列表过滤 */
 const filteredAgentList = computed(() => {
   if (!agentSearchValue.value) return sidebarAgents.value
   const q = agentSearchValue.value.toLowerCase()
   return sidebarAgents.value.filter(
-    (agent) =>
-      agent.name.toLowerCase().includes(q) ||
-      agent.description?.toLowerCase().includes(q) ||
-      agent.capabilityTags.some((tag) => tag.toLowerCase().includes(q)),
+    (a) =>
+      a.name.toLowerCase().includes(q) ||
+      a.description?.toLowerCase().includes(q) ||
+      a.capabilityTags.some((t) => t.toLowerCase().includes(q)),
   )
 })
 
+// ==================== 工具函数 ====================
+
+/**
+ * 格式化 ISO 时间字符串为"月日 时:分"格式
+ */
 const formatTime = (iso: string) => {
   if (!iso) return ''
   try {
-    const date = new Date(iso)
-    return date.toLocaleString('zh-CN', {
+    const d = new Date(iso)
+    return d.toLocaleString('zh-CN', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -219,6 +285,9 @@ const formatTime = (iso: string) => {
   }
 }
 
+// ==================== 待确认变更操作 ====================
+
+/** 确认应用代码变更 */
 const handleConfirmChange = async (changeId: string) => {
   try {
     const sessionId = sessionStore.currentSessionId || undefined
@@ -232,23 +301,27 @@ const handleConfirmChange = async (changeId: string) => {
   }
 }
 
+/** 取消代码变更 */
 const handleCancelChange = (changeId: string) => {
   sessionStore.streamState.removePendingChange(changeId)
   showToast('已取消写入')
 }
+
+// ==================== 加载工作空间 ====================
 
 async function loadSessionWorkspace(session: ConversationItem | null) {
   if (!session?.workspace_id) {
     currentWorkspace.value = null
     return
   }
-
   try {
     currentWorkspace.value = await fetchWorkspace(session.workspace_id)
   } catch {
     currentWorkspace.value = null
   }
 }
+
+// ==================== 恢复待确认变更 ====================
 
 async function restorePendingChangesForCurrentSession(
   sessionId: string,
@@ -264,20 +337,14 @@ async function restorePendingChangesForCurrentSession(
   }
 }
 
-watch(
-  () => sessionStore.currentSession,
-  (session) => {
-    void loadSessionWorkspace(session)
-  },
-  { immediate: true },
-)
+// ==================== 会话操作 ====================
 
+/** 选中会话 */
 const selectSession = async (item: ConversationItem) => {
   if (sessionStore.currentSessionId === item.id) {
     showLeft.value = false
     return
   }
-
   wsClient.disconnect()
   sessionStore.clearMessages(item.id)
   sessionStore.setCurrentSessionId(item.id)
@@ -288,6 +355,7 @@ const selectSession = async (item: ConversationItem) => {
   showLeft.value = false
 }
 
+/** 置顶 / 取消置顶会话 */
 const togglePin = async (item: ConversationItem) => {
   try {
     await sessionStore.updateSession(item.id, { is_pinned: !item.is_pinned })
@@ -296,6 +364,7 @@ const togglePin = async (item: ConversationItem) => {
   }
 }
 
+/** 归档 / 取消归档会话 */
 const toggleArchive = async (item: ConversationItem) => {
   try {
     await sessionStore.updateSession(item.id, { is_archived: !item.is_archived })
@@ -304,6 +373,7 @@ const toggleArchive = async (item: ConversationItem) => {
   }
 }
 
+/** 删除会话 */
 const handleDeleteSession = async (item: ConversationItem) => {
   try {
     await sessionStore.deleteSession(item.id)
@@ -313,6 +383,7 @@ const handleDeleteSession = async (item: ConversationItem) => {
   }
 }
 
+/** 创建新会话 */
 const handleCreateConversation = async (payload: {
   mode: ConversationMode
   title: string
@@ -357,10 +428,11 @@ const handleCreateConversation = async (payload: {
   }
 }
 
+/** 选择 Agent */
 const handleSelectAgent = (agent: SidebarAgent) => {
   selectedAgentId.value = agent.id
   const existing = sessionStore.sessionList.find(
-    (session) => session.title?.includes(agent.name) && session.mode === 'single',
+    (s) => s.title?.includes(agent.name) && s.mode === 'single',
   )
   if (existing) {
     void selectSession(existing)
@@ -369,6 +441,9 @@ const handleSelectAgent = (agent: SidebarAgent) => {
   showNewConversationDialog.value = true
 }
 
+// ==================== 发送消息 ====================
+
+/** 发送消息 */
 const handleSend = async (content: string) => {
   const sessionId = sessionStore.currentSessionId
   if (!sessionId) {
@@ -398,31 +473,40 @@ const handleSend = async (content: string) => {
   }
 }
 
+/** 重试连接 */
 const handleRetry = () => {
   wsClient.manualRetry()
 }
 
+// ==================== 用户资料 ====================
+
+/** 打开编辑资料弹框 */
 const handleEditProfile = () => {
   showUserPopover.value = false
   showEditProfileDialog.value = true
 }
 
+/** 提交资料更新 */
 const handleProfileUpdate = (data: Partial<SidebarUser>) => {
   if (data.name) userInfoStore.setUserName(data.name)
   if (data.email) {
-    ;(userInfoStore as unknown as { setEmail: (value: string) => void }).setEmail(
-      data.email,
-    )
+    ;(userInfoStore as unknown as { setEmail: (value: string) => void }).setEmail(data.email)
   }
   if (data.avatar !== undefined) userInfoStore.setUserAvatar(data.avatar)
   showToast('资料已更新')
 }
 
+// ==================== 添加自建 Agent ====================
+
+/** 添加新 Agent */
 const handleAddAgent = (newAgent: SidebarAgent) => {
   sidebarAgents.value.push(newAgent)
   showAddAgentDialog.value = false
 }
 
+// ==================== 登出 ====================
+
+/** 退出登录 */
 const handlerLogout = () => {
   showUserPopover.value = false
   wsClient.disconnect()
@@ -435,7 +519,9 @@ const handlerLogout = () => {
   router.push('/login')
 }
 
-const restoreCurrentSession = async () => {
+// ==================== 恢复当前会话 ====================
+
+async function restoreCurrentSession() {
   const sessionId = sessionStore.currentSessionId
   if (!sessionId) return
   await sessionStore.fetchSessionDetail(sessionId)
@@ -444,19 +530,27 @@ const restoreCurrentSession = async () => {
   wsClient.connect(sessionId)
 }
 
+// ==================== 预览区 ====================
+
+/** 关闭预览区 */
 const closePreview = () => {
   previewState.value = { type: 'empty', title: '' }
 }
 
+// ==================== 生命周期 ====================
+
 onMounted(async () => {
+  // 加载会话列表
   await sessionStore.fetchSessionList({
     owner_id: userInfoStore.userId || 'dev_user',
     page: 1,
     page_size: 50,
   })
 
+  // 加载默认 Agent
   agentStore.fetchDefaultAgent()
 
+  // 监听 WebSocket 状态变化
   wsClient.onStateChange((state) => {
     sessionStore.setConnectionState(state)
     if (state === 'connected') {
@@ -468,19 +562,16 @@ onMounted(async () => {
     }
   })
 
+  // 监听 WebSocket 消息
   wsClient.onReceiveMessage((msg) => {
     const currentSessionId = sessionStore.currentSessionId
     if (!currentSessionId) return
 
     if (msg.type === 'message_start') {
       sessionStore.streamState.handleMessageStart(msg, currentSessionId)
-      return
-    }
-    if (msg.type === 'message_delta') {
+    } else if (msg.type === 'message_delta') {
       sessionStore.streamState.handleMessageDelta(msg, currentSessionId)
-      return
-    }
-    if (msg.type === 'message_end') {
+    } else if (msg.type === 'message_end') {
       const stream = sessionStore.streamState.handleMessageEnd(msg, currentSessionId)
       if (stream) {
         sessionStore.mergeOrUpdateMessage(currentSessionId, {
@@ -497,43 +588,27 @@ onMounted(async () => {
         })
       }
       isSendLoading.value = false
-      return
-    }
-    if (msg.type === 'message_error') {
+    } else if (msg.type === 'message_error') {
       sessionStore.streamState.handleMessageError(msg, currentSessionId)
       isSendLoading.value = false
-      return
-    }
-    if (msg.type === 'tool_event') {
+    } else if (msg.type === 'tool_event') {
       sessionStore.streamState.handleToolEvent(msg, currentSessionId)
-      return
-    }
-    if (msg.type === 'runtime_state') {
+    } else if (msg.type === 'runtime_state') {
       sessionStore.streamState.handleRuntimeState(msg, currentSessionId)
-      return
-    }
-    if (msg.type === 'change_preview') {
+    } else if (msg.type === 'change_preview') {
       sessionStore.streamState.handleChangePreview(msg, currentSessionId)
-      return
-    }
-    if (msg.type === 'apply_result') {
+    } else if (msg.type === 'apply_result') {
       sessionStore.streamState.handleApplyResult(msg)
-      return
-    }
-    if (msg.type === 'preview_result') {
+    } else if (msg.type === 'preview_result') {
       previewState.value = {
         type: 'web',
         title: 'Runtime Preview',
         url: msg.preview_url || '',
         description: msg.status || 'ready',
       }
-      return
-    }
-    if (msg.type === 'repair_state') {
+    } else if (msg.type === 'repair_state') {
       sessionStore.streamState.handleRepairState(msg)
-      return
-    }
-    if (msg.type === 'error') {
+    } else if (msg.type === 'error') {
       console.error('[WsClient] Server error:', msg.error_code, msg.error_message)
       isSendLoading.value = false
     }
@@ -548,6 +623,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ==================== 工作区容器 ==================== */
 .workspace {
   position: relative;
   height: 100vh;
@@ -555,6 +631,7 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #ffffff 0%, #f0f4ff 50%, #e8f0fe 100%);
 }
 
+/* ==================== 动态光晕效果 ==================== */
 .glow-orb {
   position: absolute;
   border-radius: 50%;
@@ -564,76 +641,65 @@ onUnmounted(() => {
 }
 
 .glow-orb-1 {
-  top: -200px;
-  right: -100px;
   width: 600px;
   height: 600px;
   background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+  top: -200px;
+  right: -100px;
   animation-delay: 0s;
 }
 
 .glow-orb-2 {
-  bottom: -150px;
-  left: -100px;
   width: 500px;
   height: 500px;
   background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, transparent 70%);
+  bottom: -150px;
+  left: -100px;
   animation-delay: -4s;
 }
 
 .glow-orb-3 {
-  top: 40%;
-  left: 30%;
   width: 400px;
   height: 400px;
   background: radial-gradient(circle, rgba(6, 182, 212, 0.1) 0%, transparent 70%);
+  top: 40%;
+  left: 30%;
   transform: translate(-50%, -50%);
   animation-delay: -7s;
 }
 
 @keyframes float {
-  0%,
-  100% {
-    transform: translate(0, 0) scale(1);
-  }
-
-  33% {
-    transform: translate(40px, -40px) scale(1.08);
-  }
-
-  66% {
-    transform: translate(-30px, 30px) scale(0.95);
-  }
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, -40px) scale(1.08); }
+  66% { transform: translate(-30px, 30px) scale(0.95); }
 }
 
+/* ==================== 装饰性网格点阵 ==================== */
 .grid-pattern {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(
-    circle at 1px 1px,
-    rgba(59, 130, 246, 0.06) 1px,
-    transparent 0
-  );
+  background-image: radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.06) 1px, transparent 0);
   background-size: 50px 50px;
   pointer-events: none;
 }
 
+/* ==================== 玻璃态主容器 ==================== */
 .glass-container {
   position: relative;
   z-index: 10;
-  display: grid;
   height: 100%;
+  display: grid;
+  grid-template-columns: 400px minmax(0, 1fr) 340px;
   gap: 0;
   padding: 16px;
   box-sizing: border-box;
-  grid-template-columns: 400px minmax(0, 1fr) 340px;
 }
 
 .glass-container > :deep(*) {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow:
     0 8px 32px rgba(59, 130, 246, 0.08),
     0 2px 8px rgba(0, 0, 0, 0.04),
@@ -648,31 +714,27 @@ onUnmounted(() => {
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
-@media (max-width: 1400px) {
-  .glass-container {
-    padding: 12px;
-    grid-template-columns: 72px 300px minmax(0, 1fr) 300px;
-  }
-}
-
-@media (max-width: 1200px) {
-  .glass-container {
-    padding: 12px;
-    grid-template-columns: 72px 300px minmax(0, 1fr);
-  }
-}
-
+/* ==================== 侧边栏收起状态 ==================== */
 .glass-container.sidebar-collapsed {
   grid-template-columns: 72px minmax(0, 1fr) 340px;
 }
 
+/* ==================== 响应式断点 ==================== */
 @media (max-width: 1400px) {
+  .glass-container {
+    grid-template-columns: 72px 300px minmax(0, 1fr) 300px;
+    padding: 12px;
+  }
   .glass-container.sidebar-collapsed {
     grid-template-columns: 72px minmax(0, 1fr) 300px;
   }
 }
 
 @media (max-width: 1200px) {
+  .glass-container {
+    grid-template-columns: 72px 300px minmax(0, 1fr);
+    padding: 12px;
+  }
   .glass-container.sidebar-collapsed {
     grid-template-columns: 72px minmax(0, 1fr);
   }
@@ -680,20 +742,20 @@ onUnmounted(() => {
 
 @media (max-width: 900px) {
   .glass-container {
-    padding: 8px;
     grid-template-columns: 1fr;
+    padding: 8px;
   }
-
   .glass-container > :deep(*) {
     border-radius: 16px;
   }
 }
 
+/* ==================== Element Plus 弹窗样式覆盖 ==================== */
 :deep(.el-dialog) {
+  border-radius: 20px;
   backdrop-filter: blur(20px);
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(59, 130, 246, 0.1);
-  border-radius: 20px;
   box-shadow:
     0 25px 50px rgba(59, 130, 246, 0.15),
     0 10px 20px rgba(0, 0, 0, 0.08);
@@ -705,9 +767,9 @@ onUnmounted(() => {
 }
 
 :deep(.el-dialog__title) {
-  color: #1e40af;
   font-size: 18px;
   font-weight: 600;
+  color: #1e40af;
 }
 
 :deep(.el-dialog__body) {

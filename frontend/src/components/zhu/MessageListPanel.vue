@@ -42,8 +42,7 @@
       <!-- 隐藏归档模式：显示未归档会话 -->
       <template v-if="!showArchivedView">
         <!-- Agent 单聊区（未归档） -->
-        <div v-if="pinnedAgentSessions.length > 0" class="list-section">
-          <div class="section-title">置顶</div>
+        <div v-if="pinnedAgentSessions.length > 0" class="pinnedListSection">
           <button
             v-for="item in pinnedAgentSessions"
             :key="item.id"
@@ -58,21 +57,34 @@
             />
             <div class="conversation-copy">
               <div class="conversation-title-row">
-                <span class="conversation-title">{{ item.title || '未命名会话' }}</span>
+                <template v-if="renamingId === item.id">
+                  <input
+                    v-model="renamingValue"
+                    class="rename-input"
+                    type="text"
+                    :data-renaming-id="item.id"
+                    @keydown="handleRenameKeydown"
+                    @blur="confirmRename"
+                  />
+                </template>
+                <template v-else>
+                  <span class="conversation-title">{{ item.title || '未命名会话' }}</span>
+                  <svg v-if="item.is_pinned" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"  class="pin-icon"><path fill-rule="evenodd" clip-rule="evenodd" d="M18.2002 2.5C18.6419 2.50011 18.9999 2.85813 19 3.2998C19 3.74157 18.6419 4.0995 18.2002 4.09961H16V7.84863L16.0127 8.125C16.0719 8.76594 16.3366 9.3734 16.7705 9.85547L20.2842 13.7607C20.4228 13.9148 20.5 14.115 20.5 14.3223L20.4912 14.4932C20.4111 15.2832 19.7832 15.9111 18.9932 15.9912L18.8223 16H12.7998V21.7002C12.7997 22.1419 12.4418 22.5 12 22.5C11.5582 22.5 11.2003 22.1419 11.2002 21.7002V16H5.17773C4.30892 15.9998 3.59455 15.3394 3.50879 14.4932L3.5 14.3223C3.5 14.115 3.57717 13.9148 3.71582 13.7607L7.22949 9.85547C7.66335 9.3734 7.92806 8.76594 7.9873 8.125L8 7.84863V4.09961H5.7998C5.35807 4.0995 5 3.74157 5 3.2998C5.00011 2.85813 5.35813 2.50011 5.7998 2.5H18.2002ZM9.59961 7.84863C9.59961 8.98501 9.17913 10.0811 8.41895 10.9258L5.29199 14.4004H18.708L15.5811 10.9258C14.8209 10.0811 14.4004 8.98501 14.4004 7.84863V4.09961H9.59961V7.84863Z" fill="currentColor"></path></svg>
+                </template>
               </div>
-              <div v-if="getAgentTags(item, agents).length > 0" class="capability-tags">
+              <!-- <div v-if="getAgentTags(item, agents).length > 0" class="capability-tags">
                 <span
                   v-for="tag in getAgentTags(item, agents).slice(0, 3)"
                   :key="tag"
                   class="capability-tag"
                 >{{ tag }}</span>
-              </div>
+              </div> -->
               <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
             </div>
             <!-- 操作按钮 ... -->
             <div class="item-more-wrapper">
               <button class="item-more-btn" type="button" @click.stop="toggleMore(item.id)">⋯</button>
-              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop>
+              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop @mouseleave="activeMoreId = null">
                 <button class="more-action danger" type="button" @click="doDelete(item)">删除会话</button>
                 <div class="more-divider" />
                 <button class="more-action" type="button" @click="doTogglePin(item)">
@@ -80,12 +92,13 @@
                 </button>
                 <div class="more-divider" />
                 <button class="more-action" type="button" @click="doToggleArchive(item)">归档</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="startRename(item)">重命名</button>
               </div>
             </div>
           </button>
         </div>
         <div v-if="unpinnedAgentSessions.length > 0" class="list-section">
-          <div v-if="pinnedAgentSessions.length > 0" class="section-title">Agent对话</div>
           <button
             v-for="item in unpinnedAgentSessions"
             :key="item.id"
@@ -100,25 +113,39 @@
             />
             <div class="conversation-copy">
               <div class="conversation-title-row">
-                <span class="conversation-title">{{ item.title || '未命名会话' }}</span>
+                <template v-if="renamingId === item.id">
+                  <input
+                    v-model="renamingValue"
+                    class="rename-input"
+                    type="text"
+                    :data-renaming-id="item.id"
+                    @keydown="handleRenameKeydown"
+                    @blur="confirmRename"
+                  />
+                </template>
+                <template v-else>
+                  <span class="conversation-title">{{ item.title || '未命名会话' }}</span>
+                </template>
               </div>
-              <div v-if="getAgentTags(item, agents).length > 0" class="capability-tags">
+              <!-- <div v-if="getAgentTags(item, agents).length > 0" class="capability-tags">
                 <span
                   v-for="tag in getAgentTags(item, agents).slice(0, 3)"
                   :key="tag"
                   class="capability-tag"
                 >{{ tag }}</span>
-              </div>
+              </div> -->
               <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
             </div>
             <div class="item-more-wrapper">
               <button class="item-more-btn" type="button" @click.stop="toggleMore(item.id)">⋯</button>
-              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop>
+              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop @mouseleave="activeMoreId = null">
                 <button class="more-action danger" type="button" @click="doDelete(item)">删除会话</button>
                 <div class="more-divider" />
                 <button class="more-action" type="button" @click="doTogglePin(item)">置顶</button>
                 <div class="more-divider" />
                 <button class="more-action" type="button" @click="doToggleArchive(item)">归档</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="startRename(item)">重命名</button>
               </div>
             </div>
           </button>
@@ -138,19 +165,34 @@
             <avatar :info="{ name: '群', avatar: '' }" size="38px" :style="{ background: '#ff7043', color: '#fff' }" />
             <div class="conversation-copy">
               <div class="conversation-title-row">
-                <span class="conversation-title">{{ item.title || '群聊' }}</span>
-                <span class="mode-tag group">默认</span>
+                <template v-if="renamingId === item.id">
+                  <input
+                    v-model="renamingValue"
+                    class="rename-input"
+                    type="text"
+                    :data-renaming-id="item.id"
+                    @keydown="handleRenameKeydown"
+                    @blur="confirmRename"
+                  />
+                </template>
+                <template v-else>
+                    <span class="conversation-title">{{ item.title || '群聊' }}</span>
+                    <span class="mode-tag group">默认</span>
+                    <svg v-if="item.is_pinned" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"  class="pin-icon"><path fill-rule="evenodd" clip-rule="evenodd" d="M18.2002 2.5C18.6419 2.50011 18.9999 2.85813 19 3.2998C19 3.74157 18.6419 4.0995 18.2002 4.09961H16V7.84863L16.0127 8.125C16.0719 8.76594 16.3366 9.3734 16.7705 9.85547L20.2842 13.7607C20.4228 13.9148 20.5 14.115 20.5 14.3223L20.4912 14.4932C20.4111 15.2832 19.7832 15.9111 18.9932 15.9912L18.8223 16H12.7998V21.7002C12.7997 22.1419 12.4418 22.5 12 22.5C11.5582 22.5 11.2003 22.1419 11.2002 21.7002V16H5.17773C4.30892 15.9998 3.59455 15.3394 3.50879 14.4932L3.5 14.3223C3.5 14.115 3.57717 13.9148 3.71582 13.7607L7.22949 9.85547C7.66335 9.3734 7.92806 8.76594 7.9873 8.125L8 7.84863V4.09961H5.7998C5.35807 4.0995 5 3.74157 5 3.2998C5.00011 2.85813 5.35813 2.50011 5.7998 2.5H18.2002ZM9.59961 7.84863C9.59961 8.98501 9.17913 10.0811 8.41895 10.9258L5.29199 14.4004H18.708L15.5811 10.9258C14.8209 10.0811 14.4004 8.98501 14.4004 7.84863V4.09961H9.59961V7.84863Z" fill="currentColor"></path></svg>
+                </template>
               </div>
               <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
             </div>
             <div class="item-more-wrapper">
               <button class="item-more-btn" type="button" @click.stop="toggleMore(item.id)">⋯</button>
-              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop>
+              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop @mouseleave="activeMoreId = null">
                 <button class="more-action danger" type="button" @click="doDelete(item)">删除会话</button>
                 <div class="more-divider" />
                 <button class="more-action" type="button" @click="doTogglePin(item)">取消置顶</button>
                 <div class="more-divider" />
                 <button class="more-action" type="button" @click="doToggleArchive(item)">归档</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="startRename(item)">重命名</button>
               </div>
             </div>
           </button>
@@ -169,19 +211,33 @@
             <avatar :info="{ name: '群', avatar: '' }" size="38px" :style="{ background: '#ff7043', color: '#fff' }" />
             <div class="conversation-copy">
               <div class="conversation-title-row">
-                <span class="conversation-title">{{ item.title || '群聊' }}</span>
-                <span class="mode-tag group">默认</span>
+                <template v-if="renamingId === item.id">
+                  <input
+                    v-model="renamingValue"
+                    class="rename-input"
+                    type="text"
+                    :data-renaming-id="item.id"
+                    @keydown="handleRenameKeydown"
+                    @blur="confirmRename"
+                  />
+                </template>
+                <template v-else>
+                  <span class="conversation-title">{{ item.title || '群聊' }}</span>
+                  <span class="mode-tag group">默认</span>
+                </template>
               </div>
               <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
             </div>
             <div class="item-more-wrapper">
               <button class="item-more-btn" type="button" @click.stop="toggleMore(item.id)">⋯</button>
-              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop>
+              <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop @mouseleave="activeMoreId = null">
                 <button class="more-action danger" type="button" @click="doDelete(item)">删除会话</button>
                 <div class="more-divider" />
                 <button class="more-action" type="button" @click="doTogglePin(item)">置顶</button>
                 <div class="more-divider" />
                 <button class="more-action" type="button" @click="doToggleArchive(item)">归档</button>
+                <div class="more-divider" />
+                <button class="more-action" type="button" @click="startRename(item)">重命名</button>
               </div>
             </div>
           </button>
@@ -206,17 +262,31 @@
           />
           <div class="conversation-copy">
             <div class="conversation-title-row">
-              <span class="conversation-title" style="opacity: 0.6">{{ item.title || '未命名会话' }}</span>
-              <span class="mode-tag archived">已归档</span>
+              <template v-if="renamingId === item.id">
+                <input
+                  v-model="renamingValue"
+                  class="rename-input"
+                  type="text"
+                  :data-renaming-id="item.id"
+                  @keydown="handleRenameKeydown"
+                  @blur="confirmRename"
+                />
+              </template>
+              <template v-else>
+                <span class="conversation-title" style="opacity: 0.6">{{ item.title || '未命名会话' }}</span>
+                <span class="mode-tag archived">已归档</span>
+              </template>
             </div>
             <div class="conversation-snippet">{{ formatTime(item.updated_at) }}</div>
           </div>
           <div class="item-more-wrapper">
             <button class="item-more-btn" type="button" @click.stop="toggleMore(item.id)">⋯</button>
-            <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop>
+            <div v-if="activeMoreId === item.id" class="item-more-menu" @click.stop @mouseleave="activeMoreId = null">
               <button class="more-action danger" type="button" @click="doDelete(item)">删除会话</button>
               <div class="more-divider" />
               <button class="more-action" type="button" @click="doToggleArchive(item)">取消归档</button>
+              <div class="more-divider" />
+              <button class="more-action" type="button" @click="startRename(item)">重命名</button>
             </div>
           </div>
         </button>
@@ -246,7 +316,7 @@ import type { ConversationItem, SidebarAgent, SidebarPanel } from '../../types/a
 import avatar from '../../veiws/img/avatar.vue'
 import dot_hint from '../../veiws/left/dot-hint.vue'
 import Search from '../../veiws/Serach.vue'
-import { Fold, Expand } from '@element-plus/icons-vue'
+import { Fold, Expand, Top } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   activePanel: SidebarPanel
@@ -266,8 +336,58 @@ const emit = defineEmits<{
   (e: 'toggle-pin', item: ConversationItem): void
   (e: 'toggle-archive', item: ConversationItem): void
   (e: 'delete-session', item: ConversationItem): void
+  (e: 'rename-session', item: ConversationItem, newTitle: string): void
   (e: 'toggle-collapse'): void
 }>()
+
+// ==================== 重命名状态 ====================
+const renamingId = ref<string | null>(null)
+const renamingValue = ref('')
+
+const startRename = (item: ConversationItem) => {
+  activeMoreId.value = null
+  renamingId.value = item.id
+  renamingValue.value = item.title || ''
+  nextTick(() => {
+    const inputs = document.querySelectorAll('.rename-input')
+    inputs.forEach((input: Element) => {
+      const el = input as HTMLElement
+      if (el.dataset.renamingId === item.id) {
+        const inputEl = input as HTMLInputElement
+        inputEl.focus()
+        inputEl.select()
+      }
+    })
+  })
+}
+
+const confirmRename = () => {
+  if (renamingId.value && renamingValue.value.trim()) {
+    const item = props.filteredSessions.find(s => s.id === renamingId.value)
+    if (item) {
+      emit('rename-session', item, renamingValue.value.trim())
+    }
+  }
+  cancelRename()
+}
+
+const cancelRename = () => {
+  renamingId.value = null
+  renamingValue.value = ''
+}
+
+const handleRenameKeydown = (e: KeyboardEvent) => {
+  e.stopPropagation()
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    confirmRename()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    cancelRename()
+  }
+}
+
+import { nextTick } from 'vue'
 
 // ==================== 归档视图开关 ====================
 /** 当前是否处于归档视图 */
@@ -524,6 +644,12 @@ document.addEventListener('click', () => {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.conversation-item:hover {
+  background-color: #f0f4ff;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.12);
+  transform: translateX(2px);
+  z-index: 1000;
+}
 
 .conversation-item.is-active {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08));
@@ -555,7 +681,47 @@ document.addEventListener('click', () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 160px;
+  max-width: 110px;
+  overflow: hidden;
+}
+
+/* 置顶图标 */
+.pin-icon {
+  color:#00000059;
+  font-size: 14px;
+  flex-shrink: 0;
+  animation: pin-pulse 2s ease-in-out infinite;
+}
+
+@keyframes pin-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+/* 重命名输入框 */
+.rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  background: #fff;
+  color: #1e293b;
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  transition: all 0.2s ease;
+}
+
+.rename-input:focus {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
 }
 
 /* 模式标签 */

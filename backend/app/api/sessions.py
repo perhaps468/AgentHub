@@ -167,7 +167,7 @@ def list_messages(
     items = db.scalars(
         select(Message)
         .where(Message.session_id == session_id, Message.status != "streaming")
-        .order_by(Message.created_at.asc())
+        .order_by(Message.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()

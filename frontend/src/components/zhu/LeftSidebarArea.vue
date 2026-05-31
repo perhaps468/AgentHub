@@ -131,11 +131,6 @@ defineEmits<{
   background: transparent;
 }
 
-.sidebar-panel::-webkit-scrollbar-thumb {
-  background: rgba(59, 130, 246, 0.2);
-  border-radius: 2px;
-}
-
 /* ==================== 响应式适配 ==================== */
 @media (max-width: 900px) {
   .sidebar {

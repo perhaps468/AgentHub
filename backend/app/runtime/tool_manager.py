@@ -131,12 +131,10 @@ class ToolManager(BaseModel):
 
             value = provided_args[arg_name]
 
-            # Treat empty strings as "not provided" — fall back to default
-            if isinstance(value, str) and not value.strip():
-                if required:
-                    raise ValueError(f"Missing required argument: {arg_name}")
-                if default is None:
-                    continue
+            # T6: if value is an empty string and param is optional with a default,
+            # treat it as if the parameter wasn't provided at all (use the default).
+            # This handles the case where the model explicitly passes "" instead of omitting the param.
+            if (value == "" or value is None) and not required and default is not None:
                 if arg_type in type_conversion:
                     try:
                         converted_args[arg_name] = type_conversion[arg_type](default)

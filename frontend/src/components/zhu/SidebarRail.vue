@@ -94,6 +94,7 @@ const handleToggleCollapse = () => {
   gap: 10px;
   padding: 20px 12px;
   background: transparent;
+  border-right: 1px solid rgba(59, 130, 246, 0.2);
 }
 
 /* ==================== 头像容器 ==================== */

@@ -10,7 +10,7 @@
             <div class="msg-username" v-if="!isOwn">
               {{ displayUser?.name || '未知用户' }}
             </div>
-            <div class="msg-role" v-if="!isOwn">
+            <div class="msg-role" v-if="isGroup">
               {{ roleLabel }}
             </div>
             <div v-if="props.msg.deliveryStatus === 'interrupted'" class="msg-status-badge interrupted">
@@ -21,15 +21,6 @@
             </div>
             <div v-if="props.msg.isStreaming && props.msg.streamStatus === 'streaming'" class="msg-status-badge streaming">
               <span class="streaming-dot"></span>
-              <span v-if="props.msg.runtimeState === 'calling_tool'" class="tool-running-label">
-                执行工具...
-              </span>
-              <span v-else-if="props.msg.runtimeState === 'observing'" class="tool-running-label">
-                观察结果...
-              </span>
-              <span v-else-if="props.msg.runtimeState === 'responding'" class="tool-running-label">
-                生成回复...
-              </span>
             </div>
           </div>
           <msg_content :right="isOwn" :msg="props.msg" />
@@ -41,7 +32,7 @@
 
 <script setup>
 import { computed } from 'vue'
-
+import { MessageSource } from '../../types/messageSource'
 import { useAgentStore } from '../../store/module/useAgentStore'
 import { useUserInfoStore } from '../../store/module/useUserStore'
 import Avatar from '../img/avatar.vue'
@@ -56,6 +47,7 @@ const props = defineProps({
 const userStore = useUserInfoStore()
 const agentStore = useAgentStore()
 const isOwn = computed(() => props.msg?.fromId === userStore.userId)
+const isGroup = computed(() => props.msg?.source === MessageSource.Group)
 const displayUser = computed(() => props.user || props.msg?.fromInfo)
 
 const roleLabel = computed(() => {
@@ -186,11 +178,5 @@ const roleLabel = computed(() => {
     opacity: 0.5;
     transform: scale(0.8);
   }
-}
-
-.tool-running-label {
-  color: rgb(var(--primary-color));
-  font-size: 11px;
-  white-space: nowrap;
 }
 </style>

@@ -759,7 +759,9 @@ class RuntimeAgentService:
         """Finalize agent message with completed status."""
         if self._agent_message is None:
             return
-        # Prefer final_content (extracted answer from task_complete) over accumulated XML
+        # Prefer final_content over accumulated: final_content comes from task_complete's
+        # answer (which is the authoritative final response), while accumulated holds
+        # streaming tokens that may be truncated.
         final_text = final_content if final_content is not None else self._accumulated_content
         self._agent_message.content = final_text
         self._agent_message.payload = {"text": final_text}

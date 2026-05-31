@@ -75,7 +75,7 @@ export function useChatStreamState() {
       type: message.type || 'text',
       payload: { text: '' },
       metadata: message.metadata || {},
-      ui_status: 'streaming',
+      ui_status: 'thinking',
       created_at: timestamp || message.created_at || new Date().toISOString(),
       runtime_nodes: [],  // Task A: 初始化运行时过程节点列表
       runtime_state: undefined,  // Task A: 初始无阶段
@@ -108,6 +108,13 @@ export function useChatStreamState() {
 
     if (message_id && !stream.message_id) {
       stream.message_id = message_id
+    }
+
+    // Buffer threshold: stay in 'thinking' until we have enough content,
+    // then switch to 'streaming' so the UI starts rendering tokens.
+    // This prevents short truncated prefixes (like "我我" / "李白") from being shown.
+    if (stream.ui_status === 'thinking' && stream.accumulated_content.length >= 10) {
+      stream.ui_status = 'streaming'
     }
 
     // 创建新 Map 触发响应式更新
