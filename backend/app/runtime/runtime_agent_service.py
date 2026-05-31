@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.models.message import Message
 from app.models.session import utcnow
+from app.runtime.context_hygiene import sanitize_history_messages
 from app.runtime.event_bridge import (
     EventBridge,
     MessageDeltaEvent,
@@ -184,6 +185,7 @@ class RuntimeAgentService:
         self._message_id: str = ""
         self._accumulated_content: str = ""
         self._error_emitted: bool = False  # prevent double-yielding error events
+        self._pending_change_ids: set[str] = set()
 
     def _resolve_workspace_root(self, explicit_root: str | None) -> str:
         """Resolve workspace root from formal session binding, with fallback hierarchy.
@@ -438,7 +440,7 @@ class RuntimeAgentService:
         tools = self._build_tools()
         tool_manager = ToolManager(tools={tool.name: tool for tool in tools})
         environment = get_environment()
-        tools_markdown = tool_manager.to_markdown()
+        tools_markdown = tool_manager.to_prompt_markdown()
 
         # T1: Pre-populate memory with session history + system prompt.
         # The system prompt goes FIRST (as required by LLM message-history format).
@@ -451,7 +453,7 @@ class RuntimeAgentService:
             agent_mode="react",
         )
         memory.add(RuntimeMessage(role="system", content=system_prompt_text))
-        for msg in self._session_history:
+        for msg in sanitize_history_messages(self._session_history):
             memory.add(msg)
 
         configured_model = getattr(getattr(self.llm_adapter, "provider", None), "_model", "") or "qwen-plus"
@@ -507,12 +509,13 @@ class RuntimeAgentService:
             (TaskCompleteTool, {}),
         ]:
             try:
-                tools.append(tool_cls(**extra_kwargs))
+                tool = tool_cls(**extra_kwargs)
             except TypeError:
                 try:
-                    tools.append(tool_cls())
+                    tool = tool_cls()
                 except TypeError:
-                    pass
+                    continue
+            tools.append(tool)
 
         return tools
 
@@ -609,6 +612,7 @@ class RuntimeAgentService:
                 timestamp=data.get("timestamp", ""),
             )
         elif event_type == "change_preview":  # Task C-2: pending change preview
+            self._persist_pending_change_preview(data)
             return ChangePreviewEvent(
                 stream_id=self.stream_id,
                 message_id=self._message_id,
@@ -669,6 +673,14 @@ class RuntimeAgentService:
             metadata = dict(self._agent_message.msg_metadata or {})
             metadata["runtime_replay"] = runtime_nodes
             metadata["runtime_path"] = "runtime_agent_service"
+            if self._pending_change_ids:
+                metadata["pending_change_ids"] = sorted(self._pending_change_ids)
+                metadata["has_pending_changes"] = True
+            self._agent_message.msg_metadata = metadata
+        elif self._pending_change_ids:
+            metadata = dict(self._agent_message.msg_metadata or {})
+            metadata["pending_change_ids"] = sorted(self._pending_change_ids)
+            metadata["has_pending_changes"] = True
             self._agent_message.msg_metadata = metadata
         self.db.add(self._agent_message)
         self.db.commit()
@@ -678,5 +690,52 @@ class RuntimeAgentService:
         if self._agent_message is None:
             return
         self._agent_message.status = "failed"
+        self.db.add(self._agent_message)
+        self.db.commit()
+
+    def _persist_pending_change_preview(self, data: dict[str, Any]) -> None:
+        """Persist a change preview so it can be recovered after refresh/reconnect."""
+        from app.models.pending_change import PendingChangeModel
+
+        change_id = data.get("change_id", "")
+        if not change_id:
+            return
+
+        model = (
+            self.db.query(PendingChangeModel)
+            .filter_by(change_id=change_id)
+            .first()
+        )
+        if model is None:
+            model = PendingChangeModel(
+                change_id=change_id,
+                session_id=self.session_id,
+            )
+
+        model.message_id = data.get("message_id") or self._message_id or model.message_id
+        model.stream_id = data.get("stream_id") or self.stream_id or model.stream_id
+        model.path = data.get("path", model.path or "")
+        model.operation = data.get("operation", model.operation or "create")
+        model.unified_diff = data.get("unified_diff", model.unified_diff or "")
+        model.status = data.get("status", model.status or "pending_confirmation")
+        self.db.add(model)
+        self.db.commit()
+
+        self._pending_change_ids.add(change_id)
+        self._attach_pending_change_metadata()
+
+    def _attach_pending_change_metadata(self) -> None:
+        """Attach pending change references to the in-flight agent message metadata."""
+        if self._agent_message is None or not self._pending_change_ids:
+            return
+
+        metadata = dict(self._agent_message.msg_metadata or {})
+        existing = metadata.get("pending_change_ids", [])
+        if not isinstance(existing, list):
+            existing = []
+        merged = sorted(set(existing) | self._pending_change_ids)
+        metadata["pending_change_ids"] = merged
+        metadata["has_pending_changes"] = True
+        self._agent_message.msg_metadata = metadata
         self.db.add(self._agent_message)
         self.db.commit()

@@ -1,17 +1,11 @@
 <template>
-  <!-- ==================== 三栏布局容器：左侧列表区 | 中间聊天区 | 右侧预览区 ==================== -->
   <div class="workspace">
-    <!-- 动态背景光晕效果 -->
     <div class="glow-orb glow-orb-1"></div>
     <div class="glow-orb glow-orb-2"></div>
     <div class="glow-orb glow-orb-3"></div>
-
-    <!-- 装饰性网格点阵 -->
     <div class="grid-pattern"></div>
 
-    <!-- 玻璃态主容器 -->
     <div class="glass-container" :class="{ 'sidebar-collapsed': isCollapsed }">
-      <!-- 左侧列表区 -->
       <LeftSidebarArea
         :show-left="showLeft"
         :is-collapsed="isCollapsed"
@@ -43,7 +37,6 @@
         @toggle-collapse="isCollapsed = !isCollapsed"
       />
 
-      <!-- 中间聊天区 -->
       <ChatWorkspace
         :current-session="sessionStore.currentSession"
         :current-session-id="sessionStore.currentSessionId || ''"
@@ -61,28 +54,18 @@
         @cancel-change="handleCancelChange"
       />
 
-      <!-- 右侧预览区 -->
-      <PreviewPanel
-        :preview-state="previewState"
-        @close="closePreview"
-      />
+      <PreviewPanel :preview-state="previewState" @close="closePreview" />
     </div>
   </div>
 
-  <!-- 用户资料编辑弹窗 -->
   <UserProfileDialog
     v-model="showEditProfileDialog"
     :user="currentUser"
     @confirm="handleProfileUpdate"
   />
 
-  <!-- 添加自建 Agent 弹窗 -->
-  <AddAgentDialog
-    v-model="showAddAgentDialog"
-    @confirm="handleAddAgent"
-  />
+  <AddAgentDialog v-model="showAddAgentDialog" @confirm="handleAddAgent" />
 
-  <!-- 新建对话弹窗 -->
   <NewConversationDialog
     v-model="showNewConversationDialog"
     :agents="sidebarAgents"
@@ -92,18 +75,25 @@
 </template>
 
 <script lang="ts" setup>
-/**
- * zhu.vue - 页面容器
- * 高级玻璃态设计，白色为主，带动态效果
- */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { applyPendingChange } from '../api/modules/pendingChanges'
+import { fetchWorkspace } from '../api/modules/workspace'
+import { useAgentStore } from '../store/index'
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
-import { useAgentStore } from '../store/index'
-import type { ConversationItem, ConversationMode, PreviewState, SidebarAgent, SidebarPanel, SidebarUser, Workspace } from '../types/agenthub'
-import { wsClient, getWsClientReconnectAttempt } from '../utils/ws-client'
+import type {
+  ConversationItem,
+  ConversationMode,
+  PendingChange,
+  PreviewState,
+  SidebarAgent,
+  SidebarPanel,
+  SidebarUser,
+  Workspace,
+} from '../types/agenthub'
+import { getWsClientReconnectAttempt, wsClient } from '../utils/ws-client'
 import { useToast } from '../veiws/useToast'
 import AddAgentDialog from './zhu/AddAgentDialog.vue'
 import ChatWorkspace from './zhu/ChatWorkspace.vue'
@@ -111,128 +101,42 @@ import LeftSidebarArea from './zhu/LeftSidebarArea.vue'
 import NewConversationDialog from './zhu/NewConversationDialog.vue'
 import PreviewPanel from './zhu/PreviewPanel.vue'
 import UserProfileDialog from './zhu/UserProfileDialog.vue'
-import { fetchWorkspace } from '../api/modules/workspace'
-import { applyPendingChange } from '../api/modules/pendingChanges'
-import type { PendingChange } from '../types/agenthub'
 
-// ==================== Store ====================
 const userInfoStore = useUserInfoStore()
 const sessionStore = useSessionStore()
 const agentStore = useAgentStore()
 const router = useRouter()
 const showToast = useToast()
 
-// ==================== 布局状态 ====================
-/** 左侧栏显示开关（移动端控制） */
 const showLeft = ref(true)
-
-/** 左侧栏收起状态 */
 const isCollapsed = ref(false)
-
-/** 左侧栏当前面板：消息列表 / Agent 列表 */
 const activeSidebarPanel = ref<SidebarPanel>('messages')
-
-// ==================== 搜索状态 ====================
-/** 消息列表搜索关键字 */
 const searchValue = ref('')
-/** Agent 列表搜索关键字 */
 const agentSearchValue = ref('')
+const showUserPopover = ref(false)
+const showEditProfileDialog = ref(false)
+const showNewConversationDialog = ref(false)
+const showAddAgentDialog = ref(false)
+const currentWorkspace = ref<Workspace | null>(null)
+const isSendLoading = ref(false)
+const previewState = ref<PreviewState>({ type: 'empty', title: '' })
+const selectedAgentId = ref('')
 
-/** 会话列表过滤（按搜索关键字过滤标题和摘要） */
 const filteredSessions = computed(() => {
   const list = sessionStore.sessionList ?? []
   if (!searchValue.value) return list
   const q = searchValue.value.toLowerCase()
   return list.filter(
-    (s) =>
-      s.title?.toLowerCase().includes(q) ||
-      s.description?.toLowerCase().includes(q),
+    (session) =>
+      session.title?.toLowerCase().includes(q) ||
+      session.description?.toLowerCase().includes(q),
   )
 })
 
-// ==================== 用户弹框 & 编辑资料 ====================
-/** 用户信息弹框显隐 */
-const showUserPopover = ref(false)
-/** 编辑资料弹框显隐 */
-const showEditProfileDialog = ref(false)
-
-// ==================== 新建对话 ====================
-/** 新建对话弹框显隐 */
-const showNewConversationDialog = ref(false)
-
-// ==================== 添加自建 Agent ====================
-/** 添加 Agent 弹框显隐 */
-const showAddAgentDialog = ref(false)
-
-// ==================== Task B: 当前会话 workspace ====================
-/** 当前会话绑定的 workspace 对象（从后端获取） */
-const currentWorkspace = ref<Workspace | null>(null)
-
-// ==================== Task C-2: Pending Changes ====================
-/** 当前会话的待确认变更列表 */
 const pendingChanges = computed<PendingChange[]>(() => {
-  return sessionStore.streamState.pendingChanges.value
-    ? Array.from(sessionStore.streamState.pendingChanges.value.values())
-    : []
+  return sessionStore.streamState.sessionPendingChanges.value
 })
 
-/** 确认变更 */
-const handleConfirmChange = async (changeId: string) => {
-  try {
-    const result = await applyPendingChange(changeId)
-    if (result.success) {
-      showToast('文件已成功写入')
-      sessionStore.streamState.removePendingChange(changeId)
-    } else {
-      showToast(`应用失败: ${result.message}`, true)
-      sessionStore.streamState.updatePendingChangeStatus(changeId, 'rejected')
-    }
-  } catch (e) {
-    console.error('确认变更失败', e)
-    showToast('确认变更失败', true)
-  }
-}
-
-/** 取消变更 */
-const handleCancelChange = (changeId: string) => {
-  sessionStore.streamState.removePendingChange(changeId)
-  showToast('已取消写入')
-}
-
-async function loadSessionWorkspace(session: ConversationItem | null) {
-  if (!session?.workspace_id) {
-    currentWorkspace.value = null
-    return
-  }
-  try {
-    currentWorkspace.value = await fetchWorkspace(session.workspace_id)
-  } catch {
-    currentWorkspace.value = null
-  }
-}
-
-// Watch currentSession changes to reload workspace
-watch(
-  () => sessionStore.currentSession,
-  (session) => {
-    loadSessionWorkspace(session)
-  },
-  { immediate: true },
-)
-
-// ==================== 发送状态 ====================
-/** 正在发送消息（显示 AI 回复 loading） */
-const isSendLoading = ref(false)
-
-// ==================== 预览状态 ====================
-/** 右侧预览区状态，一期先使用空状态 */
-const previewState = ref<PreviewState>({ type: 'empty', title: '' })
-
-// ==================== Agent 列表选中 ====================
-/** 当前选中的 Agent ID（用于高亮） */
-const selectedAgentId = ref('')
-
-// ==================== Mock Agent 数据（由 Store 注入后可替换） ====================
 const sidebarAgents = ref<SidebarAgent[]>([
   {
     id: 'claude-code',
@@ -277,68 +181,113 @@ const sidebarAgents = ref<SidebarAgent[]>([
   },
 ])
 
-// ==================== 计算属性 ====================
-
-/** 当前用户信息（由 Store 映射） */
 const currentUser = computed<SidebarUser>(() => ({
   id: userInfoStore.userId || 'user-1',
   name: userInfoStore.userName || '管理员',
   avatar: userInfoStore.avatar || '',
-  email: (userInfoStore as unknown as { email?: string }).email || 'admin@example.com',
-  bio: (userInfoStore as unknown as { bio?: string }).bio || 'AgentHub 用户',
+  email:
+    (userInfoStore as unknown as { email?: string }).email || 'admin@example.com',
+  bio:
+    (userInfoStore as unknown as { bio?: string }).bio || 'AgentHub 用户',
 }))
 
-/** WebSocket 重连次数（由 wsClient 提供） */
 const reconnectAttempt = computed(() => getWsClientReconnectAttempt())
 
-/** Agent 列表过滤（按搜索关键字过滤） */
 const filteredAgentList = computed(() => {
   if (!agentSearchValue.value) return sidebarAgents.value
   const q = agentSearchValue.value.toLowerCase()
   return sidebarAgents.value.filter(
-    (a) =>
-      a.name.toLowerCase().includes(q) ||
-      a.description?.toLowerCase().includes(q) ||
-      a.capabilityTags.some((t) => t.toLowerCase().includes(q)),
+    (agent) =>
+      agent.name.toLowerCase().includes(q) ||
+      agent.description?.toLowerCase().includes(q) ||
+      agent.capabilityTags.some((tag) => tag.toLowerCase().includes(q)),
   )
 })
 
-// ==================== 工具函数 ====================
-
-/**
- * 格式化 ISO 时间字符串为"月日 时:分"格式
- * @param iso ISO 8601 时间字符串
- */
 const formatTime = (iso: string) => {
   if (!iso) return ''
   try {
-    const d = new Date(iso)
-    return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    const date = new Date(iso)
+    return date.toLocaleString('zh-CN', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
   } catch {
     return iso
   }
 }
 
-// ==================== 会话操作 ====================
+const handleConfirmChange = async (changeId: string) => {
+  try {
+    const sessionId = sessionStore.currentSessionId || undefined
+    const result = await applyPendingChange(changeId, sessionId)
+    if (!result.success && result.status !== 'applied') {
+      showToast(`应用失败: ${result.message}`, true)
+    }
+  } catch (error) {
+    console.error('确认变更失败', error)
+    showToast('确认变更失败', true)
+  }
+}
 
-/**
- * 选中会话：断开旧连接、加载会话详情与消息、建立新 WebSocket 连接
- */
+const handleCancelChange = (changeId: string) => {
+  sessionStore.streamState.removePendingChange(changeId)
+  showToast('已取消写入')
+}
+
+async function loadSessionWorkspace(session: ConversationItem | null) {
+  if (!session?.workspace_id) {
+    currentWorkspace.value = null
+    return
+  }
+
+  try {
+    currentWorkspace.value = await fetchWorkspace(session.workspace_id)
+  } catch {
+    currentWorkspace.value = null
+  }
+}
+
+async function restorePendingChangesForCurrentSession(
+  sessionId: string,
+  opts: { clearInFlight?: boolean } = {},
+) {
+  try {
+    await sessionStore.restorePendingChangesForSession(sessionId, {
+      clearExisting: true,
+      clearInFlight: opts.clearInFlight ?? false,
+    })
+  } catch (error) {
+    console.error('恢复待确认变更失败', error)
+  }
+}
+
+watch(
+  () => sessionStore.currentSession,
+  (session) => {
+    void loadSessionWorkspace(session)
+  },
+  { immediate: true },
+)
+
 const selectSession = async (item: ConversationItem) => {
   if (sessionStore.currentSessionId === item.id) {
     showLeft.value = false
     return
   }
+
   wsClient.disconnect()
   sessionStore.clearMessages(item.id)
   sessionStore.setCurrentSessionId(item.id)
   await sessionStore.fetchSessionDetail(item.id)
   await sessionStore.fetchMessages(item.id, { page: 1, page_size: 20 })
+  await restorePendingChangesForCurrentSession(item.id)
   wsClient.connect(item.id)
   showLeft.value = false
 }
 
-/** 置顶 / 取消置顶会话 */
 const togglePin = async (item: ConversationItem) => {
   try {
     await sessionStore.updateSession(item.id, { is_pinned: !item.is_pinned })
@@ -347,7 +296,6 @@ const togglePin = async (item: ConversationItem) => {
   }
 }
 
-/** 归档 / 取消归档会话 */
 const toggleArchive = async (item: ConversationItem) => {
   try {
     await sessionStore.updateSession(item.id, { is_archived: !item.is_archived })
@@ -356,7 +304,6 @@ const toggleArchive = async (item: ConversationItem) => {
   }
 }
 
-/** 删除会话 */
 const handleDeleteSession = async (item: ConversationItem) => {
   try {
     await sessionStore.deleteSession(item.id)
@@ -366,10 +313,6 @@ const handleDeleteSession = async (item: ConversationItem) => {
   }
 }
 
-/**
- * 创建新会话并连接 WebSocket
- * Task B+C-1: 从后端返回的 session 中获取 workspace 信息
- */
 const handleCreateConversation = async (payload: {
   mode: ConversationMode
   title: string
@@ -381,7 +324,10 @@ const handleCreateConversation = async (payload: {
     showToast('请先选择一个 Agent', true)
     return
   }
-  if (payload.mode === 'group' && (!payload.participantAgentIds || payload.participantAgentIds.length === 0)) {
+  if (
+    payload.mode === 'group' &&
+    (!payload.participantAgentIds || payload.participantAgentIds.length === 0)
+  ) {
     showToast('请至少选择一个 Agent', true)
     return
   }
@@ -397,40 +343,32 @@ const handleCreateConversation = async (payload: {
       mode: payload.mode,
       workspace_id: payload.workspace_id,
     })
-    // Task B+C-1: Use workspace info from session response
     if (session.workspace) {
       currentWorkspace.value = session.workspace as Workspace
     }
     sessionStore.setCurrentSessionId(session.id)
     await sessionStore.fetchMessages(session.id, { page: 1, page_size: 20 })
+    await restorePendingChangesForCurrentSession(session.id)
     wsClient.connect(session.id)
     showNewConversationDialog.value = false
-  } catch (e) {
-    console.error('创建会话失败', e)
+  } catch (error) {
+    console.error('创建会话失败', error)
     showToast('创建会话失败', true)
   }
 }
 
-/**
- * 选择 Agent：若已有该 Agent 的单聊会话则进入，否则打开新建流程并预填 Agent
- */
 const handleSelectAgent = (agent: SidebarAgent) => {
   selectedAgentId.value = agent.id
   const existing = sessionStore.sessionList.find(
-    (s) => s.title?.includes(agent.name) && s.mode === 'single',
+    (session) => session.title?.includes(agent.name) && session.mode === 'single',
   )
   if (existing) {
-    selectSession(existing)
-  } else {
-    showNewConversationDialog.value = true
+    void selectSession(existing)
+    return
   }
+  showNewConversationDialog.value = true
 }
 
-// ==================== 发送消息 ====================
-
-/**
- * 发送消息：追加用户消息到 Store，通过 WebSocket 发送
- */
 const handleSend = async (content: string) => {
   const sessionId = sessionStore.currentSessionId
   if (!sessionId) {
@@ -460,38 +398,31 @@ const handleSend = async (content: string) => {
   }
 }
 
-// ==================== 重试连接 ====================
 const handleRetry = () => {
   wsClient.manualRetry()
 }
 
-// ==================== 用户资料 ====================
-
-/** 打开编辑资料弹框 */
 const handleEditProfile = () => {
   showUserPopover.value = false
   showEditProfileDialog.value = true
 }
 
-/** 提交资料更新到 Store */
 const handleProfileUpdate = (data: Partial<SidebarUser>) => {
   if (data.name) userInfoStore.setUserName(data.name)
-  if (data.email) (userInfoStore as unknown as { setEmail: (e: string) => void }).setEmail(data.email)
+  if (data.email) {
+    ;(userInfoStore as unknown as { setEmail: (value: string) => void }).setEmail(
+      data.email,
+    )
+  }
   if (data.avatar !== undefined) userInfoStore.setUserAvatar(data.avatar)
   showToast('资料已更新')
 }
 
-// ==================== 添加自建 Agent ====================
-
-/** 添加新 Agent 到列表 */
 const handleAddAgent = (newAgent: SidebarAgent) => {
   sidebarAgents.value.push(newAgent)
   showAddAgentDialog.value = false
 }
 
-// ==================== 登出 ====================
-
-/** 退出登录：断开 WebSocket、清除本地信息、跳转登录页 */
 const handlerLogout = () => {
   showUserPopover.value = false
   wsClient.disconnect()
@@ -504,55 +435,52 @@ const handlerLogout = () => {
   router.push('/login')
 }
 
-// ==================== 恢复当前会话 ====================
-
-/** 页面加载时恢复上一次会话（若有） */
 const restoreCurrentSession = async () => {
   const sessionId = sessionStore.currentSessionId
   if (!sessionId) return
   await sessionStore.fetchSessionDetail(sessionId)
   await sessionStore.fetchMessages(sessionId, { page: 1, page_size: 20 })
+  await restorePendingChangesForCurrentSession(sessionId)
   wsClient.connect(sessionId)
 }
 
-// ==================== 预览区 ====================
-
-/** 关闭预览区，恢复空状态 */
 const closePreview = () => {
   previewState.value = { type: 'empty', title: '' }
 }
 
-// ==================== 生命周期 ====================
-
 onMounted(async () => {
-  // 加载会话列表
   await sessionStore.fetchSessionList({
     owner_id: userInfoStore.userId || 'dev_user',
     page: 1,
     page_size: 50,
   })
 
-  // 加载默认 Agent
   agentStore.fetchDefaultAgent()
 
-  // 监听 WebSocket 连接状态变化
   wsClient.onStateChange((state) => {
     sessionStore.setConnectionState(state)
     if (state === 'connected') {
       isSendLoading.value = false
+      const sessionId = sessionStore.currentSessionId
+      if (sessionId) {
+        void restorePendingChangesForCurrentSession(sessionId, { clearInFlight: true })
+      }
     }
   })
 
-  // 监听 WebSocket 消息，处理流式消息协议
   wsClient.onReceiveMessage((msg) => {
     const currentSessionId = sessionStore.currentSessionId
     if (!currentSessionId) return
 
     if (msg.type === 'message_start') {
       sessionStore.streamState.handleMessageStart(msg, currentSessionId)
-    } else if (msg.type === 'message_delta') {
+      return
+    }
+    if (msg.type === 'message_delta') {
       sessionStore.streamState.handleMessageDelta(msg, currentSessionId)
-    } else if (msg.type === 'message_end') {
+      return
+    }
+    if (msg.type === 'message_end') {
       const stream = sessionStore.streamState.handleMessageEnd(msg, currentSessionId)
       if (stream) {
         sessionStore.mergeOrUpdateMessage(currentSessionId, {
@@ -569,31 +497,43 @@ onMounted(async () => {
         })
       }
       isSendLoading.value = false
-    } else if (msg.type === 'message_error') {
+      return
+    }
+    if (msg.type === 'message_error') {
       sessionStore.streamState.handleMessageError(msg, currentSessionId)
       isSendLoading.value = false
-    } else if (msg.type === 'tool_event') {
+      return
+    }
+    if (msg.type === 'tool_event') {
       sessionStore.streamState.handleToolEvent(msg, currentSessionId)
-    } else if (msg.type === 'runtime_state') {
+      return
+    }
+    if (msg.type === 'runtime_state') {
       sessionStore.streamState.handleRuntimeState(msg, currentSessionId)
-    } else if (msg.type === 'change_preview') {
-      // Task C-2: Handle pending change preview events
+      return
+    }
+    if (msg.type === 'change_preview') {
       sessionStore.streamState.handleChangePreview(msg, currentSessionId)
-    } else if (msg.type === 'apply_result') {
-      // Task C-4: Handle apply result events
+      return
+    }
+    if (msg.type === 'apply_result') {
       sessionStore.streamState.handleApplyResult(msg)
-    } else if (msg.type === 'preview_result') {
-      // Task 3: Handle preview result events
+      return
+    }
+    if (msg.type === 'preview_result') {
       previewState.value = {
         type: 'web',
         title: 'Runtime Preview',
         url: msg.preview_url || '',
         description: msg.status || 'ready',
       }
-    } else if (msg.type === 'repair_state') {
-      // Task D-2: Handle repair state events
+      return
+    }
+    if (msg.type === 'repair_state') {
       sessionStore.streamState.handleRepairState(msg)
-    } else if (msg.type === 'error') {
+      return
+    }
+    if (msg.type === 'error') {
       console.error('[WsClient] Server error:', msg.error_code, msg.error_message)
       isSendLoading.value = false
     }
@@ -608,7 +548,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ==================== 工作区容器 ==================== */
 .workspace {
   position: relative;
   height: 100vh;
@@ -616,7 +555,6 @@ onUnmounted(() => {
   background: linear-gradient(135deg, #ffffff 0%, #f0f4ff 50%, #e8f0fe 100%);
 }
 
-/* ==================== 动态光晕效果 ==================== */
 .glow-orb {
   position: absolute;
   border-radius: 50%;
@@ -625,86 +563,84 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-/* 右上角蓝色光晕 */
 .glow-orb-1 {
+  top: -200px;
+  right: -100px;
   width: 600px;
   height: 600px;
   background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
-  top: -200px;
-  right: -100px;
   animation-delay: 0s;
 }
 
-/* 左下角紫色光晕 */
 .glow-orb-2 {
+  bottom: -150px;
+  left: -100px;
   width: 500px;
   height: 500px;
   background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, transparent 70%);
-  bottom: -150px;
-  left: -100px;
   animation-delay: -4s;
 }
 
-/* 中心青色光晕 */
 .glow-orb-3 {
+  top: 40%;
+  left: 30%;
   width: 400px;
   height: 400px;
   background: radial-gradient(circle, rgba(6, 182, 212, 0.1) 0%, transparent 70%);
-  top: 40%;
-  left: 30%;
   transform: translate(-50%, -50%);
   animation-delay: -7s;
 }
 
-/* 光晕浮动动画 */
 @keyframes float {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(0, 0) scale(1);
   }
+
   33% {
     transform: translate(40px, -40px) scale(1.08);
   }
+
   66% {
     transform: translate(-30px, 30px) scale(0.95);
   }
 }
 
-/* ==================== 装饰性网格点阵 ==================== */
 .grid-pattern {
   position: absolute;
   inset: 0;
-  background-image:
-    radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.06) 1px, transparent 0);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgba(59, 130, 246, 0.06) 1px,
+    transparent 0
+  );
   background-size: 50px 50px;
   pointer-events: none;
 }
 
-/* ==================== 玻璃态主容器 ==================== */
 .glass-container {
   position: relative;
   z-index: 10;
-  height: 100%;
   display: grid;
-  grid-template-columns: 400px minmax(0, 1fr) 340px;
+  height: 100%;
   gap: 0;
   padding: 16px;
   box-sizing: border-box;
+  grid-template-columns: 400px minmax(0, 1fr) 340px;
 }
 
-/* 玻璃态效果：毛玻璃 + 半透明背景 */
 .glass-container > :deep(*) {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: 20px;
   box-shadow:
     0 8px 32px rgba(59, 130, 246, 0.08),
     0 2px 8px rgba(0, 0, 0, 0.04),
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.6);
   transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
-/* 悬停时轻微上浮 */
 .glass-container > :deep(*):hover {
   box-shadow:
     0 12px 40px rgba(59, 130, 246, 0.12),
@@ -712,30 +648,30 @@ onUnmounted(() => {
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
-/* ==================== 响应式断点 ==================== */
 @media (max-width: 1400px) {
   .glass-container {
-    grid-template-columns: 72px 300px minmax(0, 1fr) 300px;
     padding: 12px;
+    grid-template-columns: 72px 300px minmax(0, 1fr) 300px;
   }
 }
 
 @media (max-width: 1200px) {
   .glass-container {
-    grid-template-columns: 72px 300px minmax(0, 1fr);
     padding: 12px;
+    grid-template-columns: 72px 300px minmax(0, 1fr);
   }
 }
 
-/* ==================== 侧边栏收起状态 ==================== */
 .glass-container.sidebar-collapsed {
   grid-template-columns: 72px minmax(0, 1fr) 340px;
 }
+
 @media (max-width: 1400px) {
   .glass-container.sidebar-collapsed {
     grid-template-columns: 72px minmax(0, 1fr) 300px;
   }
 }
+
 @media (max-width: 1200px) {
   .glass-container.sidebar-collapsed {
     grid-template-columns: 72px minmax(0, 1fr);
@@ -744,8 +680,8 @@ onUnmounted(() => {
 
 @media (max-width: 900px) {
   .glass-container {
-    grid-template-columns: 1fr;
     padding: 8px;
+    grid-template-columns: 1fr;
   }
 
   .glass-container > :deep(*) {
@@ -753,12 +689,11 @@ onUnmounted(() => {
   }
 }
 
-/* ==================== Element Plus 弹窗样式覆盖 ==================== */
 :deep(.el-dialog) {
-  border-radius: 20px;
   backdrop-filter: blur(20px);
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(59, 130, 246, 0.1);
+  border-radius: 20px;
   box-shadow:
     0 25px 50px rgba(59, 130, 246, 0.15),
     0 10px 20px rgba(0, 0, 0, 0.08);
@@ -770,9 +705,9 @@ onUnmounted(() => {
 }
 
 :deep(.el-dialog__title) {
+  color: #1e40af;
   font-size: 18px;
   font-weight: 600;
-  color: #1e40af;
 }
 
 :deep(.el-dialog__body) {

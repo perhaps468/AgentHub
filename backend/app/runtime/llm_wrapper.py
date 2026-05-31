@@ -11,6 +11,7 @@ The wrapper:
 
 from typing import AsyncIterator
 
+from app.runtime.context_hygiene import estimate_text_tokens
 from app.runtime.generative_model import ResponseStats, TokenUsage
 
 
@@ -133,11 +134,11 @@ class LLMWrapper:
         total = 0
         for msg in messages:
             content = str(msg.content) if hasattr(msg, "content") else str(msg.get("content", ""))
-            total += len(content) // 4
+            total += estimate_text_tokens(content)
         return total
 
     def token_counter_with_history(self, messages_history: list, prompt: str) -> int:
         """Stub token counter including prompt. Conservative estimate."""
         count = self.token_counter(messages_history)
-        count += len(prompt) // 4
+        count += estimate_text_tokens(prompt)
         return count

@@ -1,30 +1,27 @@
 # Analysis and Next Action Decision Point
 
-📊 Progress: Iteration {{ iteration }}/{{ max_iterations }}
+Progress: Iteration {{ iteration }}/{{ max_iterations }}
 
 ## Global Task summary:
 ```
-
 {{ task_to_solve_summary }}```
 
-## Available Resources
-🛠️ Tools:
+## Your Task
+1. Analyze the execution result and progress, and decide whether the current step solved part of the task.
+2. Determine the most effective next step.
+3. Select exactly ONE tool from the available list.
+4. Use variable interpolation where it reduces repetition.
+
+## Tool protocol
 {{ tools_prompt }}
 
-📦 Variables:
+## Variable protocol
 {{ variables_prompt }}
 
-## Your Task
-1. Analyze the execution result and progress, formalize if the current step is solved according to the task.
-2. Determine the most effective next step
-3. Select exactly ONE tool from the available list
-4. Select exactly ONE tool from the available list
-4. Utilize variable interpolation where needed
-
 ## Response Requirements
-Provide TWO markdown-formatted XML blocks:
-1. Your analysis of the progression resulting from the execution of the tool in <thinking> tags, don't include <context_analysis/>
-2. Your tool execution plan in <tool_name> tags
+Provide exactly two raw XML blocks:
+1. Your analysis in `<thinking>` tags. Do not include `<context_analysis/>`.
+2. Your tool execution in one `<action>` block containing exactly one tool tag.
 
 ## Last executed action result
 Last executed tool {{ last_executed_tool }} Execution Result:
@@ -34,23 +31,23 @@ Last executed tool {{ last_executed_tool }} Execution Result:
 </{{ variable_name }}>
 
 ## Response Format
-```xml
 <thinking>
-[Detailed analysis of progress, and reasoning for next step]
+[Detailed analysis of progress and reasoning for the next step]
 </thinking>
-```
-```xml
+
 <action>
 <selected_tool_name>
-[Precise instruction for tool execution]
+  <argument_name>value</argument_name>
 </selected_tool_name>
 </action>
-```
 
-⚠️ Important:
-- Respond ONLY with the two XML blocks
-- No additional commentary
-- If previous step failed, revise approach
-- Use interpolated variables ($variable_name$) where required in tool calls, to minimize token usage, if possible
-- strictly follow the required arguments for each tool as defined in system prompt
-- Utilize <action><task_complete><answer>...</answer></task_complete><action> to indicate task completion, display the result or if the task is deemed unfeasible.
+Important:
+- Respond ONLY with the two raw XML blocks.
+- Do not use markdown code fences.
+- Do not output multiple `<action>` blocks.
+- Do not output more than one tool inside `<action>`.
+- No additional commentary.
+- If the previous step failed, revise the approach.
+- Use interpolated variables like `$variable_name$` inside XML argument values when useful.
+- Strictly follow the required arguments for each tool as defined in the system prompt.
+- Use `<action><task_complete><answer>...</answer></task_complete></action>` to indicate task completion when the task is solved or deemed unfeasible.

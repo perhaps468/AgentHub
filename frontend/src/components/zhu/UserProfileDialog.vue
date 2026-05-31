@@ -1,9 +1,5 @@
 <template>
-  <BaseDialog
-    v-model="visible"
-    title="编辑资料"
-    @confirm="handleConfirm"
-  >
+  <BaseDialog v-model="visible" title="编辑资料" @confirm="handleConfirm">
     <div class="dialog-content">
       <div class="avatar-section">
         <div class="avatar-wrapper">
@@ -18,11 +14,7 @@
 
       <div class="form-section">
         <label class="form-label">用户名</label>
-        <el-input
-          v-model="formData.name"
-          placeholder="请输入用户名"
-          clearable
-        />
+        <el-input v-model="formData.name" placeholder="请输入用户名" clearable />
       </div>
 
       <div class="form-section">
@@ -47,9 +39,10 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import BaseDialog from './BaseDialog.vue'
-import avatar from '@/veiws/img/avatar.vue'
+
 import type { SidebarUser } from '@/types/agenthub'
+import avatar from '@/veiws/img/avatar.vue'
+import BaseDialog from './BaseDialog.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -63,7 +56,7 @@ const emit = defineEmits<{
 
 const visible = computed({
   get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val),
+  set: (value) => emit('update:modelValue', value),
 })
 
 const formData = ref<SidebarUser>({
@@ -87,14 +80,16 @@ watch(
 const handleAvatarChange = (event: Event) => {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  if (file) {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const result = e.target?.result as string
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = (loadEvent) => {
+    const result = loadEvent.target?.result
+    if (typeof result === 'string') {
       formData.value.avatar = result
     }
-    reader.readAsDataURL(file)
   }
+  reader.readAsDataURL(file)
 }
 
 const handleConfirm = () => {
@@ -133,11 +128,11 @@ const handleConfirm = () => {
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
+  padding: 2px 8px;
+  border-radius: 10px;
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -151,9 +146,9 @@ const handleConfirm = () => {
 }
 
 .avatar-name {
+  color: #303133;
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
 }
 
 .form-section {
@@ -163,8 +158,8 @@ const handleConfirm = () => {
 }
 
 .form-label {
+  color: #606266;
   font-size: 12px;
   font-weight: 500;
-  color: #606266;
 }
 </style>

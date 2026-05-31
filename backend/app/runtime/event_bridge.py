@@ -464,7 +464,13 @@ class EventBridge:
         )
 
     def _emit_model_delta(self, data: dict[str, Any]) -> None:
-        """Handle token-level model delta from streaming LLM (T2)."""
+        """Handle token-level model delta from streaming LLM (T2).
+
+        NOTE: Only routes through _on_model_delta, NOT _on_message_delta.
+        Routing through both causes double-delivery of each token to the
+        frontend, resulting in garbled rendering (e.g. "<<") and duplicate
+        content accumulation.
+        """
         delta = data.get("delta", "")
         if not delta:
             return
@@ -472,20 +478,9 @@ class EventBridge:
         # Always accumulate
         self._accumulated_text += delta
 
-        # Route to model_delta callback if provided (T2: streaming path)
+        # Route to model_delta callback (T2: streaming path)
         if self._on_model_delta is not None:
             self._on_model_delta(
-                event_type="model_delta",
-                delta=delta,
-                stream_id=self._stream_id,
-                agent_role=self._agent_role,
-                message_id=self._message_id,
-                accumulated_text=self._accumulated_text,
-            )
-
-        # Also emit to message_delta so the existing WS path works
-        if self._on_message_delta is not None:
-            self._on_message_delta(
                 event_type="model_delta",
                 delta=delta,
                 stream_id=self._stream_id,

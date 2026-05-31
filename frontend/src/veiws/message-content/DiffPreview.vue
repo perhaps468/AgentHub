@@ -12,26 +12,15 @@
     </div>
 
     <div v-if="status === 'pending_confirmation'" class="diff-actions">
-      <button
-        class="btn-confirm"
-        type="button"
-        @click="handleConfirm"
-        :disabled="isLoading"
-      >
+      <button class="btn-confirm" type="button" :disabled="isLoading" @click="handleConfirm">
         {{ isLoading ? '应用中...' : '确认写入' }}
       </button>
-      <button
-        class="btn-cancel"
-        type="button"
-        @click="handleCancel"
-      >
-        取消
-      </button>
+      <button class="btn-cancel" type="button" @click="handleCancel">取消</button>
     </div>
 
     <div v-else-if="status === 'applied'" class="diff-result success">
       <span class="result-icon">&#10003;</span>
-      <span>已写入成功: {{ path }}</span>
+      <span>已写入成功 {{ path }}</span>
     </div>
 
     <div v-else-if="status === 'rejected'" class="diff-result error">
@@ -48,6 +37,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+
 import type { PendingChange } from '../../types/agenthub'
 
 const props = defineProps<{
@@ -101,11 +91,11 @@ const handleCancel = () => {
 
 <style scoped>
 .diff-preview {
+  margin: 8px 0;
+  overflow: hidden;
   border: 1px solid rgb(var(--border-color));
   border-radius: 12px;
   background: rgb(var(--surface-color));
-  overflow: hidden;
-  margin: 8px 0;
 }
 
 .diff-preview.is-confirmed {
@@ -123,8 +113,8 @@ const handleCancel = () => {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  background: rgba(var(--surface-secondary), 0.5);
   border-bottom: 1px solid rgb(var(--border-color));
+  background: rgba(var(--surface-secondary), 0.5);
 }
 
 .diff-operation {
@@ -151,26 +141,26 @@ const handleCancel = () => {
 }
 
 .diff-path {
+  overflow: hidden;
+  color: rgb(var(--text-color));
   font-size: 13px;
   font-weight: 500;
-  color: rgb(var(--text-color));
-  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .diff-content {
-  padding: 12px 14px;
   max-height: 300px;
   overflow: auto;
+  padding: 12px 14px;
 }
 
 .diff-code {
   margin: 0;
+  color: rgb(var(--text-color));
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 12px;
   line-height: 1.6;
-  color: rgb(var(--text-color));
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -201,8 +191,8 @@ const handleCancel = () => {
 }
 
 .btn-confirm:disabled {
-  opacity: 0.6;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .btn-cancel {

@@ -1,6 +1,8 @@
+import asyncio
 import os
 import uuid
 from json import JSONDecodeError
+from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
@@ -12,6 +14,82 @@ from app.models.message import Message
 from app.models.session import ChatSession, utcnow
 from app.schemas.common import to_iso_z
 from app.services.fixed_agent_responder import FixedAgentResponder
+
+
+# ---- WebSocket 连接管理器（用于 REST API 推送） ----
+
+class _WsConnectionManager:
+    """管理活跃的 WebSocket 连接，支持向特定会话推送事件。
+
+    用于 REST API（如 apply 接口）向 WebSocket 会话推送 apply_result 事件。
+    """
+
+    def __init__(self) -> None:
+        # session_id -> (websocket, user_id)
+        self._connections: dict[str, tuple[WebSocket, str]] = {}
+
+    def register(self, session_id: str, websocket: WebSocket, user_id: str) -> None:
+        """注册一个 WebSocket 连接。"""
+        self._connections[session_id] = (websocket, user_id)
+
+    def unregister(self, session_id: str) -> None:
+        """取消注册一个 WebSocket 连接。"""
+        self._connections.pop(session_id, None)
+
+    def get_connection(self, session_id: str) -> Optional[tuple[WebSocket, str]]:
+        """获取指定会话的 WebSocket 连接。"""
+        return self._connections.get(session_id)
+
+    def is_connected(self, session_id: str) -> bool:
+        """检查指定会话是否有活跃连接。"""
+        return session_id in self._connections
+
+
+_WS_CONNECTION_MANAGER = _WsConnectionManager()
+
+
+def get_ws_connection_manager() -> _WsConnectionManager:
+    """获取全局 WebSocket 连接管理器。"""
+    return _WS_CONNECTION_MANAGER
+
+
+async def ws_send_apply_result(
+    session_id: str,
+    change_id: str,
+    success: bool,
+    status: str,
+    message: str,
+) -> bool:
+    """向指定会话推送 apply_result 事件。
+
+    Args:
+        session_id: 会话 ID
+        change_id: 变更 ID
+        success: 是否成功
+        status: 状态（applied, rejected, failed）
+        message: 结果消息
+
+    Returns:
+        True 如果推送成功，False 如果会话未连接或推送失败。
+    """
+    conn = _WS_CONNECTION_MANAGER.get_connection(session_id)
+    if conn is None:
+        return False
+
+    websocket, _ = conn
+    try:
+        await websocket.send_json({
+            "type": "apply_result",
+            "change_id": change_id,
+            "success": success,
+            "status": status,
+            "message": message,
+            "timestamp": _utcnow_iso(),
+        })
+        return True
+    except Exception:
+        return False
+
 
 def runtime_use_runtime_agent() -> bool:
     """Read the runtime-switch flag after loading project .env files."""
@@ -298,6 +376,22 @@ async def ws_send_repair_state(
     })
 
 
+async def _respond_pings(websocket: WebSocket) -> None:
+    """Non-blockingly check for a client ping and respond with pong.
+
+    Must be called from inside a streaming loop so that long-running
+    AI responses do not starve the ping/pong protocol.
+    """
+    try:
+        msg = await asyncio.wait_for(websocket.receive_json(), timeout=0)
+        if isinstance(msg, dict) and msg.get("type") == "ping":
+            await websocket.send_json({"type": "pong"})
+    except asyncio.TimeoutError:
+        pass  # no pending message – expected in the common case
+    except WebSocketDisconnect:
+        raise  # let the outer handler clean up
+
+
 def valid_send_message(payload: object, session_id: str) -> bool:
     if not isinstance(payload, dict):
         return False
@@ -342,6 +436,9 @@ async def session_websocket(
             await _send_error(websocket, "forbidden", "Forbidden: session does not belong to current user", stream_id=str(uuid.uuid4()), agent_role=agent.role)
             await websocket.close(code=4003, reason="Forbidden")
             return
+
+        # 注册 WebSocket 连接以便 REST API 可以推送事件
+        _WS_CONNECTION_MANAGER.register(session_id, websocket, user_id)
 
         while True:
             try:
@@ -420,6 +517,7 @@ async def session_websocket(
                     )
 
                     async for event in runtime_service.stream_events():
+                        await _respond_pings(websocket)
                         if event.type == "message_start":
                             active_stream_id = event.stream_id
                             active_agent_role = event.agent_role
@@ -539,6 +637,7 @@ async def session_websocket(
                     )
 
                     async for event in responder.stream_events():
+                        await _respond_pings(websocket)
                         if event.type == "message_start":
                             active_stream_id = event.stream_id
                             active_agent_role = event.agent_role
@@ -607,4 +706,6 @@ async def session_websocket(
     except Exception:
         await _send_error(websocket, "unknown", "Unknown error", stream_id=str(uuid.uuid4()), agent_role=agent.role)
     finally:
+        # 取消注册 WebSocket 连接
+        _WS_CONNECTION_MANAGER.unregister(session_id)
         db.close()

@@ -1,15 +1,19 @@
 <template>
-  <BaseDialog
-    v-model="visible"
-    title="添加自建 Agent"
-    @confirm="confirmAdd"
-  >
+  <BaseDialog v-model="visible" title="添加自建 Agent" @confirm="confirmAdd">
     <el-form label-position="top" class="edit-profile-form">
       <el-form-item label="名称">
-        <el-input v-model="newAgentName" maxlength="32" placeholder="例如：我的代码助手" />
+        <el-input
+          v-model="newAgentName"
+          maxlength="32"
+          placeholder="例如：我的代码助手"
+        />
       </el-form-item>
       <el-form-item label="能力标签（逗号分隔）">
-        <el-input v-model="newAgentTags" maxlength="80" placeholder="代码生成, 测试, 文档" />
+        <el-input
+          v-model="newAgentTags"
+          maxlength="80"
+          placeholder="代码生成, 测试, 文档"
+        />
       </el-form-item>
       <el-form-item label="简介（可选）">
         <el-input
@@ -26,8 +30,9 @@
 
 <script lang="ts" setup>
 import { computed, ref } from 'vue'
-import BaseDialog from './BaseDialog.vue'
+
 import type { SidebarAgent } from '@/types/agenthub'
+import BaseDialog from './BaseDialog.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -40,7 +45,7 @@ const emit = defineEmits<{
 
 const visible = computed({
   get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val),
+  set: (value) => emit('update:modelValue', value),
 })
 
 const newAgentName = ref('')
@@ -49,8 +54,8 @@ const newAgentDesc = ref('')
 
 const confirmAdd = () => {
   const tags = newAgentTags.value
-    .split(/[,，]/)
-    .map((t) => t.trim())
+    .split(/[,\uFF0C]/)
+    .map((tag) => tag.trim())
     .filter(Boolean)
 
   const newAgent: SidebarAgent = {
@@ -73,8 +78,8 @@ const confirmAdd = () => {
   flex-direction: column;
   gap: 8px;
 }
-el-form{
- width: 100%;
-height: 100%;
+
+.edit-profile-form :deep(.el-form-item) {
+  margin-bottom: 0;
 }
 </style>

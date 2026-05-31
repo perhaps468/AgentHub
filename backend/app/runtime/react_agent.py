@@ -16,12 +16,13 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
 from jinja2 import Environment, FileSystemLoader
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
+from app.runtime.context_hygiene import sanitize_memory_content
 from app.runtime.generative_model import GenerativeModel, ResponseStats, TokenUsage
 from app.runtime.llm_wrapper import LLMWrapper
 from app.runtime.memory import AgentMemory, Message, VariableMemory
@@ -34,7 +35,7 @@ from app.runtime.xml_parser import ToleranceXMLParser
 from app.runtime.xml_tool_parser import ToolParser
 
 MAX_OCCUPANCY = 90.0
-MAX_RESPONSE_LENGTH = 1024 * 32
+MAX_RESPONSE_LENGTH = 4096
 DEFAULT_MAX_INPUT_TOKENS = 128 * 1024
 DEFAULT_MAX_OUTPUT_TOKENS = 4096
 MAX_INTERPOLATION_DEPTH = 10
@@ -118,6 +119,8 @@ class Agent(BaseModel):
     tool_mode: Optional[str] = None
     tracked_files: list[str] = []
     agent_mode: str = "react"
+    # Track pending change IDs created within this agent session
+    _pending_change_ids: set[str] = set()
 
     def __init__(
         self,
@@ -155,7 +158,7 @@ class Agent(BaseModel):
             tool_manager = ToolManager(tools={tool.name: tool for tool in tools})
             environment = get_environment()
             logger.debug(f"Environment details: {environment}")
-            tools_markdown = tool_manager.to_markdown()
+            tools_markdown = tool_manager.to_prompt_markdown()
             logger.debug(f"Tools Markdown: {tools_markdown}")
 
             logger.info(f"Agent mode: {agent_mode}")
@@ -199,7 +202,7 @@ class Agent(BaseModel):
                 max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
                 max_iterations=max_iterations,
                 system_prompt="",
-                compact_every_n_iterations=compact_every_n_iterations or 30,
+                compact_every_n_iterations=compact_every_n_iterations or 8,
                 max_tokens_working_memory=max_tokens_working_memory,
                 chat_system_prompt=chat_system_prompt,
                 tool_mode=tool_mode,
@@ -373,13 +376,20 @@ class Agent(BaseModel):
                         "Runtime response classified as action_call: tool='task_complete' [iteration={}]",
                         self.current_iteration,
                     )
+                    # Append any pending change IDs created in this session to the answer
+                    # so they persist in the DB message and are available to the
+                    # second-turn agent (fixes "写入吧" hallucination issue).
+                    answer_text = result.answer or ""
+                    if self._pending_change_ids:
+                        change_ids = list(self._pending_change_ids)
+                        answer_text += f"\n\n[Pending Changes: {', '.join(sorted(change_ids))}]"
                     self._emit_event("task_complete", {
-                        "response": result.answer,
+                        "response": answer_text,
                         "message": "Task execution completed",
                         "tracked_files": self.tracked_files if self.tracked_files else []
                     })
                     self._update_session_memory(result.next_prompt, content)
-                    answer = result.answer or ""
+                    answer = answer_text
                     done = True
                 elif result.tool_execution_failed:
                     # Tool execution failed (e.g., validation denied) — emit error and terminate.
@@ -397,7 +407,7 @@ class Agent(BaseModel):
                     answer = result.next_prompt
                     done = True
                 elif result.executed_tool is None:
-                    # No tool call detected — treat the response as the final answer.
+                    # No tool call detected – treat the response as the final answer.
                     # This is the natural termination for models that answer directly
                     # without invoking tools (direct reply first protocol).
                     logger.debug(
@@ -413,6 +423,10 @@ class Agent(BaseModel):
                         self.current_iteration,
                         normalized[:500].replace("\n", "\\n"),
                     )
+                    if not normalized.strip():
+                        answer = "Error: Upstream model returned empty response"
+                        done = True
+                        continue
                     self._emit_event("task_complete", {
                         "response": normalized,
                         "message": "Task execution completed (direct reply, no action)",
@@ -524,8 +538,9 @@ class Agent(BaseModel):
                 elif not observation.executed_tool and "<action>" in content and auto_tool_call:
                     response_content = (
                         f"{content}\n\n⚠️ Error: Invalid tool call format detected. "
-                        "Please use the exact XML structure as specified in the system prompt:\n"
-                        "```xml\n<action>\n<tool_name>\n  <parameter_name>value</parameter_name>\n</tool_name>\n</action>\n```"
+                        "Reply with raw XML only. Do not use markdown code fences. "
+                        "Use exactly one <action> block with exactly one tool inside it:\n"
+                        "<action>\n<tool_name>\n  <parameter_name>value</parameter_name>\n</tool_name>\n</action>"
                     )
                     break
                 else:
@@ -704,7 +719,15 @@ class Agent(BaseModel):
                 if (tool_name in ["write_file_tool", "writefile", "edit_whole_content", "replace_in_file", "replaceinfile", "EditWholeContent"]) and "file_path" in arguments_with_values:
                     self._track_file(arguments_with_values["file_path"], tool_name)
 
-                variable_name = self.variable_store.add(response)
+                # Convert PendingChange to display string for variable memory
+                from app.runtime.pending_change import PendingChange
+                if isinstance(response, PendingChange):
+                    memory_response = response.to_display_string()
+                    # Track in session-level set to avoid relying on global registry
+                    self._pending_change_ids.add(response.change_id)
+                else:
+                    memory_response = response
+                variable_name = self.variable_store.add(memory_response)
                 new_prompt = self._format_observation_response(response, executed_tool, variable_name, iteration)
 
                 is_task_complete_answer = executed_tool == "task_complete" and not is_chat_mode
@@ -968,6 +991,7 @@ class Agent(BaseModel):
         self.max_output_tokens = self.model.get_model_max_output_tokens() or DEFAULT_MAX_OUTPUT_TOKENS
         self.max_input_tokens = self.model.get_model_max_input_tokens() or DEFAULT_MAX_INPUT_TOKENS
         self.max_iterations = max_iterations
+        self._pending_change_ids.clear()
 
     def _update_total_tokens(self, message_history: list[Message], prompt: str) -> None:
         """Update the total tokens count based on message history and prompt."""
@@ -1122,7 +1146,7 @@ class Agent(BaseModel):
 
     # Chinese and English opening phrases that are likely incomplete when they appear
     # as the sole content — these are common LLM streaming prefixes.
-    _TRUNCATED_PHRASE_PATTERNS = (
+    _TRUNCATED_PHRASE_PATTERNS: ClassVar[tuple[tuple[str], ...]] = (
         # Chinese: short affirmative/opening phrases (exact matches only, no punctuation suffixes)
         ("我能",), ("可以",), ("当然",), ("好的",), ("好的，",),
         ("我来",), ("让我",), ("请稍等",), ("首先",),
@@ -1164,7 +1188,7 @@ class Agent(BaseModel):
             return True
 
         # Exact match with any truncated phrase
-        for phrase, in self._TRUNCATED_PHRASE_PATTERNS:
+        for phrase, in type(self)._TRUNCATED_PHRASE_PATTERNS:
             if stripped == phrase:
                 return True
 
@@ -1224,8 +1248,9 @@ class Agent(BaseModel):
             if not parsed_content:
                 error_prompt = (
                     "⚠️ Error: Invalid tool call format detected. "
-                    "Please use the exact XML structure:\n"
-                    "```xml\n<action>\n<tool_name>\n  <parameter_name>value</parameter_name>\n</tool_name>\n</action>\n```"
+                    "Reply with raw XML only. Do not use markdown code fences. "
+                    "Use exactly one <action> block with exactly one tool inside it:\n"
+                    "<action>\n<tool_name>\n  <parameter_name>value</parameter_name>\n</tool_name>\n</action>"
                 )
                 return ObserveResponseResult(next_prompt=error_prompt, executed_tool=None, answer=None)
 
@@ -1341,9 +1366,23 @@ class Agent(BaseModel):
     def _format_observation_response(
         self, response: str, last_executed_tool: str, variable_name: str, iteration: int
     ) -> str:
-        """Format the observation response with the given response, variable name, and iteration."""
-        # Convert response to string for display (PendingChange etc. are not strings)
-        response_str = str(response) if not isinstance(response, str) else response
+        """Format the observation response with the given response, variable name, and iteration.
+
+        Special handling for PendingChange: when a write tool (write_file, replace_in_file, etc.)
+        returns a PendingChange, the next step MUST be apply_change. We inject a clear
+        machine-readable instruction so the model knows exactly what to do next.
+        """
+        # Handle PendingChange specially - model must call apply_change next
+        from app.runtime.pending_change import PendingChange
+        if isinstance(response, PendingChange) and not response.is_error():
+            return self._format_pending_change_observation(response, last_executed_tool, variable_name, iteration)
+
+        # Handle error PendingChange
+        if isinstance(response, PendingChange) and response.is_error():
+            response_str = f"[Error] {response.error}"
+        else:
+            response_str = str(response) if not isinstance(response, str) else response
+
         response_display = response_str
         if len(response_str) > MAX_RESPONSE_LENGTH:
             response_display = response_str[:MAX_RESPONSE_LENGTH]
@@ -1368,6 +1407,43 @@ class Agent(BaseModel):
 
         return formatted_response
 
+    def _format_pending_change_observation(
+        self, pending_change: "PendingChange", last_executed_tool: str, variable_name: str, iteration: int
+    ) -> str:
+        """Format a PendingChange observation for memory.
+
+        When a write tool returns PendingChange, the agent MUST NOT auto-apply.
+        Instead, it should inform the user about the pending change and call
+        task_complete. The user will confirm via the UI button.
+
+        NOTE: We do NOT include an <action> block here. Embedding action XML in the
+        observation gets stored in memory and causes the model to output unformatted
+        tool calls (without <action> wrapper) in the next round, which then fails
+        parsing.
+        """
+        pending_change.ensure_diff_computed()
+
+        return f"""[PENDING CHANGE REVIEW REQUIRED] — File change is pending your review.
+The change has NOT been written to disk yet. User confirmation is required first.
+
+Change details:
+  change_id={pending_change.change_id}
+  operation={pending_change.operation.value}
+  path={pending_change.path}
+  status={pending_change.status.value}
+  diff_preview=available_in_ui
+IMPORTANT INSTRUCTIONS:
+  1. Do NOT call apply_change — the user will confirm via the UI.
+  2. Inform the user that a file change is ready for their review.
+  3. Call task_complete to finish this turn and let the user review the diff.
+  4. Include the change_id ({pending_change.change_id}) in your answer text so
+     the system can track it across turns. Example:
+     "A file change (ID: {pending_change.change_id}) is ready for your review on HelloWorld.java."
+  5. After the user confirms via the UI button ("确认写入"), the change will be
+     written to disk automatically.
+  6. Diff preview is available in the UI and should not be copied back into working memory.
+"""
+
     def _prepare_prompt_task(self, task: str) -> str:
         """Prepare the initial prompt for the task."""
         tools_prompt = self._get_tools_names_prompt()
@@ -1388,8 +1464,8 @@ class Agent(BaseModel):
         if is_chat_mode:
             return self._get_tools_names_prompt_for_chat()
 
-        tool_names = ', '.join(self.tools.tool_names())
-        return self._render_template('tools_prompt.j2', tool_names=tool_names)
+        tool_descriptions = self.tools.to_prompt_markdown()
+        return self._render_template('tools_prompt.j2', tool_names=tool_descriptions)
 
     def _get_tools_names_prompt_for_chat(self) -> str:
         """Construct a detailed prompt for chat mode that includes tool parameters, excluding task_complete."""
@@ -1480,11 +1556,14 @@ class Agent(BaseModel):
 
     def _update_session_memory(self, user_content: str, assistant_content: str) -> None:
         """Log session messages to memory and emit events."""
-        self.memory.add(Message(role="user", content=user_content))
-        self._emit_event("session_add_message", {"role": "user", "content": user_content})
+        safe_user_content = sanitize_memory_content("user", user_content)
+        safe_assistant_content = sanitize_memory_content("assistant", assistant_content)
 
-        self.memory.add(Message(role="assistant", content=assistant_content))
-        self._emit_event("session_add_message", {"role": "assistant", "content": assistant_content})
+        self.memory.add(Message(role="user", content=safe_user_content))
+        self._emit_event("session_add_message", {"role": "user", "content": safe_user_content})
+
+        self.memory.add(Message(role="assistant", content=safe_assistant_content))
+        self._emit_event("session_add_message", {"role": "assistant", "content": safe_assistant_content})
 
     def update_model(self, new_model_name: str) -> None:
         """Update the model name and recreate the model wrapper instance."""
@@ -1498,8 +1577,13 @@ class Agent(BaseModel):
         self.tools.add(tool)
         self.config = AgentConfig(
             environment_details=self.config.environment_details,
-            tools_markdown=self.tools.to_markdown(),
-            system_prompt=self.config.system_prompt,
+            tools_markdown=self.tools.to_prompt_markdown(),
+            system_prompt=system_prompt(
+                tools=self.tools.to_prompt_markdown(),
+                environment=self.config.environment_details,
+                expertise=self.specific_expertise,
+                agent_mode=self.agent_mode,
+            ),
         )
         logger.debug(f"Added tool: {tool.name}")
 
@@ -1515,8 +1599,13 @@ class Agent(BaseModel):
         self.tools.remove(tool_name)
         self.config = AgentConfig(
             environment_details=self.config.environment_details,
-            tools_markdown=self.tools.to_markdown(),
-            system_prompt=self.config.system_prompt,
+            tools_markdown=self.tools.to_prompt_markdown(),
+            system_prompt=system_prompt(
+                tools=self.tools.to_prompt_markdown(),
+                environment=self.config.environment_details,
+                expertise=self.specific_expertise,
+                agent_mode=self.agent_mode,
+            ),
         )
         logger.debug(f"Removed tool: {tool_name}")
 
@@ -1531,8 +1620,13 @@ class Agent(BaseModel):
 
         self.config = AgentConfig(
             environment_details=self.config.environment_details,
-            tools_markdown=self.tools.to_markdown(),
-            system_prompt=self.config.system_prompt,
+            tools_markdown=self.tools.to_prompt_markdown(),
+            system_prompt=system_prompt(
+                tools=self.tools.to_prompt_markdown(),
+                environment=self.config.environment_details,
+                expertise=self.specific_expertise,
+                agent_mode=self.agent_mode,
+            ),
         )
         logger.debug(f"Set {len(tools)} tools")
 

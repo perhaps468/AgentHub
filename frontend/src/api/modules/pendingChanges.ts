@@ -1,18 +1,52 @@
 import { agenthubRequest } from '@/api/client'
 
+export interface PendingChangeItem {
+  change_id: string
+  session_id: string
+  message_id?: string | null
+  stream_id?: string | null
+  path: string
+  operation: 'create' | 'update' | 'delete'
+  unified_diff: string
+  original_content?: string | null
+  proposed_content?: string | null
+  status: 'pending_confirmation' | 'applied' | 'rejected' | 'failed'
+  created_at?: string | null
+  applied_at?: string | null
+}
+
+export interface PendingChangeListResponse {
+  items: PendingChangeItem[]
+  total: number
+  session_id: string
+}
+
 export interface ApplyChangeRequest {
   change_id: string
-  session_id?: string  // Task C-4: 用于 WebSocket 事件推送
+  session_id?: string
 }
 
 export interface ApplyChangeResponse {
   success: boolean
   change_id: string
   message: string
-  status: 'applied' | 'rejected' | 'failed'  // Task C-4: 状态字段
+  status: 'applied' | 'rejected' | 'failed'
+  ws_pushed?: boolean
 }
 
-export const applyPendingChange = async (changeId: string, sessionId?: string): Promise<ApplyChangeResponse> => {
+export const fetchPendingChanges = async (
+  sessionId: string,
+): Promise<PendingChangeListResponse> => {
+  const { data } = await agenthubRequest.get<PendingChangeListResponse>('/pending-changes', {
+    params: { session_id: sessionId },
+  })
+  return data
+}
+
+export const applyPendingChange = async (
+  changeId: string,
+  sessionId?: string,
+): Promise<ApplyChangeResponse> => {
   const payload: ApplyChangeRequest = { change_id: changeId }
   if (sessionId) {
     payload.session_id = sessionId
@@ -22,8 +56,6 @@ export const applyPendingChange = async (changeId: string, sessionId?: string): 
 }
 
 export const rejectPendingChange = async (changeId: string): Promise<ApplyChangeResponse> => {
-  // For now, we can handle rejection client-side by removing the pending change
-  // In future, we may want a server-side rejection API
   return {
     success: true,
     change_id: changeId,

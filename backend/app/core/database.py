@@ -32,7 +32,7 @@ def configure_database(database_url: str, *, create_schema: bool = False) -> Non
     engine = create_engine(database_url, **_engine_kwargs(database_url))
     SessionLocal.configure(bind=engine)
     if create_schema:
-        from app.models import message, session, workspace  # noqa: F401
+        from app.models import message, pending_change, session, workspace  # noqa: F401
 
         Base.metadata.create_all(bind=engine)
 

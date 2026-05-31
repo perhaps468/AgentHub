@@ -1,7 +1,9 @@
 <template>
   <div class="chat-show-area" ref="chatShowAreaRef">
-    <!-- Load more -->
-    <div v-if="sessionStore.currentPageInfo.hasMore && !sessionStore.isLoadingMessages" class="load-more-row">
+    <div
+      v-if="sessionStore.currentPageInfo.hasMore && !sessionStore.isLoadingMessages"
+      class="load-more-row"
+    >
       <button type="button" class="load-more-btn" @click="handleLoadMore">加载更多</button>
     </div>
 
@@ -54,11 +56,10 @@ const userInfoStore = useUserInfoStore()
 const chatShowAreaRef = ref<HTMLElement>()
 const newMsgCount = ref(0)
 
-// Map ChatMessage (backend format) → MessageRecord (Msg component format)
 const msgRecord = computed(() => {
   const historicalMessages: ChatMessage[] = sessionStore.messageMap[props.targetId] ?? []
   const streamingMessages = sessionStore.currentStreamingMessages
-  
+
   const historicalRecords = historicalMessages.map((m) => {
     const isHuman = m.sender_type === 'human'
     const senderId = isHuman ? userInfoStore.userId : `agent_${m.sender_role ?? 'default'}`
@@ -92,9 +93,10 @@ const msgRecord = computed(() => {
     .filter((s) => !s.message_id || !historicalMessages.some((m) => m.id === s.message_id))
     .map((s) => {
       const senderId = `agent_${s.sender_role ?? 'default'}`
-      const displayContent = s.ui_status === 'thinking'
-        ? `${s.sender_role || 'AI'} 正在思考...`
-        : s.content
+      const runtimeState = (s.metadata?.runtime_state as string | undefined) ?? undefined
+      const runtimeNodes = (s.metadata?.runtime_nodes as unknown[] | undefined) ?? undefined
+      const displayContent =
+        s.ui_status === 'thinking' ? `${s.sender_role || 'AI'} 正在思考...` : s.content
 
       return {
         id: s.message_id || s.stream_id,
@@ -117,9 +119,8 @@ const msgRecord = computed(() => {
         updateTime: s.created_at,
         isStreaming: true,
         streamStatus: s.ui_status,
-        // Task A: 运行时状态和节点
-        runtimeState: s.runtime_state,
-        runtimeNodes: s.runtime_nodes,
+        runtimeState,
+        runtimeNodes,
       }
     })
 
@@ -161,7 +162,6 @@ watch(
   },
 )
 
-// 监听流式消息，有就滚动（AI 回复过程中实时跟随）
 watch(
   () => sessionStore.currentStreamingMessages,
   () => {
@@ -193,7 +193,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ==================== 聊天展示区容器 ==================== */
 .chat-show-area {
   position: relative;
   height: 100%;
@@ -205,7 +204,6 @@ onUnmounted(() => {
   background: transparent;
 }
 
-/* 滚动条样式 */
 .chat-show-area::-webkit-scrollbar {
   width: 6px;
 }
@@ -219,7 +217,6 @@ onUnmounted(() => {
   border-radius: 3px;
 }
 
-/* ==================== 加载更多按钮 ==================== */
 .load-more-row {
   display: flex;
   justify-content: center;
@@ -244,7 +241,6 @@ onUnmounted(() => {
   transform: translateY(-1px);
 }
 
-/* ==================== 加载中状态 ==================== */
 .loading-row {
   display: flex;
   width: 100%;
@@ -252,13 +248,11 @@ onUnmounted(() => {
   align-items: center;
 }
 
-/* ==================== 消息项 ==================== */
 .msg-item {
   display: flex;
   width: 100%;
 }
 
-/* ==================== 新消息提示按钮 ==================== */
 .new-msg-count {
   position: sticky;
   bottom: 12px;

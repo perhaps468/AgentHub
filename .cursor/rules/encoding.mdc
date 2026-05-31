@@ -1,6 +1,5 @@
 ---
-description: Encoding and file format rules
-globs: "**/*"
+description: 
 alwaysApply: true
 ---
 

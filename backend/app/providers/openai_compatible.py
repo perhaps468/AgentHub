@@ -26,6 +26,35 @@ class QwenProvider(BaseProvider):
         self._base_url = settings.qwen_base_url
         self._model = settings.qwen_model
 
+    def _extract_text(self, value: Any) -> str:
+        if isinstance(value, str):
+            return value
+
+        if isinstance(value, list):
+            parts: list[str] = []
+            for item in value:
+                if isinstance(item, str):
+                    parts.append(item)
+                    continue
+                if not isinstance(item, dict):
+                    continue
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+                    continue
+                nested_text = item.get("content")
+                if isinstance(nested_text, str):
+                    parts.append(nested_text)
+            return "".join(parts)
+
+        if isinstance(value, dict):
+            for key in ("text", "content"):
+                nested = value.get(key)
+                if isinstance(nested, str):
+                    return nested
+
+        return ""
+
     async def chat(self, input: ProviderInput) -> Output:
         if not self._api_key:
             raise ProviderNotConfiguredError(
@@ -65,7 +94,7 @@ class QwenProvider(BaseProvider):
         if not message:
             raise ProviderResponseInvalidError("Upstream response message is missing")
 
-        content = message.get("content")
+        content = self._extract_text(message.get("content"))
         if not content or not content.strip():
             raise ProviderResponseInvalidError("Upstream response content is empty")
 
@@ -131,7 +160,7 @@ class QwenProvider(BaseProvider):
                             continue
 
                         delta = choices[0].get("delta", {})
-                        content = delta.get("content")
+                        content = self._extract_text(delta.get("content"))
                         if content:
                             has_yielded = True
                             yield ProviderStreamEvent(text_delta=content)
@@ -189,7 +218,7 @@ class QwenProvider(BaseProvider):
         if not message:
             raise ProviderResponseInvalidError("Upstream response message is missing")
 
-        content = message.get("content")
+        content = self._extract_text(message.get("content"))
         if not content or not content.strip():
             raise ProviderResponseInvalidError("Upstream response content is empty")
 
@@ -271,7 +300,7 @@ class QwenProvider(BaseProvider):
                             continue
 
                         delta = choices[0].get("delta", {})
-                        content = delta.get("content")
+                        content = self._extract_text(delta.get("content"))
                         if content:
                             has_yielded = True
                             yield ProviderStreamEvent(text_delta=content)

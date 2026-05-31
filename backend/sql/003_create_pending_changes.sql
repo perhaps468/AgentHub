@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
-import pymysql
+-- Migration: Create pending_changes table for Task CE
+-- Stores pending file changes that require user confirmation
 
-sql = """
 CREATE TABLE IF NOT EXISTS pending_changes (
   id CHAR(36) PRIMARY KEY,
   change_id CHAR(36) NOT NULL UNIQUE,
@@ -23,29 +22,4 @@ CREATE TABLE IF NOT EXISTS pending_changes (
     FOREIGN KEY (session_id)
     REFERENCES sessions(id)
     ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-"""
-
-conn = pymysql.connect(
-    host='127.0.0.1',
-    port=3306,
-    user='root',
-    password='710802',
-    database='agenthub',
-    charset='utf8mb4'
-)
-
-try:
-    with conn.cursor() as cursor:
-        cursor.execute(sql)
-    conn.commit()
-    print('Table pending_changes created successfully!')
-    
-    # Verify
-    cursor.execute('DESCRIBE pending_changes')
-    columns = cursor.fetchall()
-    print('\nColumns:')
-    for col in columns:
-        print(f'  {col[0]}: {col[1]}')
-finally:
-    conn.close()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

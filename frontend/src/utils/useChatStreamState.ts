@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type {
   StreamingMessage,
   RuntimeStateValue,
@@ -293,6 +293,32 @@ export function useChatStreamState() {
   // 待确认的 pending changes
   const pendingChanges = ref<Map<string, PendingChange>>(new Map())
 
+  // 当前会话 ID（由外部设置）
+  const currentSessionId = ref<string | null>(null)
+
+  // 设置当前会话 ID
+  function setCurrentSessionId(sessionId: string | null) {
+    currentSessionId.value = sessionId
+  }
+
+  // 获取当前会话的 pending changes（过滤 session_id 或 stream_id）
+  function getSessionPendingChanges(): PendingChange[] {
+    const changes: PendingChange[] = []
+    const sessionId = currentSessionId.value
+    if (!sessionId) return changes
+
+    pendingChanges.value.forEach((change) => {
+      // 匹配 session_id 或 stream_id
+      if (change.session_id === sessionId) {
+        changes.push(change)
+      }
+    })
+    return changes
+  }
+
+  // Computed 版本：响应式的当前会话 pending changes
+  const sessionPendingChanges = computed(() => getSessionPendingChanges())
+
   function handleChangePreview(event: ChangePreviewEvent, sessionId: string) {
     const { change_id, operation, path, unified_diff, status, stream_id, message_id } = event
 
@@ -307,6 +333,7 @@ export function useChatStreamState() {
       path,
       unified_diff,
       status,
+      session_id: sessionId,
       stream_id,
       message_id,
     }
@@ -324,7 +351,7 @@ export function useChatStreamState() {
   function getPendingChanges(sessionId: string): PendingChange[] {
     const changes: PendingChange[] = []
     pendingChanges.value.forEach((change) => {
-      if (change.message_id?.includes(sessionId) || change.stream_id?.includes(sessionId)) {
+      if (change.session_id === sessionId) {
         changes.push(change)
       }
     })
@@ -350,7 +377,7 @@ export function useChatStreamState() {
   function clearSessionPendingChanges(sessionId: string) {
     const toDelete: string[] = []
     pendingChanges.value.forEach((change, changeId) => {
-      if (change.message_id?.includes(sessionId) || change.stream_id?.includes(sessionId)) {
+      if (change.session_id === sessionId) {
         toDelete.push(changeId)
       }
     })
@@ -428,6 +455,81 @@ export function useChatStreamState() {
     repairState.value = null
   }
 
+  // ---------------------------------------------------------------------------
+  // Task CE: Recovery from API (页面刷新/WS重连后恢复)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 从 API 响应恢复 pending changes 到内存中
+   * 用于页面刷新或 WS 重连后重新加载待确认的 changes
+   */
+  function restorePendingChanges(
+    items: Array<{
+      change_id: string
+      session_id: string
+      message_id?: string
+      stream_id?: string
+      path: string
+      operation: 'create' | 'update' | 'delete'
+      unified_diff: string
+      original_content?: string
+      proposed_content?: string
+      status: PendingChange['status']
+      created_at?: string
+      applied_at?: string
+    }>,
+    sessionId: string
+  ) {
+    console.log('[StreamState] restorePendingChanges:', items.length, 'items for session:', sessionId)
+
+    items.forEach((item) => {
+      // 跳过已存在的 change_id，避免覆盖
+      if (pendingChanges.value.has(item.change_id)) {
+        console.log('[StreamState] Skipping existing change_id:', item.change_id)
+        return
+      }
+
+      const change: PendingChange = {
+        change_id: item.change_id,
+        session_id: item.session_id || sessionId,
+        message_id: item.message_id || '',
+        stream_id: item.stream_id || '',
+        operation: item.operation,
+        path: item.path,
+        unified_diff: item.unified_diff || '',
+        status: item.status,
+        original_content: item.original_content,
+        proposed_content: item.proposed_content,
+      }
+
+      const newMap = new Map(pendingChanges.value)
+      newMap.set(item.change_id, change)
+      pendingChanges.value = newMap
+
+      console.log('[StreamState] Restored pending change:', item.change_id, item.path, item.status)
+    })
+  }
+
+  /**
+   * 清理指定会话的所有 in-flight streams
+   * 用于 WS 重连前清理残留状态
+   */
+  function clearInFlightStreams(sessionId: string) {
+    const toDelete: string[] = []
+    streams.value.forEach((stream, streamId) => {
+      if (stream.session_id === sessionId) {
+        toDelete.push(streamId)
+      }
+    })
+
+    if (toDelete.length > 0) {
+      const newMap = new Map(streams.value)
+      toDelete.forEach((id) => newMap.delete(id))
+      streams.value = newMap
+      console.log('[StreamState] Cleared in-flight streams:', toDelete)
+    }
+  }
+
   return {
     streams,
     getStreamingMessages,
@@ -444,8 +546,11 @@ export function useChatStreamState() {
     handleRuntimeState,
     // Task C-2: Pending Change 管理
     pendingChanges,
+    sessionPendingChanges,
+    setCurrentSessionId,
     handleChangePreview,
     getPendingChanges,
+    getSessionPendingChanges,
     updatePendingChangeStatus,
     removePendingChange,
     clearSessionPendingChanges,
@@ -455,5 +560,8 @@ export function useChatStreamState() {
     repairState,
     handleRepairState,
     clearRepairState,
+    // Task CE: Pending Change Recovery from API
+    restorePendingChanges,
+    clearInFlightStreams,
   }
 }

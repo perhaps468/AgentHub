@@ -12,14 +12,13 @@
     />
 
     <section class="chat-stream-panel">
-      <!-- Task C-2: Pending Changes 展示区 -->
-      <div v-if="pendingChanges.length > 0" class="pending-changes-container">
+      <div v-if="safePendingChanges.length > 0" class="pending-changes-container">
         <DiffPreview
-          v-for="change in pendingChanges"
+          v-for="change in safePendingChanges"
           :key="change.change_id"
           :change="change"
-          @confirm="handleConfirmChange"
-          @cancel="handleCancelChange"
+          @confirm="$emit('confirm-change', $event)"
+          @cancel="$emit('cancel-change', $event)"
         />
       </div>
 
@@ -45,14 +44,15 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
+
 import ChatInputArea from '../../veiws/Chat-input-area.vue'
 import ChatShowArea from '../../veiws/Chat-show-area.vue'
 import DiffPreview from '../../veiws/message-content/DiffPreview.vue'
-import type { ConversationItem, Workspace, PendingChange } from '../../types/agenthub'
+import type { ConversationItem, PendingChange, Workspace } from '../../types/agenthub'
 import type { ConnectionState } from '../../utils/ws-client'
 import ChatHeader from './ChatHeader.vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   currentSession: ConversationItem | null | undefined
   currentSessionId: string
   connectionState: ConnectionState
@@ -61,8 +61,10 @@ const props = defineProps<{
   isSendLoading: boolean
   formatTime: (iso: string) => string
   workspace: Workspace | null
-  pendingChanges: PendingChange[]
-}>()
+  pendingChanges?: PendingChange[]
+}>(), {
+  pendingChanges: () => [],
+})
 
 const emit = defineEmits<{
   (e: 'open-left'): void
@@ -72,13 +74,7 @@ const emit = defineEmits<{
   (e: 'cancel-change', changeId: string): void
 }>()
 
-const handleConfirmChange = (changeId: string) => {
-  emit('confirm-change', changeId)
-}
-
-const handleCancelChange = (changeId: string) => {
-  emit('cancel-change', changeId)
-}
+const safePendingChanges = computed(() => props.pendingChanges ?? [])
 </script>
 
 <style scoped>
@@ -103,13 +99,12 @@ const handleCancelChange = (changeId: string) => {
   flex-direction: column;
 }
 
-/* Task C-2: Pending Changes 容器样式 */
 .pending-changes-container {
   flex-shrink: 0;
   padding: 12px 16px;
   border-bottom: 1px solid rgba(var(--border-color), 0.5);
   background: rgba(var(--surface-color), 0.3);
-  max-height: 200px;
+  max-height: 240px;
   overflow-y: auto;
 }
 

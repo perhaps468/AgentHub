@@ -9,6 +9,7 @@ import {
   fetchConversationMessages,
   deleteConversation,
 } from '@/api/modules/session'
+import { fetchPendingChanges } from '@/api/modules/pendingChanges'
 import type {
   ConversationItem,
   CreateSessionPayload,
@@ -164,6 +165,24 @@ export const useSessionStore = defineStore(
       }
     }
 
+    async function restorePendingChangesForSession(
+      sessionId: string,
+      opts: { clearExisting?: boolean; clearInFlight?: boolean } = {},
+    ) {
+      const { clearExisting = true, clearInFlight = false } = opts
+
+      if (clearExisting) {
+        streamState.clearSessionPendingChanges(sessionId)
+      }
+      if (clearInFlight) {
+        streamState.clearInFlightStreams(sessionId)
+      }
+
+      const res = await fetchPendingChanges(sessionId)
+      streamState.restorePendingChanges(res.items, sessionId)
+      return res
+    }
+
     function appendMessage(sessionId: string, msg: ChatMessage) {
       if (!messageMap.value[sessionId]) {
         messageMap.value[sessionId] = []
@@ -229,6 +248,8 @@ export const useSessionStore = defineStore(
 
     function setCurrentSessionId(id: string | null) {
       currentSessionId.value = id
+      // 同步更新 streamState 的 sessionId
+      streamState.setCurrentSessionId(id)
     }
 
     async function deleteSession(sessionId: string) {
@@ -266,6 +287,7 @@ export const useSessionStore = defineStore(
       updateSession,
       archiveSession,
       fetchMessages,
+      restorePendingChangesForSession,
       deleteSession,
       appendMessage,
       appendHumanMessage,

@@ -87,6 +87,23 @@ class ApplyChangeTool(Tool):
         """Clear all registered pending changes. Used for testing."""
         _PENDING_CHANGE_REGISTRY.clear()
 
+    @classmethod
+    def clear_change(cls, change_id: str) -> bool:
+        """Remove a specific pending change from the registry.
+
+        Called after successful apply to clean up the registry.
+
+        Args:
+            change_id: The change_id to remove.
+
+        Returns:
+            True if the change was removed, False if not found.
+        """
+        if change_id in _PENDING_CHANGE_REGISTRY:
+            del _PENDING_CHANGE_REGISTRY[change_id]
+            return True
+        return False
+
     def execute(self, change_id: str) -> str:
         """Apply a pending change by its change_id.
 
@@ -120,7 +137,9 @@ class ApplyChangeTool(Tool):
             del _PENDING_CHANGE_REGISTRY[change_id]
             return (
                 f"[Applied] {pending.operation.value.upper()} {pending.path} "
-                f"(change_id={change_id})."
+                f"(change_id={change_id}).\n"
+                f"Change successfully written to disk.\n"
+                f"NEXT: If the task is complete, call task_complete with your final answer."
             )
         else:
             # Transition to REJECTED status

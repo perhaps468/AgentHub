@@ -268,6 +268,7 @@ export interface RuntimeProcessReplay {
 
 export interface ChangePreviewEvent {
   type: 'change_preview'
+  session_id?: string
   stream_id: string
   message_id: string
   change_id: string
@@ -287,6 +288,11 @@ export interface PendingChange {
   path: string
   unified_diff: string
   status: PendingChangeStatus
+  session_id?: string
   stream_id: string
   message_id: string
+  original_content?: string | null
+  proposed_content?: string | null
+  created_at?: string | null
+  applied_at?: string | null
 }
