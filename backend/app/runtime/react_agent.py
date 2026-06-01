@@ -156,7 +156,7 @@ class Agent(BaseModel):
                 tools.append(TaskCompleteTool())
 
             tool_manager = ToolManager(tools={tool.name: tool for tool in tools})
-            environment = get_environment()
+            environment = get_environment(workspace_root=getattr(self, 'workspace_root', ''))
             logger.debug(f"Environment details: {environment}")
             tools_markdown = tool_manager.to_prompt_markdown()
             logger.debug(f"Tools Markdown: {tools_markdown}")
@@ -1036,13 +1036,43 @@ class Agent(BaseModel):
         if not content or not isinstance(content, str):
             return {}
 
+        # Check for multiple action blocks - this violates protocol
+        action_count = content.count("<action>")
+        if action_count > 1:
+            logger.warning(
+                f"Model output contains {action_count} action blocks (protocol violation). "
+                f"Content preview: {content[:200].replace(chr(10), ' ')}"
+            )
+
+        # Check for <thinking> tags - these should not be in the response
+        if "<thinking>" in content or "<th<thinking>" in content:
+            logger.warning(
+                f"Model output contains <thinking> tags (protocol violation). "
+                f"Content preview: {content[:300].replace(chr(10), ' ')}"
+            )
+
         xml_parser = ToleranceXMLParser()
         action = xml_parser.extract_elements(text=content, element_names=["action"])
 
         tool_names = self.tools.tool_names()
 
+        # T8: Build alias map for tool name tolerance (e.g., "replace_in_file" -> "replace_in_file_tool")
+        tool_aliases = {}
+        for name in tool_names:
+            if name.endswith("_tool"):
+                base_name = name[:-5]  # remove "_tool" suffix
+                tool_aliases[base_name] = name
+
         if action:
             tool_data = xml_parser.extract_elements(text=action["action"], element_names=tool_names)
+            # T8: If no tool found, try alias matching (handles models that omit "_tool" suffix)
+            if not tool_data:
+                all_elements = xml_parser.extract_elements(text=action["action"])
+                for elem_name, elem_content in all_elements.items():
+                    if elem_name in tool_aliases:
+                        real_name = tool_aliases[elem_name]
+                        tool_data[real_name] = elem_content
+                        logger.debug(f"T8 tool name tolerance: '{elem_name}' -> '{real_name}'")
             for tool_name in tool_data:
                 if "<parameter_name>" in tool_data[tool_name]:
                     params = xml_parser.extract_elements(text=tool_data[tool_name], element_names=["parameter_name", "parameter_value"])
@@ -1176,7 +1206,7 @@ class Agent(BaseModel):
         if len(stripped) > 15:
             return False
 
-        if stripped in {"<", "</", "<a", "<t"}:
+        if stripped in {"<", "</", "<a", "<t", "<th"}:
             return True
 
         # Empty / whitespace-only already caught by _is_low_signal_response

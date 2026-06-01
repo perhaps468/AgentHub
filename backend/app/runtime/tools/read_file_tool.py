@@ -77,7 +77,27 @@ class ReadFileTool(Tool):
             return f"Error: workspace_root is not configured. Set WORKSPACE_ROOT env var or pass workspace_root to the tool constructor."
         try:
             guard = WorkspaceGuard(ws)
-            resolved = guard.resolve_path(file_path)
+            # T8: Normalize path separators for cross-platform consistency
+            normalized_path = file_path.replace('\\', '/')
+            file_path_obj = Path(normalized_path)
+
+            if file_path_obj.is_absolute():
+                # Absolute path - resolve it
+                resolved = file_path_obj.resolve()
+            else:
+                # Relative path - check if it might include workspace prefix (common with list_directory_tool)
+                # e.g., list_directory returns "test/hello.py" when ws="E:/JavaCode/test", but we need "hello.py"
+                # Try stripping the workspace name from the start of the path
+                ws_name = Path(ws).name.lower()
+                parts = normalized_path.split('/')
+                if parts and parts[0].lower() == ws_name:
+                    # Strip the workspace name prefix
+                    normalized_path = '/'.join(parts[1:])
+                    if not normalized_path:
+                        return f"Error: file not found: {file_path}"
+
+                resolved = guard.resolve_path(normalized_path)
+
             guard.ensure_within_workspace(resolved)
             content = read_file(str(resolved))
             truncated_content = self._truncate_content(content)

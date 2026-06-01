@@ -7,17 +7,15 @@ import sys
 from pathlib import Path
 
 
-def get_environment() -> str:
+def get_environment(workspace_root: str = "") -> str:
     """Get the current environment information.
+
+    Args:
+        workspace_root: The workspace root path for the agent's sandbox boundary.
 
     Returns:
         A string describing the current environment.
     """
-    try:
-        cwd = os.getcwd()
-    except Exception:
-        cwd = "unknown"
-
     try:
         hostname = socket.gethostname()
     except Exception:
@@ -37,10 +35,13 @@ def get_environment() -> str:
     except Exception:
         pass
 
+    # T7: Replace CWD with Workspace Root - CWD is process-level, not meaningful for agent
+    workspace_line = f"Workspace Root: {workspace_root}" if workspace_root else "Workspace Root: (not configured)"
+
     return (
         f"Operating System: {os_info}\n"
         f"Hostname: {hostname}\n"
-        f"Current Working Directory: {cwd}\n"
+        f"{workspace_line}\n"
         f"User: {username}\n"
         f"Python Version: {python_version}\n"
         f"Home Directory: {home}"

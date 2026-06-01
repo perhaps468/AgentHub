@@ -116,7 +116,7 @@ import type {
   Workspace,
 } from '../types/agenthub'
 import { getWsClientReconnectAttempt, wsClient } from '../utils/ws-client'
-import { useToast } from '../views/useToast'
+import { useToast } from '../veiws/useToast'
 import AddAgentDialog from './zhu/AddAgentDialog.vue'
 import ChatWorkspace from './zhu/ChatWorkspace.vue'
 import LeftSidebarArea from './zhu/LeftSidebarArea.vue'

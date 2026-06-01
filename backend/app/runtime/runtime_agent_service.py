@@ -274,6 +274,13 @@ class RuntimeAgentService:
                 raise WorkspaceRootInvalidError(ws.root_path, "workspace root path does not exist")
             if not p.is_dir():
                 raise WorkspaceRootInvalidError(ws.root_path, "workspace root path is not a directory")
+
+            from loguru import logger
+            logger.debug(
+                "_resolve_workspace_root from DB: session_id={}, workspace_id={}, ws.root_path={}, resolved={}",
+                self.session_id, workspace_id, ws.root_path, p,
+            )
+
             return str(p)
 
         # Priority 2: Explicit workspace_root parameter
@@ -283,6 +290,11 @@ class RuntimeAgentService:
         # Priority 3: WORKSPACE_ROOT env (legacy fallback - only when session has no workspace_id)
         env_root = os.environ.get("WORKSPACE_ROOT", "")
         if env_root:
+            from loguru import logger
+            logger.debug(
+                "_resolve_workspace_root from ENV: session_id={}, WORKSPACE_ROOT={}",
+                self.session_id, env_root,
+            )
             return os.path.abspath(os.path.expanduser(env_root))
 
         raise WorkspaceNotBoundError(
@@ -432,10 +444,16 @@ class RuntimeAgentService:
                 context=self._audit_context,
             )
         else:
+            # Convert response to string if it's a PendingChange object (not JSON serializable)
+            response = kwargs.get("response", "")
+            if hasattr(response, 'to_display_string'):
+                response = response.to_display_string()
+            elif not isinstance(response, str):
+                response = str(response)
             self._recorder.record_tool_call_finish(
                 tool_name=tool_name,
                 arguments=kwargs.get("arguments", {}),
-                response=kwargs.get("response", ""),
+                response=response,
                 context=self._audit_context,
             )
         self._event_queue.put_nowait(("tool_event", kwargs))
@@ -514,7 +532,7 @@ class RuntimeAgentService:
         # Build tools list with workspace_root
         tools = self._build_tools()
         tool_manager = ToolManager(tools={tool.name: tool for tool in tools})
-        environment = get_environment()
+        environment = get_environment(workspace_root=self.workspace_root)
         tools_markdown = tool_manager.to_prompt_markdown()
 
         # T1: Pre-populate memory with session history + system prompt.
@@ -568,7 +586,13 @@ class RuntimeAgentService:
 
         tools = []
 
+        from loguru import logger
         ws_root = self.workspace_root
+        logger.debug(
+            "_build_tools: session_id={}, workspace_root={}",
+            self.session_id,
+            ws_root,
+        )
 
         for tool_cls, extra_kwargs in [
             (ReadFileTool, {"workspace_root": ws_root}),

@@ -104,10 +104,35 @@ class ReplaceInFileTool(Tool):
         return line.replace("\t", "    ", leading_ws)
 
     def parse_diff(self, diff: str) -> List[SearchReplaceBlock]:
-        """Parse the diff string into a list of SearchReplaceBlock instances."""
+        """Parse the diff string into a list of SearchReplaceBlock instances.
+
+        Supports two formats:
+        1. Full SEARCH/REPLACE blocks with markers
+        2. Simple format: if no markers found, treat entire content as new content
+           (the tool will use the file's full content as SEARCH block)
+        """
         if not diff or not diff.strip():
             raise ValueError("Empty or invalid diff string provided")
 
+        blocks: List[SearchReplaceBlock] = []
+
+        # Check if this is a full SEARCH/REPLACE format
+        if "<<<<<<< SEARCH" in diff:
+            blocks = self._parse_search_replace_blocks(diff)
+        else:
+            # Simple format: treat entire diff as the new content (replace block)
+            # The caller should provide the full file content as the search block
+            # when using this format, but for backward compatibility, we'll use
+            # the diff content directly as the complete new file content
+            blocks.append(SearchReplaceBlock(search="__USE_FILE_CONTENT__", replace=diff.strip()))
+
+        if not blocks:
+            raise ValueError("No valid SEARCH/REPLACE blocks found in the diff")
+
+        return blocks
+
+    def _parse_search_replace_blocks(self, diff: str) -> List[SearchReplaceBlock]:
+        """Parse SEARCH/REPLACE blocks from diff string."""
         blocks: List[SearchReplaceBlock] = []
         lines = diff.splitlines()
         idx = 0
@@ -141,9 +166,6 @@ class ReplaceInFileTool(Tool):
                 blocks.append(SearchReplaceBlock(search=search_content, replace=replace_content))
 
             idx += 1
-
-        if not blocks:
-            raise ValueError("No valid SEARCH/REPLACE blocks found in the diff")
 
         return blocks
 
@@ -223,6 +245,15 @@ class ReplaceInFileTool(Tool):
         last_similarity = 0.0
 
         for idx, block in enumerate(blocks, 1):
+            # Handle simplified format: __USE_FILE_CONTENT__ means use entire file as search
+            # This happens when model provides just new content without SEARCH/REPLACE markers
+            if block.search == "__USE_FILE_CONTENT__":
+                block.search = original_content
+                # For simplified format, the "replace" is the complete new file content
+                # So we directly set the content to the new value
+                content = block.replace
+                break
+
             if not block.search:
                 if block.replace:
                     content += f"\n{block.replace}"
