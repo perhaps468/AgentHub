@@ -248,7 +248,10 @@ watch(
   () => {
     const changeId = pendingReviewInfo.value?.changeId
     if (!changeId) return 'pending_confirmation'
-    return sessionStore.streamState.pendingChanges.value.get(changeId)?.status || 'pending_confirmation'
+    // Defensive: ensure streamState and pendingChanges are available
+    const pendingMap = sessionStore?.streamState?.pendingChanges?.value
+    if (!pendingMap) return 'pending_confirmation'
+    return pendingMap.get(changeId)?.status || 'pending_confirmation'
   },
   (newStatus) => {
     if (newStatus && newStatus !== 'pending_confirmation') {
@@ -304,13 +307,13 @@ const handleConfirmDiff = async (changeId: string) => {
     const sessionId = sessionStore.currentSessionId || undefined
     const result = await applyPendingChange(changeId, sessionId)
     if (result.success || result.status === 'applied') {
-      sessionStore.streamState.updatePendingChangeStatus(changeId, 'applied')
+      sessionStore.streamState?.updatePendingChangeStatus(changeId, 'applied')
     } else {
-      sessionStore.streamState.updatePendingChangeStatus(changeId, 'failed')
+      sessionStore.streamState?.updatePendingChangeStatus(changeId, 'failed')
     }
   } catch (error) {
     console.error('确认写入失败', error)
-    sessionStore.streamState.updatePendingChangeStatus(changeId, 'failed')
+    sessionStore.streamState?.updatePendingChangeStatus(changeId, 'failed')
   } finally {
     pendingReviewLoading.value = false
   }
@@ -324,7 +327,7 @@ const handleCancelDiff = async (changeId: string) => {
   } catch {
     // Fallback: mark as rejected locally
   }
-  sessionStore.streamState.updatePendingChangeStatus(changeId, 'rejected')
+  sessionStore.streamState?.updatePendingChangeStatus(changeId, 'rejected')
 }
 
 const handleConfirmPendingReview = async () => {
