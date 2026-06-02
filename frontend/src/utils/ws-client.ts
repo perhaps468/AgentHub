@@ -70,7 +70,7 @@ export type WsIncomingMessage = {
 type StateChangeHandler = (state: ConnectionState) => void
 type MessageHandler = (msg: WsIncomingMessage) => void
 
-class WsClient {
+export class WsClient {
   private ws: WebSocket | null = null
   private sessionId = ''
   private state: ConnectionState = 'disconnected'
@@ -82,6 +82,7 @@ class WsClient {
   private pingTimer: ReturnType<typeof setInterval> | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private pongTimer: ReturnType<typeof setTimeout> | null = null
+  private awaitingResponse = false
 
   private stateListeners = new Set<StateChangeHandler>()
   private messageListeners = new Set<MessageHandler>()
@@ -134,6 +135,7 @@ class WsClient {
       this.ws.close(1000, 'manual')
       this.ws = null
     }
+    this.awaitingResponse = false
     this.reconnectAttempt = 0
     this.setState('disconnected')
   }
@@ -152,6 +154,7 @@ class WsClient {
 
     try {
       this.ws.send(JSON.stringify(payload))
+      this.awaitingResponse = true
       console.log('[WsClient] Sent:', payload)
       return true
     } catch (err) {
@@ -229,6 +232,10 @@ class WsClient {
       console.log('[WsClient] Pong received')
       this.stopPongTimer()
       return
+    }
+
+    if (msg.type === 'message_end' || msg.type === 'message_error' || msg.type === 'error') {
+      this.awaitingResponse = false
     }
 
     console.log('[WsClient] Message:', msg)
@@ -317,7 +324,9 @@ class WsClient {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: 'ping' }))
         console.log('[WsClient] Ping sent')
-        this.startPongTimer()
+        if (!this.awaitingResponse) {
+          this.startPongTimer()
+        }
       }
     }, this.PING_INTERVAL)
   }

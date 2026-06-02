@@ -1313,6 +1313,28 @@ describe('Task CE: Pending Change Recovery from API', () => {
     expect(pendingChanges.value.has('new-from-api')).toBe(true)
   })
 
+  it('restorePendingChanges 会用服务端状态覆盖同一 change 的旧状态', () => {
+    const { handleChangePreview, restorePendingChanges, pendingChanges } = useChatStreamState()
+
+    handleChangePreview(makeChangePreview({
+      change_id: 'existing-change',
+      status: 'pending_confirmation',
+    }), 'session-preserve')
+
+    restorePendingChanges([
+      {
+        change_id: 'existing-change',
+        session_id: 'session-preserve',
+        path: '/workspace/existing.py',
+        operation: 'update',
+        unified_diff: '--- a/existing.py\n+++ b/existing.py',
+        status: 'applied',
+      },
+    ], 'session-preserve')
+
+    expect(pendingChanges.value.get('existing-change')!.status).toBe('applied')
+  })
+
   it('restorePendingChanges 能恢复 applied/rejected/failed 状态的 changes', () => {
     const { restorePendingChanges, pendingChanges } = useChatStreamState()
 

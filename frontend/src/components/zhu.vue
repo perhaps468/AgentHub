@@ -505,7 +505,6 @@ onMounted(async () => {
   wsClient.onStateChange((state) => {
     sessionStore.setConnectionState(state)
     if (state === 'connected') {
-      isSendLoading.value = false
       const sessionId = sessionStore.currentSessionId
       if (sessionId) {
         void restorePendingChangesForCurrentSession(sessionId, { clearInFlight: true })

@@ -508,11 +508,6 @@ export function useChatStreamState() {
     console.log('[StreamState] restorePendingChanges:', items.length, 'items for session:', sessionId)
 
     items.forEach((item) => {
-      if (pendingChanges.value.has(item.change_id)) {
-        console.log('[StreamState] Skipping existing change_id:', item.change_id)
-        return
-      }
-
       const change: PendingChange = {
         change_id: item.change_id,
         session_id: item.session_id || sessionId,

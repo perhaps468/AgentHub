@@ -141,7 +141,7 @@ async def get_pending_changes(
     _get_owned_session_or_404(db, session_id, current_user)
     changes = (
         db.query(PendingChangeModel)
-        .filter_by(session_id=session_id, status="pending_confirmation")
+        .filter_by(session_id=session_id)
         .order_by(desc(PendingChangeModel.created_at))
         .all()
     )
