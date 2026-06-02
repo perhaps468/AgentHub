@@ -32,6 +32,7 @@ class SessionCreate(TimestampedModel):
     title: str | None = Field(default=None, max_length=255)
     mode: Literal["single", "group"]
     workspace_id: str = Field(..., min_length=1)
+    agent_id: str | None = Field(default=None)
 
     @field_validator("workspace_id", mode="after")
     @classmethod
@@ -46,10 +47,17 @@ class SessionUpdate(TimestampedModel):
     is_pinned: bool | None = None
     is_archived: bool | None = None
     workspace_id: str | None = Field(default=None)
+    agent_id: str | None = Field(default=None)
 
     @model_validator(mode="after")
     def require_update_field(self):
-        if self.title is None and self.is_pinned is None and self.is_archived is None and self.workspace_id is None:
+        if (
+            self.title is None
+            and self.is_pinned is None
+            and self.is_archived is None
+            and self.workspace_id is None
+            and self.agent_id is None
+        ):
             raise ValueError("At least one field is required")
         return self
 
@@ -62,6 +70,7 @@ class SessionResponse(TimestampedModel):
     id: str
     owner_id: str
     workspace_id: str | None
+    agent_id: str | None
     title: str | None
     mode: str
     is_pinned: bool

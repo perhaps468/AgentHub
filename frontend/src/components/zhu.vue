@@ -23,7 +23,7 @@
         :filtered-sessions="filteredSessions"
         :current-session-id="sessionStore.currentSessionId || ''"
         :is-loading-list="sessionStore.isLoadingList"
-        :agents="sidebarAgents"
+        :agents="filteredAgentList"
         :filtered-agents="filteredAgentList"
         :selected-agent-id="selectedAgentId"
         :format-time="formatTime"
@@ -76,13 +76,15 @@
   <!-- 添加自建 Agent 弹窗 -->
   <AddAgentDialog
     v-model="showAddAgentDialog"
+    :available-models="agentStore.availableModels"
+    :available-capability-tags="agentStore.availableCapabilityTags"
     @confirm="handleAddAgent"
   />
 
   <!-- 新建对话弹窗 -->
   <NewConversationDialog
     v-model="showNewConversationDialog"
-    :agents="sidebarAgents"
+    :agents="filteredAgentList"
     @confirm="handleCreateConversation"
     @go-agent-panel="activeSidebarPanel = 'agents'; showNewConversationDialog = false"
   />
@@ -102,6 +104,7 @@ import { useAgentStore } from '../store/index'
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
 import type {
+  AgentDraft,
   ConversationItem,
   ConversationMode,
   PreviewState,
@@ -172,50 +175,7 @@ const selectedAgentId = ref('')
 /** 当前会话的工作空间 */
 const currentWorkspace = ref<Workspace | null>(null)
 
-// ==================== Mock Agent 数据 ====================
-const sidebarAgents = ref<SidebarAgent[]>([
-  {
-    id: 'claude-code',
-    name: 'Claude Code',
-    avatar: '',
-    capabilityTags: ['代码生成', '重构', '文档'],
-    description: '专注代码与组件任务',
-    platform: 'claude-code',
-  },
-  {
-    id: 'codex',
-    name: 'Codex',
-    avatar: '',
-    capabilityTags: ['代码生成', '调试', '测试'],
-    description: 'OpenAI 代码助手',
-    platform: 'codex',
-  },
-  {
-    id: 'opencode',
-    name: 'OpenCode',
-    avatar: '',
-    capabilityTags: ['需求分析', '架构', '文档'],
-    description: '开源多模态开发 Agent',
-    platform: 'opencode',
-  },
-  {
-    id: 'agent-default',
-    name: 'agent',
-    avatar: '',
-    capabilityTags: ['代码生成', '需求分析', '测试'],
-    description: '通用开发助手',
-    platform: 'custom',
-  },
-  {
-    id: 'my-agent',
-    name: '我的助手',
-    avatar: '',
-    capabilityTags: ['自定义', '脚本'],
-    description: '用户自建 Agent 示例',
-    platform: 'custom',
-    isCustom: true,
-  },
-])
+const sidebarAgents = computed(() => agentStore.agents)
 
 // ==================== 计算属性 ====================
 
@@ -384,6 +344,8 @@ const handleCreateConversation = async (payload: {
       title: payload.title,
       mode: payload.mode,
       workspace_id: payload.workspace_id,
+      agent_id: payload.agentId,
+      participant_agent_ids: payload.participantAgentIds || [],
     })
     if (session.workspace) {
       currentWorkspace.value = session.workspace as Workspace
@@ -402,6 +364,10 @@ const handleCreateConversation = async (payload: {
 /** 选择 Agent */
 const handleSelectAgent = (agent: SidebarAgent) => {
   selectedAgentId.value = agent.id
+  if (agentStore.agents.some((item) => item.id === agent.id)) {
+    showNewConversationDialog.value = true
+    return
+  }
   const existing = sessionStore.sessionList.find(
     (s) => s.title?.includes(agent.name) && s.mode === 'single',
   )
@@ -469,10 +435,23 @@ const handleProfileUpdate = (data: Partial<SidebarUser>) => {
 
 // ==================== 添加自建 Agent ====================
 
-/** 添加新 Agent */
-const handleAddAgent = (newAgent: SidebarAgent) => {
-  sidebarAgents.value.push(newAgent)
-  showAddAgentDialog.value = false
+const handleAddAgent = async (newAgent: AgentDraft) => {
+  try {
+    const created = await agentStore.createAgent({
+      name: newAgent.name,
+      model: newAgent.model,
+      platform: newAgent.platform || 'custom',
+      description: newAgent.description || null,
+      avatar_url: newAgent.avatar || null,
+      capability_tags: newAgent.capabilityTags,
+    })
+    selectedAgentId.value = created.id
+    showAddAgentDialog.value = false
+    await agentStore.fetchAgents()
+  } catch (error) {
+    console.error('添加 Agent 失败', error)
+    showToast('添加 Agent 失败', true)
+  }
 }
 
 // ==================== 登出 ====================
@@ -511,15 +490,16 @@ const closePreview = () => {
 // ==================== 生命周期 ====================
 
 onMounted(async () => {
-  // 加载会话列表
-  await sessionStore.fetchSessionList({
-    owner_id: userInfoStore.userId || 'dev_user',
-    page: 1,
-    page_size: 50,
-  })
-
-  // 加载默认 Agent
-  agentStore.fetchDefaultAgent()
+  await Promise.all([
+    sessionStore.fetchSessionList({
+      owner_id: userInfoStore.userId || 'dev_user',
+      page: 1,
+      page_size: 50,
+    }),
+    agentStore.fetchAgentConfig(),
+    agentStore.fetchDefaultAgent(),
+    agentStore.fetchAgents(),
+  ])
 
   // 监听 WebSocket 状态变化
   wsClient.onStateChange((state) => {

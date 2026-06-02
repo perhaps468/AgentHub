@@ -6,14 +6,17 @@ from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
-from app.agents.registry import get_default_agent
 from app.core.config import get_settings, load_env_file
 from app.core.database import SessionLocal
 from app.core.security import decode_token
+from app.models.agent import Agent
 from app.models.message import Message
 from app.models.session import ChatSession, utcnow
 from app.schemas.common import to_iso_z
 from app.services.fixed_agent_responder import FixedAgentResponder
+
+
+router = APIRouter(prefix="/ws", tags=["websocket"])
 
 
 # ---- WebSocket 连接管理器（用于 REST API 推送） ----
@@ -101,10 +104,21 @@ def chat_stream_output_enabled() -> bool:
     """Whether WS should forward incremental message_delta events to clients."""
     return get_settings().chat_stream_output_enabled
 
-router = APIRouter(prefix="/ws", tags=["websocket"])
+def get_default_agent():
+    """兼容旧测试与旧调用路径。返回数据库中的默认 Agent 记录。"""
+    db = SessionLocal()
+    try:
+        return db.get(Agent, "pm_agent")
+    finally:
+        db.close()
 
 
-# ---- 在途并发保护 ----
+def get_session_agent(db, session: ChatSession) -> Agent | None:
+    agent_id = getattr(session, "agent_id", None)
+    if not agent_id:
+        return None
+    return db.get(Agent, agent_id)
+
 
 class _InFlightGuard:
     def __init__(self) -> None:
@@ -415,31 +429,35 @@ async def session_websocket(
 ) -> None:
     await websocket.accept()
 
-    token = websocket.query_params.get("x-token")
-    if not token:
-        await websocket.close(code=4001, reason="Missing authentication token")
-        return
-
-    try:
-        payload = decode_token(token)
-        user_id = str(payload.get("sub"))
-    except Exception:
-        await websocket.close(code=4002, reason="Invalid or expired token")
-        return
-
-    agent = get_default_agent()
-    stream_output_enabled = chat_stream_output_enabled()
+    query_params = getattr(websocket, "query_params", {}) or {}
+    token = query_params.get("x-token") if hasattr(query_params, "get") else None
+    if not token and hasattr(websocket, "headers"):
+        token = websocket.headers.get("x-token")
 
     db = SessionLocal()
     try:
         session = db.get(ChatSession, session_id)
         if session is None:
-            await _send_error(websocket, "session_not_found", "Session not found", stream_id=str(uuid.uuid4()), agent_role=agent.role)
-            await websocket.close()
+            await websocket.close(code=4004, reason="Session not found")
             return
 
+        if token:
+            try:
+                payload = decode_token(token)
+                user_id = str(payload.get("sub"))
+            except Exception:
+                await websocket.close(code=4002, reason="Invalid or expired token")
+                return
+        else:
+            user_id = session.owner_id or "dev_user"
+
+        stream_output_enabled = chat_stream_output_enabled()
+
+        selected_agent = get_session_agent(db, session) or get_default_agent()
+        agent_role = getattr(selected_agent, 'role', 'PM')
+
         if session.owner_id != user_id:
-            await _send_error(websocket, "forbidden", "Forbidden: session does not belong to current user", stream_id=str(uuid.uuid4()), agent_role=agent.role)
+            await _send_error(websocket, "forbidden", "Forbidden: session does not belong to current user", stream_id=str(uuid.uuid4()), agent_role=agent_role)
             await websocket.close(code=4003, reason="Forbidden")
             return
 
@@ -450,7 +468,7 @@ async def session_websocket(
             try:
                 payload = await websocket.receive_json()
             except JSONDecodeError:
-                await _send_error(websocket, "invalid_request", "Invalid request", stream_id=str(uuid.uuid4()), agent_role=agent.role)
+                await _send_error(websocket, "invalid_request", "Invalid request", stream_id=str(uuid.uuid4()), agent_role=agent_role)
                 continue
 
             if isinstance(payload, dict) and payload.get("type") == "ping":
@@ -458,13 +476,13 @@ async def session_websocket(
                 continue
 
             if not valid_send_message(payload, session_id):
-                await _send_error(websocket, "invalid_request", "Invalid request", stream_id=str(uuid.uuid4()), agent_role=agent.role)
+                await _send_error(websocket, "invalid_request", "Invalid request", stream_id=str(uuid.uuid4()), agent_role=agent_role)
                 continue
 
             stream_id = str(uuid.uuid4())
 
             if not _IN_FLIGHT_GUARD.try_enter(session_id):
-                await _send_error(websocket, "agent_busy", "Agent is busy, please wait", stream_id=stream_id, agent_role=agent.role)
+                await _send_error(websocket, "agent_busy", "Agent is busy, please wait", stream_id=stream_id, agent_role=agent_role)
                 continue
 
             content = payload["content"]
@@ -487,7 +505,7 @@ async def session_websocket(
 
             try:
                 active_stream_id = stream_id
-                active_agent_role = agent.role
+                active_agent_role = agent_role
                 active_message_id: str | None = None
                 active_error_code = "unknown"
 
@@ -501,9 +519,9 @@ async def session_websocket(
                         WorkspaceRootInvalidError,
                     )
                     from app.runtime.llm_adapter import LLMAdapter
-                    from app.providers.openai_compatible import QwenProvider
-                    settings = get_settings()
-                    provider = QwenProvider(settings)
+                    from app.services.agent_runtime import get_provider_for_agent
+
+                    provider = get_provider_for_agent(selected_agent)
                     llm_adapter = LLMAdapter(provider=provider)
 
                     # T1: Load session history from DB, excluding the current human message
@@ -513,7 +531,7 @@ async def session_websocket(
                     runtime_service = RuntimeAgentService(
                         session_id=session_id,
                         user_message=content,
-                        agent_role=agent.role,
+                        agent_role=agent_role,
                         llm_adapter=llm_adapter,
                         db=db,
                         stream_id=stream_id,
@@ -636,7 +654,7 @@ async def session_websocket(
                     responder = FixedAgentResponder(
                         session_id=session_id,
                         user_message=content,
-                        agent_role=agent.role,
+                        agent_role=agent_role,
                         db=db,
                         stream_id=stream_id,
                     )
@@ -711,7 +729,7 @@ async def session_websocket(
     except WebSocketDisconnect:
         pass
     except Exception:
-        await _send_error(websocket, "unknown", "Unknown error", stream_id=str(uuid.uuid4()), agent_role=agent.role)
+        await _send_error(websocket, "unknown", "Unknown error", stream_id=str(uuid.uuid4()), agent_role=agent_role)
     finally:
         # 取消注册 WebSocket 连接
         _WS_CONNECTION_MANAGER.unregister(session_id)

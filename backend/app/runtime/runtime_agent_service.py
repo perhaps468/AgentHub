@@ -25,6 +25,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.message import Message
 from app.models.session import utcnow
 from app.observability.audit_models import AuditContext
@@ -225,6 +226,8 @@ class RuntimeAgentService:
 
     def _should_disable_streaming(self) -> bool:
         """Disable streaming for models that are unstable with XML/tool protocol output."""
+        if not get_settings().chat_stream_output_enabled:
+            return True
         model_name = (self._get_model_name() or "").lower()
         return model_name.startswith("qwen3-coder")
 

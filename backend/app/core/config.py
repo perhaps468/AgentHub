@@ -28,6 +28,12 @@ class Settings:
     qwen_api_key: str | None
     qwen_base_url: str
     qwen_model: str
+    doubao_api_key: str | None
+    doubao_base_url: str
+    doubao_model: str
+    glm_api_key: str | None
+    glm_base_url: str
+    glm_model: str
     chat_stream_output_enabled: bool
     # Audit settings
     audit_enabled: bool
@@ -49,6 +55,16 @@ def get_settings() -> Settings:
             "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
         ),
         qwen_model=os.getenv("QWEN_MODEL", "qwen-plus"),
+        doubao_api_key=os.getenv("DOUBAO_API_KEY"),
+        doubao_base_url=os.getenv(
+            "DOUBAO_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"
+        ),
+        doubao_model=os.getenv("DOUBAO_MODEL", "doubao-1.5-pro-32k"),
+        glm_api_key=os.getenv("GLM_API_KEY"),
+        glm_base_url=os.getenv(
+            "GLM_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"
+        ),
+        glm_model=os.getenv("GLM_MODEL", "glm-4.7-flash"),
         chat_stream_output_enabled=os.getenv(
             "CHAT_STREAM_OUTPUT_ENABLED", "false"
         ).lower() in ("true", "1", "yes"),

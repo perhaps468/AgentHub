@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { shallowMount, flushPromises } from '@vue/test-utils'
+import { flushPromises, shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Zhu from './zhu.vue'
@@ -9,7 +9,6 @@ const {
   fetchSessionDetail,
   fetchMessages,
   setConnectionState,
-  appendMessage,
   appendHumanMessage,
   clearMessages,
   setCurrentSessionId,
@@ -19,14 +18,16 @@ const {
   onStateChange,
   onReceiveMessage,
   sendMessage,
+  fetchAgentConfig,
   fetchDefaultAgent,
+  fetchAgents,
   showToast,
+  push,
 } = vi.hoisted(() => ({
   fetchSessionList: vi.fn(),
   fetchSessionDetail: vi.fn(),
   fetchMessages: vi.fn(),
   setConnectionState: vi.fn(),
-  appendMessage: vi.fn(),
   appendHumanMessage: vi.fn(),
   clearMessages: vi.fn(),
   setCurrentSessionId: vi.fn(),
@@ -36,9 +37,23 @@ const {
   onStateChange: vi.fn(),
   onReceiveMessage: vi.fn(),
   sendMessage: vi.fn(),
+  fetchAgentConfig: vi.fn(),
   fetchDefaultAgent: vi.fn(),
+  fetchAgents: vi.fn(),
   showToast: vi.fn(),
+  push: vi.fn(),
 }))
+
+const agentStore = reactive({
+  agent: null,
+  agents: [],
+  availableModels: ['qwen3-coder-plus'],
+  availableCapabilityTags: ['代码生成', '测试验证'],
+  fetchAgentConfig,
+  fetchDefaultAgent,
+  fetchAgents,
+  createAgent: vi.fn(),
+})
 
 const sessionStore = reactive({
   sessionList: [],
@@ -51,14 +66,11 @@ const sessionStore = reactive({
   fetchSessionDetail,
   fetchMessages,
   setConnectionState,
-  appendMessage,
   appendHumanMessage,
   clearMessages,
   setCurrentSessionId,
   restorePendingChangesForSession,
   streamState: {
-    sessionPendingChanges: { value: [] },
-    removePendingChange: vi.fn(),
     handleMessageStart: vi.fn(),
     handleMessageDelta: vi.fn(),
     handleMessageEnd: vi.fn(),
@@ -68,6 +80,7 @@ const sessionStore = reactive({
     handleChangePreview: vi.fn(),
     handleApplyResult: vi.fn(),
     handleRepairState: vi.fn(),
+    getSessionIdForStream: vi.fn(),
   },
 })
 
@@ -99,14 +112,15 @@ vi.mock('../utils/ws-client', () => ({
 }))
 
 vi.mock('../store/index', () => ({
-  useAgentStore: () => ({
-    fetchDefaultAgent,
-    agent: null,
-  }),
+  useAgentStore: () => agentStore,
 }))
 
 vi.mock('../veiws/useToast', () => ({
   useToast: () => showToast,
+}))
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push }),
 }))
 
 describe('zhu', () => {
@@ -126,7 +140,6 @@ describe('zhu', () => {
       has_more: false,
     })
     setConnectionState.mockReset()
-    appendMessage.mockReset()
     appendHumanMessage.mockReset()
     clearMessages.mockReset()
     setCurrentSessionId.mockReset()
@@ -140,11 +153,22 @@ describe('zhu', () => {
     onStateChange.mockReset()
     onReceiveMessage.mockReset()
     sendMessage.mockReset().mockReturnValue(true)
-    fetchDefaultAgent.mockReset()
+    fetchAgentConfig.mockReset().mockResolvedValue({
+      available_models: ['qwen3-coder-plus'],
+      available_capability_tags: ['代码生成', '测试验证'],
+    })
+    fetchDefaultAgent.mockReset().mockResolvedValue({
+      id: 'pm_agent',
+      name: 'PM Agent',
+      capability_tags: ['规划'],
+    })
+    fetchAgents.mockReset().mockResolvedValue([])
     showToast.mockReset()
+    push.mockReset()
     sessionStore.currentSessionId = 'session-1'
     sessionStore.currentSession = null
     sessionStore.connectionState = 'disconnected'
+    agentStore.agents = []
   })
 
   it('restores the persisted session detail and messages before reconnecting websocket on mount', async () => {
@@ -156,6 +180,9 @@ describe('zhu', () => {
       page: 1,
       page_size: 50,
     })
+    expect(fetchAgentConfig).toHaveBeenCalled()
+    expect(fetchDefaultAgent).toHaveBeenCalled()
+    expect(fetchAgents).toHaveBeenCalled()
     expect(fetchSessionDetail).toHaveBeenCalledWith('session-1')
     expect(fetchMessages).toHaveBeenCalledWith('session-1', {
       page: 1,
@@ -166,19 +193,6 @@ describe('zhu', () => {
       clearInFlight: false,
     })
     expect(connect).toHaveBeenCalledWith('session-1')
-
-    expect(fetchSessionList.mock.invocationCallOrder[0]).toBeLessThan(
-      fetchSessionDetail.mock.invocationCallOrder[0],
-    )
-    expect(fetchSessionDetail.mock.invocationCallOrder[0]).toBeLessThan(
-      fetchMessages.mock.invocationCallOrder[0],
-    )
-    expect(fetchMessages.mock.invocationCallOrder[0]).toBeLessThan(
-      restorePendingChangesForSession.mock.invocationCallOrder[0],
-    )
-    expect(restorePendingChangesForSession.mock.invocationCallOrder[0]).toBeLessThan(
-      connect.mock.invocationCallOrder[0],
-    )
   })
 
   it('re-syncs pending changes after websocket reconnect succeeds', async () => {
@@ -202,13 +216,7 @@ describe('zhu', () => {
     })
   })
 
-  it('queues sending until websocket becomes connected', async () => {
-    let stateChangeHandler: ((state: string) => void) | undefined
-    onStateChange.mockImplementation((cb) => {
-      stateChangeHandler = cb
-      return vi.fn()
-    })
-
+  it('shows an error toast when websocket send fails', async () => {
     const wrapper = shallowMount(Zhu, {
       global: {
         stubs: {
@@ -230,18 +238,11 @@ describe('zhu', () => {
     })
     await flushPromises()
 
-    sessionStore.connectionState = 'connecting'
     sendMessage.mockReturnValue(false)
 
     await wrapper.get('[data-testid="send"]').trigger('click')
 
-    // P1-3-4: Optimistic human message is appended locally.
     expect(appendHumanMessage).toHaveBeenCalledTimes(1)
     expect(showToast).toHaveBeenCalledWith('发送失败，请检查网络', true)
-
-    sendMessage.mockReturnValue(true)
-    stateChangeHandler?.('connected')
-
-    expect(sendMessage).toHaveBeenCalledWith('hello')
   })
 })

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import CurrentUser
+from app.models.agent import Agent
 from app.models.message import Message
 from app.models.session import ChatSession
 from app.models.workspace import Workspace
@@ -40,6 +41,7 @@ def _session_to_response(db: Session, session: ChatSession) -> SessionResponse:
         id=session.id,
         owner_id=session.owner_id,
         workspace_id=session.workspace_id,
+        agent_id=session.agent_id,
         title=session.title,
         mode=session.mode,
         is_pinned=session.is_pinned,
@@ -74,11 +76,19 @@ def create_session(payload: SessionCreate, current_user: CurrentUser, db: Sessio
     if ws.owner_id != owner:
         raise HTTPException(status_code=403, detail="Workspace does not belong to current user")
 
+    if payload.agent_id is not None:
+        agent = db.get(Agent, payload.agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        if not agent.is_builtin and agent.owner_id != owner:
+            raise HTTPException(status_code=403, detail="Agent does not belong to current user")
+
     session = ChatSession(
         owner_id=owner,
         title=payload.title,
         mode=payload.mode,
         workspace_id=payload.workspace_id,
+        agent_id=payload.agent_id,
     )
     db.add(session)
     db.commit()
