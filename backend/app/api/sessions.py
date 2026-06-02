@@ -13,10 +13,14 @@ from app.core.security import CurrentUser
 from app.models.agent import Agent
 from app.models.message import Message
 from app.models.session import ChatSession
+from app.models.session_member import SessionMember
 from app.models.workspace import Workspace
 from app.schemas.common import Page
 from app.schemas.message import MessageResponse
 from app.schemas.session import SessionCreate, SessionResponse, SessionUpdate, WorkspaceSummary
+from app.schemas.session_member import MemberResponse
+
+PRIMARY_AGENT_ID = "primary_pm_agent"
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -35,6 +39,25 @@ def _get_workspace_summary(db: Session, workspace_id: str | None) -> WorkspaceSu
     )
 
 
+def _get_members_for_session(db: Session, session_id: str) -> list[MemberResponse]:
+    """Get members for a session."""
+    members = db.query(SessionMember).filter(
+        SessionMember.session_id == session_id
+    ).all()
+    return [
+        MemberResponse(
+            id=m.id,
+            session_id=m.session_id,
+            member_type=m.member_type,
+            member_id=m.member_id,
+            is_primary=m.is_primary,
+            health_status=m.health_status,
+            created_at=m.created_at.isoformat(),
+        )
+        for m in members
+    ]
+
+
 def _session_to_response(db: Session, session: ChatSession) -> SessionResponse:
     """Convert a ChatSession to SessionResponse with workspace info."""
     return SessionResponse(
@@ -49,6 +72,7 @@ def _session_to_response(db: Session, session: ChatSession) -> SessionResponse:
         created_at=session.created_at,
         updated_at=session.updated_at,
         workspace=_get_workspace_summary(db, session.workspace_id),
+        members=_get_members_for_session(db, session.id),
     )
 
 
@@ -91,6 +115,42 @@ def create_session(payload: SessionCreate, current_user: CurrentUser, db: Sessio
         agent_id=payload.agent_id,
     )
     db.add(session)
+    db.flush()  # flush to get session.id for member creation
+
+    # P6-3: Group mode — auto-add primary agent and participant agents as members
+    if payload.mode == "group":
+        participant_ids = list(payload.participant_agent_ids or [])
+        # Always include primary agent, deduplicate
+        member_ids = set(participant_ids)
+        member_ids.discard(PRIMARY_AGENT_ID)
+
+        # Validate all participant agents exist
+        for agent_id in member_ids:
+            ag = db.get(Agent, agent_id)
+            if ag is None:
+                raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+            if not ag.is_builtin and ag.owner_id != owner:
+                raise HTTPException(status_code=403, detail=f"Agent does not belong to current user: {agent_id}")
+
+        # Add primary agent as primary member
+        db.add(SessionMember(
+            session_id=session.id,
+            member_type="agent",
+            member_id=PRIMARY_AGENT_ID,
+            is_primary=True,
+            health_status="connected",
+        ))
+
+        # Add participant agents as non-primary members
+        for agent_id in member_ids:
+            db.add(SessionMember(
+                session_id=session.id,
+                member_type="agent",
+                member_id=agent_id,
+                is_primary=False,
+                health_status="connected",
+            ))
+
     db.commit()
     db.refresh(session)
     return _session_to_response(db, session)

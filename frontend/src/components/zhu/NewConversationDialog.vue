@@ -12,7 +12,7 @@
         </el-radio-group>
       </el-form-item>
 
-      <el-form-item :label="newConvType === 'single' ? '选择 Agent（单选）' : '选择 Agent（多选，至少 1 个）'">
+      <el-form-item :label="newConvType === 'single' ? '选择 Agent（单选）' : '选择协作 Agent（可选，默认为主 Agent）'">
         <div v-if="newConvType === 'single'" class="agent-picker-list">
           <label
             v-for="agent in agents"
@@ -33,8 +33,25 @@
         </div>
 
         <div v-else class="agent-picker-list agent-picker-checkboxes">
+          <!-- P6-7: Fixed primary agent card (always selected, disabled) -->
+          <div v-if="primaryAgent" class="agent-picker-item primary-agent-card selected">
+            <input type="checkbox" checked disabled />
+            <avatar :info="{ name: primaryAgent.name, avatar: primaryAgent.avatar }" size="32px" />
+            <div class="agent-picker-meta">
+              <span class="agent-picker-name">{{ primaryAgent.name }}</span>
+              <span class="primary-agent-badge">主 Agent</span>
+            </div>
+          </div>
+          <div v-if="!primaryAgent" class="agent-picker-item primary-agent-card selected">
+            <input type="checkbox" checked disabled />
+            <avatar :info="{ name: '主 PM Agent', avatar: '' }" size="32px" />
+            <div class="agent-picker-meta">
+              <span class="agent-picker-name">主 PM Agent</span>
+              <span class="primary-agent-badge">主 Agent</span>
+            </div>
+          </div>
           <label
-            v-for="agent in agents"
+            v-for="agent in agentsWithoutPrimary"
             :key="agent.id"
             :class="['agent-picker-item', selectedAgentsForGroup.includes(agent.id) ? 'selected' : '']"
           >
@@ -167,6 +184,17 @@ const workspaceCreateError = ref('')
 // For non-Electron browsers: manual path input
 const manualPathInput = ref('')
 
+// P6-7: Primary agent for group mode
+const PRIMARY_AGENT_ID = 'primary_pm_agent'
+
+const primaryAgent = computed(() => {
+  return props.agents.find((a) => a.id === PRIMARY_AGENT_ID) || null
+})
+
+const agentsWithoutPrimary = computed(() => {
+  return props.agents.filter((a) => a.id !== PRIMARY_AGENT_ID)
+})
+
 function openFolderPicker() {
   workspaceCreateError.value = ''
   folderInputRef.value?.click()
@@ -245,7 +273,8 @@ const canCreateConversation = computed(() => {
   if (newConvType.value === 'single') {
     return !!selectedAgentForConv.value
   }
-  return selectedAgentsForGroup.value.length >= 1
+  // P6-7: Group mode always has the primary agent, so zero additional agents is allowed
+  return true
 })
 
 const formatPlatformLabel = (platform?: AgentPlatform) => {
@@ -667,5 +696,35 @@ const confirmCreate = () => {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+}
+
+/* P6-7: Primary agent card in group mode */
+.primary-agent-card {
+  border-color: #3b82f6 !important;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08)) !important;
+  box-shadow:
+    0 0 0 2px rgba(59, 130, 246, 0.2),
+    0 8px 24px rgba(59, 130, 246, 0.2) !important;
+  transform: none !important;
+
+  input[type="checkbox"] {
+    opacity: 0.6;
+  }
+
+  &::before {
+    opacity: 1 !important;
+  }
+}
+
+.primary-agent-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  border-radius: 6px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 </style>

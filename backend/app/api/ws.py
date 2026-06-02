@@ -12,6 +12,7 @@ from app.core.security import decode_token
 from app.models.agent import Agent
 from app.models.message import Message
 from app.models.session import ChatSession, utcnow
+from app.models.session_member import SessionMember
 from app.schemas.common import to_iso_z
 from app.services.fixed_agent_responder import FixedAgentResponder
 
@@ -118,6 +119,23 @@ def get_session_agent(db, session: ChatSession) -> Agent | None:
     if not agent_id:
         return None
     return db.get(Agent, agent_id)
+
+
+def get_primary_agent_for_group(db, session: ChatSession) -> Agent | None:
+    """P6-5: Resolve the primary agent for a group session.
+
+    Queries session_members for the member with is_primary=True
+    and returns the corresponding Agent record.
+    """
+    if session.mode != "group":
+        return None
+    primary_member = db.query(SessionMember).filter(
+        SessionMember.session_id == session.id,
+        SessionMember.is_primary == True,
+    ).first()
+    if primary_member is None:
+        return None
+    return db.get(Agent, primary_member.member_id)
 
 
 class _InFlightGuard:
@@ -453,7 +471,11 @@ async def session_websocket(
 
         stream_output_enabled = chat_stream_output_enabled()
 
-        selected_agent = get_session_agent(db, session) or get_default_agent()
+        # P6-5: For group sessions, resolve the primary agent from session_members
+        if session.mode == "group":
+            selected_agent = get_primary_agent_for_group(db, session) or get_default_agent()
+        else:
+            selected_agent = get_session_agent(db, session) or get_default_agent()
         agent_role = getattr(selected_agent, 'role', 'PM')
 
         if session.owner_id != user_id:

@@ -6,10 +6,26 @@
 """
 from sqlalchemy.orm import Session
 
-from app.agents.builtin import PM_AGENT_SYSTEM_PROMPT, GLM_CODER_SYSTEM_PROMPT, GLM_REVIEWER_SYSTEM_PROMPT
+from app.agents.builtin import PM_AGENT_SYSTEM_PROMPT, PRIMARY_PM_AGENT_SYSTEM_PROMPT, GLM_CODER_SYSTEM_PROMPT, GLM_REVIEWER_SYSTEM_PROMPT
 from app.models.agent import Agent
 
 BUILTIN_AGENTS = [
+    Agent(
+        id="primary_pm_agent",
+        owner_id=None,
+        name="Primary PM Agent",
+        role="PM",
+        provider="qwen_openai_compatible",
+        model="qwen-plus",
+        system_prompt=PRIMARY_PM_AGENT_SYSTEM_PROMPT,
+        platform="custom",
+        description="内置主 PM Agent，群聊模式下默认参与对话，负责需求协调与任务分发",
+        avatar_url=None,
+        capability_tags=["需求分析", "方案设计", "任务拆解", "群聊协调"],
+        tool_permissions=[],
+        is_builtin=True,
+        is_active=True,
+    ),
     Agent(
         id="pm_agent",
         owner_id=None,

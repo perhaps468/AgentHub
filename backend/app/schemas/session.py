@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.common import TimestampedModel
+from app.schemas.session_member import MemberResponse
 
 
 class WorkspaceSummary(BaseModel):
@@ -27,12 +28,14 @@ class SessionCreate(TimestampedModel):
     """Session creation request.
 
     Task B+C-1: workspace_id is REQUIRED for all new sessions.
+    P6-3: participant_agent_ids for group chat creation.
     """
     owner_id: str | None = Field(default=None)
     title: str | None = Field(default=None, max_length=255)
     mode: Literal["single", "group"]
     workspace_id: str = Field(..., min_length=1)
     agent_id: str | None = Field(default=None)
+    participant_agent_ids: list[str] | None = Field(default=None)
 
     @field_validator("workspace_id", mode="after")
     @classmethod
@@ -78,3 +81,4 @@ class SessionResponse(TimestampedModel):
     created_at: datetime
     updated_at: datetime
     workspace: WorkspaceSummary | None = None
+    members: list[MemberResponse] | None = None

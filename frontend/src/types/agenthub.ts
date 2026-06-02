@@ -51,3 +51,74 @@ export interface SidebarAgent {
   model?: string
   system_prompt?: string
 }
+
+// ── Session & Message Types ──────────────────────────────
+
+export interface Workspace {
+  id: string
+  name: string
+  root_path: string
+}
+
+export interface SessionMember {
+  id: string
+  session_id: string
+  member_type: 'agent' | 'user'
+  member_id: string
+  is_primary: boolean
+  health_status: string
+  created_at: string
+}
+
+export interface ConversationItem {
+  id: string
+  owner_id: string
+  workspace_id: string | null
+  agent_id: string | null
+  title: string | null
+  mode: string
+  is_pinned: boolean
+  is_archived: boolean
+  created_at: string
+  updated_at: string
+  workspace?: Workspace | null
+  members?: SessionMember[] | null
+}
+
+export interface ChatMessage {
+  id: string
+  session_id: string
+  sender_type: string
+  sender_role: string | null
+  content: string
+  type: string
+  status: string
+  payload: Record<string, unknown>
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface CreateSessionPayload {
+  owner_id?: string | null
+  title?: string | null
+  mode: 'single' | 'group'
+  workspace_id: string
+  agent_id?: string | null
+  participant_agent_ids?: string[] | null
+}
+
+export interface UpdateSessionPayload {
+  title?: string | null
+  is_pinned?: boolean
+  is_archived?: boolean
+  workspace_id?: string | null
+  agent_id?: string | null
+}
+
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+  has_more: boolean
+}

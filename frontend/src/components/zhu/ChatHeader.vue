@@ -16,12 +16,27 @@
         </div>
       </div>
     </div>
-    <ConnectionStatus
-      v-if="currentSessionId"
-      :state="connectionState"
-      :reconnectAttempt="reconnectAttempt"
-      @retry="$emit('retry')"
-    />
+    <div class="chat-header-right">
+      <!-- P6-9: Group member status display -->
+      <div v-if="currentSession?.mode === 'group' && currentSession.members?.length" class="group-members">
+        <div
+          v-for="member in currentSession.members"
+          :key="member.id"
+          class="member-chip"
+          :class="{ 'is-primary': member.is_primary }"
+        >
+          <span class="member-status-dot"></span>
+          <span class="member-name">{{ member.is_primary ? '主Agent' : `Agent` }}</span>
+          <span class="member-health">{{ member.health_status === 'connected' ? '已连接' : member.health_status }}</span>
+        </div>
+      </div>
+      <ConnectionStatus
+        v-if="currentSessionId"
+        :state="connectionState"
+        :reconnectAttempt="reconnectAttempt"
+        @retry="$emit('retry')"
+      />
+    </div>
   </header>
 </template>
 
@@ -117,6 +132,61 @@ const workspaceRootName = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* P6-9: Group member chips */
+.chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.group-members {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+
+  &.is-primary {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08));
+    border-color: rgba(59, 130, 246, 0.25);
+  }
+}
+
+.member-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
+  flex-shrink: 0;
+}
+
+.member-name {
+  color: #64748b;
+  font-weight: 600;
+
+  .is-primary & {
+    color: #3b82f6;
+  }
+}
+
+.member-health {
+  color: #94a3b8;
+  font-size: 10px;
 }
 
 .header-icon {
