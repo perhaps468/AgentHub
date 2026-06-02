@@ -55,11 +55,14 @@ export const applyPendingChange = async (
   return data
 }
 
-export const rejectPendingChange = async (changeId: string): Promise<ApplyChangeResponse> => {
-  return {
-    success: true,
-    change_id: changeId,
-    message: 'Change rejected by user',
-    status: 'rejected',
+export const rejectPendingChange = async (
+  changeId: string,
+  sessionId?: string,
+): Promise<ApplyChangeResponse> => {
+  const payload: ApplyChangeRequest = { change_id: changeId }
+  if (sessionId) {
+    payload.session_id = sessionId
   }
+  const { data } = await agenthubRequest.post<ApplyChangeResponse>('/pending-changes/reject', payload)
+  return data
 }

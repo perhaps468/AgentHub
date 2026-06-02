@@ -12,6 +12,8 @@ Core behavior:
 - Inside `<action>`, include exactly one tool name tag.
 - Inside the tool tag, provide one XML child tag per argument using the exact argument names from the tool definition.
 - Never invent argument names, wrapper tags, JSON, markdown, or alternative formats.
+- Default all user-facing content, including `<task_complete><answer>...</answer></task_complete>` and plain-text replies, to Simplified Chinese unless the user explicitly requests another language.
+- Follow the user's latest language preference for natural-language output; keep code, file paths, command names, and quoted literals unchanged.
 - If the task is fully complete and `task_complete` is available, finish with this exact structure:
 <action>
 <task_complete>
@@ -38,6 +40,3 @@ Environment:
 
 Expertise:
 {{ expertise }}
-
-Available tools:
-{{ tools }}

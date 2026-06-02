@@ -20,7 +20,38 @@
     />
     <div v-if="nonDiffContent" v-html="parseMarkdown(nonDiffContent)"></div>
   </div>
-  <div v-else v-html="parseMarkdown(displayContent)"></div>
+  <div v-else>
+    <div v-html="parseMarkdown(displayContent)"></div>
+    <div v-if="pendingReviewInfo" class="pending-review-card">
+      <div class="pending-review-meta">
+        <div class="pending-review-title">待确认写入</div>
+        <div class="pending-review-file">{{ pendingReviewInfo.fileName }}</div>
+        <div class="pending-review-id">变更 ID: {{ pendingReviewInfo.changeId }}</div>
+      </div>
+      <div class="pending-review-actions">
+        <button
+          v-if="pendingReviewStatus === 'pending_confirmation'"
+          class="pending-review-confirm"
+          type="button"
+          :disabled="pendingReviewLoading"
+          @click.stop.prevent="handleConfirmPendingReview"
+        >
+          {{ pendingReviewLoading ? '应用中...' : '确认写入' }}
+        </button>
+        <button
+          v-if="pendingReviewStatus === 'pending_confirmation'"
+          class="pending-review-cancel"
+          type="button"
+          @click.stop.prevent="handleCancelPendingReview"
+        >
+          取消
+        </button>
+        <span v-else-if="pendingReviewStatus === 'applied'" class="pending-review-status success">已写入</span>
+        <span v-else-if="pendingReviewStatus === 'rejected'" class="pending-review-status muted">已取消</span>
+        <span v-else-if="pendingReviewStatus === 'failed'" class="pending-review-status error">写入失败</span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -28,6 +59,8 @@ import { computed, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 
+import { applyPendingChange, rejectPendingChange } from '@/api/modules/pendingChanges'
+import { useSessionStore } from '@/store/module/useSessionStore'
 import { TextContentType } from '../../types/textContentType'
 import { normalizeRuntimeTextForDisplay, accumulateAndFilterStreaming, isLowSignalChunk } from '../../utils/runtime-text'
 import type { PendingChange } from '../../types/agenthub'
@@ -58,13 +91,10 @@ const props = defineProps<{
   right?: boolean
 }>()
 
-const emit = defineEmits<{
-  (e: 'confirmDiff', changeId: string): void
-  (e: 'cancelDiff', changeId: string): void
-}>()
-
 const contents = ref()
 const _rawMessage = ref('')
+const pendingReviewLoading = ref(false)
+const sessionStore = useSessionStore()
 
 /**
  * Parse diff content from message text.
@@ -175,6 +205,59 @@ const displayContent = computed(() => {
   return filtered || raw
 })
 
+const pendingReviewInfo = computed(() => {
+  const explicitPending = props.msg?.pending_diffs?.[0]
+  if (explicitPending) {
+    return {
+      changeId: explicitPending.change_id,
+      fileName: explicitPending.path.split(/[/\\]/).pop() || 'target file',
+    }
+  }
+
+  const text = normalizeRuntimeTextForDisplay(_rawMessage.value || '')
+  const normalizedChangeIdMatch = text.match(/(?:变更|change)\s*id\s*[:：]?\s*([A-Za-z0-9-]+)/i)
+    || text.match(/\b([a-f0-9]{8,})\b/i)
+  const normalizedFileMatch = text.match(/(?:文件|file)\s*[:：]?\s*([^\n\r]+)/i)
+  if (normalizedChangeIdMatch) {
+    return {
+      changeId: normalizedChangeIdMatch[1].trim(),
+      fileName: (normalizedFileMatch?.[1] || 'target file').trim(),
+    }
+  }
+  if (!text.includes('文件变更已生成') || !text.includes('确认写入')) {
+    return null
+  }
+
+  const changeIdMatch = text.match(/变更\s*ID[:：]\s*([A-Za-z0-9-]+)/)
+  if (!changeIdMatch) {
+    return null
+  }
+
+  const fileMatch = text.match(/文件[:：]\s*([^\n\r]+)/)
+
+  return {
+    changeId: changeIdMatch[1].trim(),
+    fileName: (fileMatch?.[1] || '目标文件').trim(),
+  }
+})
+
+const pendingReviewStatus = ref<PendingChange['status']>('pending_confirmation')
+
+// Sync local pendingReviewStatus with stream state (handles page refresh / reconnect)
+watch(
+  () => {
+    const changeId = pendingReviewInfo.value?.changeId
+    if (!changeId) return 'pending_confirmation'
+    return sessionStore.streamState.pendingChanges.value.get(changeId)?.status || 'pending_confirmation'
+  },
+  (newStatus) => {
+    if (newStatus && newStatus !== 'pending_confirmation') {
+      pendingReviewStatus.value = newStatus
+    }
+  },
+  { immediate: true },
+)
+
 watch(
   () => props.msg,
   (msg) => {
@@ -213,12 +296,70 @@ const getUserInfo = (content) => {
 }
 
 // Handle diff confirm/cancel events
-const handleConfirmDiff = (changeId: string) => {
-  emit('confirmDiff', changeId)
+const handleConfirmDiff = async (changeId: string) => {
+  if (!changeId || pendingReviewLoading.value) return
+
+  pendingReviewLoading.value = true
+  try {
+    const sessionId = sessionStore.currentSessionId || undefined
+    const result = await applyPendingChange(changeId, sessionId)
+    if (result.success || result.status === 'applied') {
+      sessionStore.streamState.updatePendingChangeStatus(changeId, 'applied')
+    } else {
+      sessionStore.streamState.updatePendingChangeStatus(changeId, 'failed')
+    }
+  } catch (error) {
+    console.error('确认写入失败', error)
+    sessionStore.streamState.updatePendingChangeStatus(changeId, 'failed')
+  } finally {
+    pendingReviewLoading.value = false
+  }
 }
 
-const handleCancelDiff = (changeId: string) => {
-  emit('cancelDiff', changeId)
+const handleCancelDiff = async (changeId: string) => {
+  if (!changeId) return
+  try {
+    const sessionId = sessionStore.currentSessionId || undefined
+    await rejectPendingChange(changeId, sessionId)
+  } catch {
+    // Fallback: mark as rejected locally
+  }
+  sessionStore.streamState.updatePendingChangeStatus(changeId, 'rejected')
+}
+
+const handleConfirmPendingReview = async () => {
+  const changeId = pendingReviewInfo.value?.changeId
+  if (!changeId || pendingReviewLoading.value) return
+
+  pendingReviewLoading.value = true
+  try {
+    const sessionId = sessionStore.currentSessionId || undefined
+    const result = await applyPendingChange(changeId, sessionId)
+    if (result.success || result.status === 'applied') {
+      pendingReviewStatus.value = 'applied'
+    } else {
+      pendingReviewStatus.value = 'failed'
+    }
+  } catch (error) {
+    console.error('确认写入失败', error)
+    pendingReviewStatus.value = 'failed'
+  } finally {
+    pendingReviewLoading.value = false
+  }
+}
+
+const handleCancelPendingReview = async () => {
+  const changeId = pendingReviewInfo.value?.changeId
+  if (!changeId) return
+
+  try {
+    const sessionId = sessionStore.currentSessionId || undefined
+    await rejectPendingChange(changeId, sessionId)
+    pendingReviewStatus.value = 'rejected'
+  } catch {
+    // Fallback: mark as rejected locally even if backend call fails
+    pendingReviewStatus.value = 'rejected'
+  }
 }
 </script>
 
@@ -236,5 +377,92 @@ const handleCancelDiff = (changeId: string) => {
       color: white;
     }
   }
+}
+
+.pending-review-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--border-color), 0.9);
+  border-radius: 14px;
+  background: rgba(var(--surface-secondary), 0.55);
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.pending-review-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pending-review-title {
+  color: rgb(var(--text-color));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pending-review-file {
+  color: rgb(var(--text-color));
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pending-review-id {
+  color: rgb(var(--text-secondary));
+  font-size: 12px;
+}
+
+.pending-review-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pending-review-confirm,
+.pending-review-cancel {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.pending-review-confirm {
+  background: rgb(var(--primary-color));
+  color: #fff;
+}
+
+.pending-review-confirm:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.pending-review-cancel {
+  background: rgba(var(--surface-color), 0.9);
+  color: rgb(var(--text-secondary));
+  border: 1px solid rgba(var(--border-color), 0.9);
+}
+
+.pending-review-status {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pending-review-status.success {
+  color: rgb(34, 197, 94);
+}
+
+.pending-review-status.error {
+  color: rgb(239, 68, 68);
+}
+
+.pending-review-status.muted {
+  color: rgb(var(--text-secondary));
 }
 </style>

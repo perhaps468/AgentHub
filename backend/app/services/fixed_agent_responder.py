@@ -94,6 +94,7 @@ class MessageEndEvent:
         stream_id: str,
         message_id: str,
         status: str,
+        final_content: str | None = None,
     ) -> None:
         self.type = "message_end"
         self.agent_role = agent_role
@@ -101,6 +102,7 @@ class MessageEndEvent:
         self.stream_id = stream_id
         self.message_id = message_id
         self.status = status
+        self.final_content = final_content
 
 
 class MessageErrorEvent:
@@ -205,6 +207,7 @@ class FixedAgentResponder:
                 stream_id=self.stream_id,
                 message_id=self._message_id,
                 status="completed",
+                final_content=accumulated,
             )
 
         except Exception as e:

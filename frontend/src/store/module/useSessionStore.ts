@@ -71,6 +71,10 @@ function reorganizeByRounds(messages: ChatMessage[]): ChatMessage[] {
   return rounds.reverse().flat()
 }
 
+function toChronologicalOrder(messages: ChatMessage[]): ChatMessage[] {
+  return [...messages].reverse()
+}
+
 export const useSessionStore = defineStore(
   'session',
   () => {
@@ -182,7 +186,7 @@ export const useSessionStore = defineStore(
             updatedList.push(msg)
           }
           // 后端 desc() 排序会导致 A 在 H 前面，按轮次重组
-          updatedList = reorganizeByRounds(updatedList)
+          updatedList = toChronologicalOrder(updatedList)
           messageMap.value[sessionId] = updatedList
         } else {
           // page>1 时，加载更早的消息，追加到列表顶部
@@ -194,8 +198,8 @@ export const useSessionStore = defineStore(
             }
             newItems.push(msg)
           }
-          const reorganized = reorganizeByRounds(newItems)
-          messageMap.value[sessionId] = [...reorganized, ...existing]
+          const chronological = toChronologicalOrder(newItems)
+          messageMap.value[sessionId] = [...chronological, ...existing]
         }
 
         messagePageMap.value[sessionId] = {
@@ -229,42 +233,59 @@ export const useSessionStore = defineStore(
     }
 
     function appendMessage(sessionId: string, msg: ChatMessage) {
-      if (!messageMap.value[sessionId]) {
-        messageMap.value[sessionId] = []
+      const existing = messageMap.value[sessionId] ?? []
+      if (msg.id && existing.some((m) => m.id === msg.id)) return
+      messageMap.value = {
+        ...messageMap.value,
+        [sessionId]: [...existing, msg],
       }
-      if (msg.id && messageMap.value[sessionId].some((m) => m.id === msg.id)) return
-      messageMap.value[sessionId].push(msg)
     }
 
     function appendHumanMessage(sessionId: string, msg: ChatMessage) {
-      if (!messageMap.value[sessionId]) {
-        messageMap.value[sessionId] = []
+      const existing = messageMap.value[sessionId] ?? []
+      if (msg.id && existing.some((m) => m.id === msg.id)) return
+      messageMap.value = {
+        ...messageMap.value,
+        [sessionId]: [...existing, msg],
       }
-      if (msg.id && messageMap.value[sessionId].some((m) => m.id === msg.id)) return
-      messageMap.value[sessionId].push(msg)
     }
 
     function mergeOrUpdateMessage(sessionId: string, msg: ChatMessage) {
-      if (!messageMap.value[sessionId]) {
-        messageMap.value[sessionId] = []
-      }
-      const existingIndex = messageMap.value[sessionId].findIndex((m) => m.id === msg.id)
+      const existing = messageMap.value[sessionId] ?? []
+      const existingIndex = existing.findIndex((m) => m.id === msg.id)
       if (existingIndex !== -1) {
-        messageMap.value[sessionId][existingIndex] = msg
+        const updated = [...existing]
+        updated[existingIndex] = msg
+        messageMap.value = {
+          ...messageMap.value,
+          [sessionId]: updated,
+        }
       } else {
-        messageMap.value[sessionId].push(msg)
+        messageMap.value = {
+          ...messageMap.value,
+          [sessionId]: [...existing, msg],
+        }
       }
     }
 
     function upsertMessage(messageId: string, msg: ChatMessage) {
       // upsert based on message.id
-      const list = messageMap.value[currentSessionId.value]
+      const sessionId = currentSessionId.value
+      const list = sessionId ? messageMap.value[sessionId] : undefined
       if (!list) return
       const idx = list.findIndex((m) => m.id === messageId)
       if (idx !== -1) {
-        messageMap.value[currentSessionId.value][idx] = msg
+        const updated = [...list]
+        updated[idx] = msg
+        messageMap.value = {
+          ...messageMap.value,
+          [sessionId]: updated,
+        }
       } else {
-        messageMap.value[currentSessionId.value].push(msg)
+        messageMap.value = {
+          ...messageMap.value,
+          [sessionId]: [...list, msg],
+        }
       }
     }
 

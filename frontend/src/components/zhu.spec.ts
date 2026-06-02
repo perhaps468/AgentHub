@@ -13,6 +13,7 @@ const {
   appendHumanMessage,
   clearMessages,
   setCurrentSessionId,
+  restorePendingChangesForSession,
   connect,
   disconnect,
   onStateChange,
@@ -29,6 +30,7 @@ const {
   appendHumanMessage: vi.fn(),
   clearMessages: vi.fn(),
   setCurrentSessionId: vi.fn(),
+  restorePendingChangesForSession: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
   onStateChange: vi.fn(),
@@ -53,6 +55,20 @@ const sessionStore = reactive({
   appendHumanMessage,
   clearMessages,
   setCurrentSessionId,
+  restorePendingChangesForSession,
+  streamState: {
+    sessionPendingChanges: { value: [] },
+    removePendingChange: vi.fn(),
+    handleMessageStart: vi.fn(),
+    handleMessageDelta: vi.fn(),
+    handleMessageEnd: vi.fn(),
+    handleMessageError: vi.fn(),
+    handleToolEvent: vi.fn(),
+    handleRuntimeState: vi.fn(),
+    handleChangePreview: vi.fn(),
+    handleApplyResult: vi.fn(),
+    handleRepairState: vi.fn(),
+  },
 })
 
 const userInfoStore = reactive({
@@ -114,6 +130,11 @@ describe('zhu', () => {
     appendHumanMessage.mockReset()
     clearMessages.mockReset()
     setCurrentSessionId.mockReset()
+    restorePendingChangesForSession.mockReset().mockResolvedValue({
+      items: [],
+      total: 0,
+      session_id: 'session-1',
+    })
     connect.mockReset()
     disconnect.mockReset()
     onStateChange.mockReset()
@@ -140,6 +161,10 @@ describe('zhu', () => {
       page: 1,
       page_size: 20,
     })
+    expect(restorePendingChangesForSession).toHaveBeenCalledWith('session-1', {
+      clearExisting: true,
+      clearInFlight: false,
+    })
     expect(connect).toHaveBeenCalledWith('session-1')
 
     expect(fetchSessionList.mock.invocationCallOrder[0]).toBeLessThan(
@@ -149,8 +174,32 @@ describe('zhu', () => {
       fetchMessages.mock.invocationCallOrder[0],
     )
     expect(fetchMessages.mock.invocationCallOrder[0]).toBeLessThan(
+      restorePendingChangesForSession.mock.invocationCallOrder[0],
+    )
+    expect(restorePendingChangesForSession.mock.invocationCallOrder[0]).toBeLessThan(
       connect.mock.invocationCallOrder[0],
     )
+  })
+
+  it('re-syncs pending changes after websocket reconnect succeeds', async () => {
+    let stateChangeHandler: ((state: string) => void) | undefined
+    onStateChange.mockImplementation((cb) => {
+      stateChangeHandler = cb
+      return vi.fn()
+    })
+
+    shallowMount(Zhu)
+    await flushPromises()
+
+    restorePendingChangesForSession.mockClear()
+
+    stateChangeHandler?.('connected')
+    await flushPromises()
+
+    expect(restorePendingChangesForSession).toHaveBeenCalledWith('session-1', {
+      clearExisting: true,
+      clearInFlight: true,
+    })
   })
 
   it('queues sending until websocket becomes connected', async () => {
@@ -163,11 +212,10 @@ describe('zhu', () => {
     const wrapper = shallowMount(Zhu, {
       global: {
         stubs: {
-          ChatInputArea: {
+          ChatWorkspace: {
             emits: ['send'],
             template: '<button data-testid="send" @click="$emit(\'send\', \'hello\')">send</button>',
           },
-          ChatShowArea: true,
           Search: true,
           avatar: true,
           dot_hint: true,
@@ -189,11 +237,7 @@ describe('zhu', () => {
 
     // P1-3-4: Optimistic human message is appended locally.
     expect(appendHumanMessage).toHaveBeenCalledTimes(1)
-    // During the queued phase, sendMessage returns false (WS not connected yet),
-    // but the new protocol does NOT show a toast for this transient queued state.
-    // The toast-only-once logic handles it differently in the new protocol.
-    // showToast should NOT be called during the queued phase.
-    expect(showToast).not.toHaveBeenCalled()
+    expect(showToast).toHaveBeenCalledWith('发送失败，请检查网络', true)
 
     sendMessage.mockReturnValue(true)
     stateChangeHandler?.('connected')

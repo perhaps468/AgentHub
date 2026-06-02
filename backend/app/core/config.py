@@ -28,6 +28,7 @@ class Settings:
     qwen_api_key: str | None
     qwen_base_url: str
     qwen_model: str
+    chat_stream_output_enabled: bool
     # Audit settings
     audit_enabled: bool
     audit_log_path: str
@@ -48,6 +49,9 @@ def get_settings() -> Settings:
             "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"
         ),
         qwen_model=os.getenv("QWEN_MODEL", "qwen-plus"),
+        chat_stream_output_enabled=os.getenv(
+            "CHAT_STREAM_OUTPUT_ENABLED", "false"
+        ).lower() in ("true", "1", "yes"),
         # Audit configuration
         audit_enabled=os.getenv("AUDIT_ENABLED", "true").lower() in ("true", "1", "yes"),
         audit_log_path=os.getenv(

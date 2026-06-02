@@ -48,6 +48,7 @@ PROTOCOL_TAG_NAMES = (
     "memory_pad",
     "task_complete",
 )
+RUNTIME_TOOL_GUIDE_PREFIX = "Runtime tool reference:"
 
 
 class _NoopEventEmitter:
@@ -274,6 +275,7 @@ class Agent(BaseModel):
 
         if not self.memory.memory or self.memory.memory[0].role != "system":
             self.memory.add(Message(role="system", content=self.config.system_prompt))
+        self._ensure_runtime_tool_guide_message()
 
         self._emit_event("session_start", {"system_prompt": self.config.system_prompt, "content": task})
 
@@ -716,8 +718,10 @@ class Agent(BaseModel):
                 if not executed_tool:
                     return self._handle_tool_execution_failure(response)
 
-                if (tool_name in ["write_file_tool", "writefile", "edit_whole_content", "replace_in_file", "replaceinfile", "EditWholeContent"]) and "file_path" in arguments_with_values:
-                    self._track_file(arguments_with_values["file_path"], tool_name)
+                if tool_name in ["write_file", "write_file_tool", "writefile", "edit_whole_content", "replace_in_file", "replaceinfile", "EditWholeContent"]:
+                    tracked_file_path = arguments_with_values.get("file_path") or arguments_with_values.get("path")
+                    if tracked_file_path:
+                        self._track_file(tracked_file_path, tool_name)
 
                 # Convert PendingChange to display string for variable memory
                 from app.runtime.pending_change import PendingChange
@@ -725,6 +729,12 @@ class Agent(BaseModel):
                     memory_response = response.to_display_string()
                     # Track in session-level set to avoid relying on global registry
                     self._pending_change_ids.add(response.change_id)
+                    review_answer = self._format_pending_change_review_answer(response)
+                    return ObserveResponseResult(
+                        next_prompt=review_answer,
+                        executed_tool="task_complete",
+                        answer=review_answer,
+                    )
                 else:
                     memory_response = response
                 variable_name = self.variable_store.add(memory_response)
@@ -1026,9 +1036,20 @@ class Agent(BaseModel):
                 "operation": pending_change.operation.value,
                 "path": pending_change.path,
                 "unified_diff": pending_change.unified_diff,
-                "status": pending_change.status.value,
+                "status": "pending_confirmation",
+                "original_content": pending_change.original_content,
+                "proposed_content": pending_change.proposed_content,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
+        )
+
+    def _format_pending_change_review_answer(self, pending_change: "PendingChange") -> str:
+        """Build the final user-facing answer for a pending change review step."""
+        file_name = Path(str(pending_change.path)).name or str(pending_change.path)
+        return (
+            f"文件变更已生成，等待你确认写入。"
+            f" 变更 ID: {pending_change.change_id}，文件: {file_name}。"
+            " 请在界面中点击“确认写入”完成落地。"
         )
 
     def _parse_tool_usage(self, content: str) -> dict:
@@ -1420,7 +1441,6 @@ class Agent(BaseModel):
                 f"... content was truncated full content available by interpolation in variable {variable_name}"
             )
 
-        tools_prompt = self._get_tools_names_prompt()
         variables_prompt = self._get_variable_prompt()
 
         formatted_response = self._render_template(
@@ -1428,7 +1448,6 @@ class Agent(BaseModel):
             iteration=iteration,
             max_iterations=self.max_iterations,
             task_to_solve_summary=self.task_to_solve_summary,
-            tools_prompt=tools_prompt,
             variables_prompt=variables_prompt,
             last_executed_tool=last_executed_tool,
             variable_name=variable_name,
@@ -1476,16 +1495,23 @@ IMPORTANT INSTRUCTIONS:
 
     def _prepare_prompt_task(self, task: str) -> str:
         """Prepare the initial prompt for the task."""
-        tools_prompt = self._get_tools_names_prompt()
-        variables_prompt = self._get_variable_prompt()
-
         prompt_task = self._render_template(
             'task_prompt.j2',
             task=task,
-            tools_prompt=tools_prompt,
-            variables_prompt=variables_prompt
         )
         return prompt_task
+
+    def _ensure_runtime_tool_guide_message(self) -> None:
+        """Keep tool protocol in hidden runtime memory instead of the user prompt."""
+        guide_content = self._get_tools_names_prompt()
+        for message in self.memory.memory:
+            if message.role == "system" and message.content.startswith(RUNTIME_TOOL_GUIDE_PREFIX):
+                if message.content != guide_content:
+                    message.content = guide_content
+                return
+
+        insert_at = 1 if self.memory.memory and self.memory.memory[0].role == "system" else 0
+        self.memory.memory.insert(insert_at, Message(role="system", content=guide_content))
 
     def _get_tools_names_prompt(self) -> str:
         """Construct a detailed prompt that lists the available tools for task execution."""

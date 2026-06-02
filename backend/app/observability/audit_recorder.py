@@ -11,6 +11,7 @@ import os
 import threading
 from contextvars import ContextVar
 from pathlib import Path
+import re
 from typing import Any
 
 from loguru import logger
@@ -210,6 +211,79 @@ class AuditRecorder:
             except Exception as e:
                 logger.warning(f"Failed to write audit event to file: {e}")
 
+    def _sanitize_llm_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, str]]:
+        """Remove verbose prompt scaffolding from audit logs.
+
+        We keep the message roles for traceability, but redact:
+        - full system prompts
+        - runtime tool definitions / protocols
+        - repeated observation scaffolding
+        """
+        sanitized: list[dict[str, str]] = []
+        for message in messages:
+            role = str(message.get("role", ""))
+            content = self._sanitize_llm_message_content(role, message.get("content", ""))
+            sanitized.append({
+                "role": role,
+                "content": content,
+            })
+        return sanitized
+
+    def _sanitize_llm_message_content(self, role: str, content: Any) -> str:
+        text = str(content or "").strip()
+        if not text:
+            return ""
+
+        if role == "system":
+            return "[omitted system prompt]"
+
+        lowered = text.lower()
+        if (
+            "to accomplish this task, you have access to these tools" in lowered
+            or "## tool protocol" in lowered
+            or "## response requirements" in lowered
+            or "available tools:" in lowered
+            or "runtime tool reference" in lowered
+        ):
+            if role == "assistant":
+                return "[omitted runtime tool instructions]"
+            extracted_task = self._extract_task_text(text)
+            return extracted_task or "[omitted runtime continuation prompt]"
+
+        if "## your task to solve:" in lowered or "<task>" in lowered:
+            extracted_task = self._extract_task_text(text)
+            if extracted_task:
+                return extracted_task
+
+        if text.startswith("# Analysis and Next Action Decision Point"):
+            extracted_task = self._extract_analysis_task(text)
+            return extracted_task or "[omitted runtime continuation prompt]"
+
+        return text
+
+    def _extract_task_text(self, text: str) -> str:
+        task_match = re.search(r"<task>\s*(.*?)\s*</task>", text, flags=re.DOTALL)
+        if task_match:
+            return task_match.group(1).strip()
+
+        marker = "## Your task to solve:"
+        if marker in text:
+            tail = text.split(marker, 1)[1].strip()
+            lines = [line.strip() for line in tail.splitlines() if line.strip()]
+            if lines:
+                return lines[0]
+        return ""
+
+    def _extract_analysis_task(self, text: str) -> str:
+        summary_match = re.search(
+            r"## Global Task summary:\s*```(.*?)```",
+            text,
+            flags=re.DOTALL,
+        )
+        if summary_match:
+            return summary_match.group(1).strip()
+        return ""
+
     # Convenience methods for common event types
 
     def record_llm_request(
@@ -229,7 +303,7 @@ class AuditRecorder:
             provider=provider,
             model=model,
             request_kind=request_kind,
-            messages=messages,
+            messages=self._sanitize_llm_messages(messages),
             base_url=base_url,
             stream=stream,
         )

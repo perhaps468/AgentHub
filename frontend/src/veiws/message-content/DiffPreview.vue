@@ -76,11 +76,9 @@ const isRejected = computed(() => status.value === 'rejected')
 const handleConfirm = async () => {
   if (isLoading.value || isConfirmed.value) return
   isLoading.value = true
-  try {
-    emit('confirm', props.change.change_id)
-  } finally {
-    isLoading.value = false
-  }
+  emit('confirm', props.change.change_id)
+  // Don't reset isLoading — it will naturally hide when status changes
+  // from 'pending_confirmation' to 'applied'/'failed'.
 }
 
 const handleCancel = () => {

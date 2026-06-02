@@ -188,6 +188,7 @@ class RuntimeAgentService:
         self._accumulated_content: str = ""
         self._error_emitted: bool = False  # prevent double-yielding error events
         self._pending_change_ids: set[str] = set()
+        self._message_completed: bool = False
 
         # Audit: Create audit context for this session
         self._audit_context = AuditContext(
@@ -221,6 +222,11 @@ class RuntimeAgentService:
         except Exception:
             pass
         return "qwen-plus"
+
+    def _should_disable_streaming(self) -> bool:
+        """Disable streaming for models that are unstable with XML/tool protocol output."""
+        model_name = (self._get_model_name() or "").lower()
+        return model_name.startswith("qwen3-coder")
 
     def _resolve_workspace_root(self, explicit_root: str | None) -> str:
         """Resolve workspace root from formal session binding, with fallback hierarchy.
@@ -427,6 +433,8 @@ class RuntimeAgentService:
         self._event_queue.put_nowait(("message_delta", kwargs))
 
     def _on_message_end(self, **kwargs) -> None:
+        if self._message_completed:
+            return
         self._event_queue.put_nowait(("message_end", kwargs))
 
     def _on_message_error(self, **kwargs) -> None:
@@ -479,6 +487,16 @@ class RuntimeAgentService:
             context=self._audit_context,
         )
         self._event_queue.put_nowait(("change_preview", kwargs))
+        if not self._message_completed:
+            review_text = self._build_pending_change_review_text(kwargs)
+            self._event_queue.put_nowait((
+                "message_end",
+                {
+                    "result": review_text,
+                    "accumulated_text": review_text,
+                },
+            ))
+            self._done = True
 
     async def _run_agent_in_background(self, done_future: asyncio.Future) -> None:
         """Run agent.solve_task() and propagate errors to event queue."""
@@ -487,7 +505,7 @@ class RuntimeAgentService:
             result = await agent.async_solve_task(
                 self.user_message,
                 max_iterations=30,
-                streaming=True,  # T2: enable real token-level streaming
+                streaming=not self._should_disable_streaming(),
                 clear_memory=False,  # T1: keep pre-populated session history
             )
             # Result is returned but already emitted via bridge events.
@@ -635,6 +653,8 @@ class RuntimeAgentService:
                 delta=data.get("delta", ""),
             )
         elif event_type == "message_end":
+            if self._message_completed:
+                return None
             result = data.get("result", "")
             # Prefer bridge's accumulated_text (which accumulates model deltas via
             # _emit_model_delta and task_complete responses via the fix above)
@@ -690,6 +710,7 @@ class RuntimeAgentService:
                     str(final_text)[:500].replace("\n", "\\n"),
                 )
             self._finalize_agent_message("completed", final_content=final_text)
+            self._message_completed = True
             # Audit: Record successful message end
             self._recorder.record_message_end(
                 final_content=final_text or "",
@@ -842,6 +863,8 @@ class RuntimeAgentService:
         model.path = data.get("path", model.path or "")
         model.operation = data.get("operation", model.operation or "create")
         model.unified_diff = data.get("unified_diff", model.unified_diff or "")
+        model.original_content = data.get("original_content", model.original_content)
+        model.proposed_content = data.get("proposed_content", model.proposed_content)
         model.status = data.get("status", model.status or "pending_confirmation")
         self.db.add(model)
         self.db.commit()
@@ -864,3 +887,17 @@ class RuntimeAgentService:
         self._agent_message.msg_metadata = metadata
         self.db.add(self._agent_message)
         self.db.commit()
+
+    def _build_pending_change_review_text(self, data: dict[str, Any]) -> str:
+        """Build the final user-facing text for a pending change review step."""
+        from pathlib import Path
+
+        change_id = data.get("change_id", "")
+        path = data.get("path", "")
+        file_name = Path(path).name if path else "目标文件"
+        return (
+            f"文件变更已生成，等待你确认写入。\n"
+            f"变更 ID: {change_id}\n"
+            f"文件: {file_name}\n"
+            "请在界面中点击“确认写入”完成落地。"
+        )

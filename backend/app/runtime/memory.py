@@ -33,7 +33,7 @@ class AgentMemory:
         """Compact the memory to keep only essential messages.
 
         This method keeps:
-        - The system message (if present)
+        - Leading system messages (if present)
         - First two pairs of user-assistant messages
         - Last n pairs of user-assistant messages (default: 2)
 
@@ -44,11 +44,14 @@ class AgentMemory:
             return
 
         compacted_memory = []
-        if self.memory and self.memory[0].role == "system":
-            compacted_memory.append(self.memory[0])
-            messages = self.memory[1:]
-        else:
-            messages = self.memory[:]
+        system_prefix_len = 0
+        for message in self.memory:
+            if message.role != "system":
+                break
+            compacted_memory.append(message)
+            system_prefix_len += 1
+
+        messages = self.memory[system_prefix_len:]
 
         pairs = []
         i = 0

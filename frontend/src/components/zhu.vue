@@ -53,12 +53,9 @@
         :is-send-loading="isSendLoading"
         :format-time="formatTime"
         :workspace="currentWorkspace"
-        :pending-changes="pendingChanges"
         @open-left="showLeft = true"
         @retry="handleRetry"
         @send="handleSend"
-        @confirm-change="handleConfirmChange"
-        @cancel-change="handleCancelChange"
       />
 
       <!-- 右侧预览区 -->
@@ -100,7 +97,6 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { applyPendingChange } from '../api/modules/pendingChanges'
 import { fetchWorkspace } from '../api/modules/workspace'
 import { useAgentStore } from '../store/index'
 import { useSessionStore } from '../store/module/useSessionStore'
@@ -108,7 +104,6 @@ import { useUserInfoStore } from '../store/module/useUserStore'
 import type {
   ConversationItem,
   ConversationMode,
-  PendingChange,
   PreviewState,
   SidebarAgent,
   SidebarPanel,
@@ -236,11 +231,6 @@ const filteredSessions = computed(() => {
   )
 })
 
-/** 待确认的代码变更 */
-const pendingChanges = computed<PendingChange[]>(() => {
-  return sessionStore.streamState.sessionPendingChanges.value
-})
-
 /** 当前用户信息 */
 const currentUser = computed<SidebarUser>(() => ({
   id: userInfoStore.userId || 'user-1',
@@ -285,28 +275,6 @@ const formatTime = (iso: string) => {
   }
 }
 
-// ==================== 待确认变更操作 ====================
-
-/** 确认应用代码变更 */
-const handleConfirmChange = async (changeId: string) => {
-  try {
-    const sessionId = sessionStore.currentSessionId || undefined
-    const result = await applyPendingChange(changeId, sessionId)
-    if (!result.success && result.status !== 'applied') {
-      showToast(`应用失败: ${result.message}`, true)
-    }
-  } catch (error) {
-    console.error('确认变更失败', error)
-    showToast('确认变更失败', true)
-  }
-}
-
-/** 取消代码变更 */
-const handleCancelChange = (changeId: string) => {
-  sessionStore.streamState.removePendingChange(changeId)
-  showToast('已取消写入')
-}
-
 // ==================== 加载工作空间 ====================
 
 async function loadSessionWorkspace(session: ConversationItem | null) {
@@ -345,8 +313,11 @@ const selectSession = async (item: ConversationItem) => {
     showLeft.value = false
     return
   }
+  const previousSessionId = sessionStore.currentSessionId
   wsClient.disconnect()
-  sessionStore.clearMessages(item.id)
+  if (previousSessionId) {
+    sessionStore.clearMessages(previousSessionId)
+  }
   sessionStore.setCurrentSessionId(item.id)
   await sessionStore.fetchSessionDetail(item.id)
   await sessionStore.fetchMessages(item.id, { page: 1, page_size: 20 })
@@ -565,18 +536,23 @@ onMounted(async () => {
   // 监听 WebSocket 消息
   wsClient.onReceiveMessage((msg) => {
     const currentSessionId = sessionStore.currentSessionId
-    if (!currentSessionId) return
+    const resolvedSessionId =
+      msg.message?.session_id
+      || (msg.stream_id ? sessionStore.streamState.getSessionIdForStream(msg.stream_id) : undefined)
+      || currentSessionId
+
+    if (!resolvedSessionId) return
 
     if (msg.type === 'message_start') {
-      sessionStore.streamState.handleMessageStart(msg, currentSessionId)
+      sessionStore.streamState.handleMessageStart(msg, resolvedSessionId)
     } else if (msg.type === 'message_delta') {
-      sessionStore.streamState.handleMessageDelta(msg, currentSessionId)
+      sessionStore.streamState.handleMessageDelta(msg, resolvedSessionId)
     } else if (msg.type === 'message_end') {
-      const stream = sessionStore.streamState.handleMessageEnd(msg, currentSessionId)
+      const stream = sessionStore.streamState.handleMessageEnd(msg, resolvedSessionId)
       if (stream) {
-        sessionStore.mergeOrUpdateMessage(currentSessionId, {
+        sessionStore.mergeOrUpdateMessage(resolvedSessionId, {
           id: stream.message_id || msg.message_id || '',
-          session_id: currentSessionId,
+          session_id: resolvedSessionId,
           sender_type: 'agent',
           sender_role: stream.sender_role,
           content: stream.accumulated_content,
@@ -589,14 +565,14 @@ onMounted(async () => {
       }
       isSendLoading.value = false
     } else if (msg.type === 'message_error') {
-      sessionStore.streamState.handleMessageError(msg, currentSessionId)
+      sessionStore.streamState.handleMessageError(msg, resolvedSessionId)
       isSendLoading.value = false
     } else if (msg.type === 'tool_event') {
-      sessionStore.streamState.handleToolEvent(msg, currentSessionId)
+      sessionStore.streamState.handleToolEvent(msg, resolvedSessionId)
     } else if (msg.type === 'runtime_state') {
-      sessionStore.streamState.handleRuntimeState(msg, currentSessionId)
+      sessionStore.streamState.handleRuntimeState(msg, resolvedSessionId)
     } else if (msg.type === 'change_preview') {
-      sessionStore.streamState.handleChangePreview(msg, currentSessionId)
+      sessionStore.streamState.handleChangePreview(msg, resolvedSessionId)
     } else if (msg.type === 'apply_result') {
       sessionStore.streamState.handleApplyResult(msg)
     } else if (msg.type === 'preview_result') {

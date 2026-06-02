@@ -13,6 +13,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import desc
 
 from app.core.database import get_db, Session as DBSession
 from app.core.security import CurrentUser
@@ -138,8 +139,12 @@ async def get_pending_changes(
         PendingChangeListResponse containing all pending changes for the session.
     """
     _get_owned_session_or_404(db, session_id, current_user)
-    # Query all pending changes for the session (all statuses)
-    changes = db.query(PendingChangeModel).filter_by(session_id=session_id).all()
+    changes = (
+        db.query(PendingChangeModel)
+        .filter_by(session_id=session_id, status="pending_confirmation")
+        .order_by(desc(PendingChangeModel.created_at))
+        .all()
+    )
 
     items = []
     for change in changes:
@@ -282,3 +287,84 @@ async def apply_pending_change(
                 f"Apply failed: {pending.error}. The file may have been modified after preview."
             )
         return result
+
+
+@router.post("/reject", response_model=ApplyChangeResponse)
+async def reject_pending_change(
+    request: ApplyChangeRequest,
+    current_user: CurrentUser,
+    db=Depends(get_db),
+) -> ApplyChangeResponse:
+    """Reject (cancel) a pending change by its change_id.
+
+    This endpoint allows the frontend to cancel a pending change after the
+    user reviews the diff preview. It updates the DB status to 'rejected'
+    and pushes the result back via WebSocket for state synchronization.
+
+    Args:
+        change_id: The unique identifier of the pending change to reject.
+        session_id: Optional session ID for WebSocket push.
+
+    Returns:
+        ApplyChangeResponse indicating success or failure.
+    """
+    change_id = request.change_id.strip()
+    if not change_id:
+        raise HTTPException(status_code=400, detail="change_id cannot be empty")
+
+    db_change = _get_owned_pending_change_or_404(db, change_id, current_user)
+
+    session_id = request.session_id
+
+    if db_change.status == "rejected":
+        result = ApplyChangeResponse(
+            success=False,
+            change_id=change_id,
+            message=f"Change '{change_id}' has already been rejected.",
+            status="rejected",
+        )
+        if session_id:
+            result.ws_pushed = await _push_apply_result(
+                session_id, change_id, False, "rejected",
+                f"Change '{change_id}' has already been rejected."
+            )
+        return result
+
+    if db_change.status == "applied":
+        result = ApplyChangeResponse(
+            success=False,
+            change_id=change_id,
+            message=f"Change '{change_id}' has already been applied and cannot be rejected.",
+            status="applied",
+        )
+        if session_id:
+            result.ws_pushed = await _push_apply_result(
+                session_id, change_id, False, "applied",
+                f"Change '{change_id}' has already been applied and cannot be rejected."
+            )
+        return result
+
+    # Mark as rejected in DB
+    db_change.status = "rejected"
+    db_change.applied_at = datetime.now(timezone.utc)
+    db.add(db_change)
+    db.commit()
+
+    # Also mark in memory registry if present
+    pending = ApplyChangeTool.get_change(change_id)
+    if pending is not None:
+        pending.status = ChangeStatus.REJECTED
+    ApplyChangeTool.clear_change(change_id)
+
+    result = ApplyChangeResponse(
+        success=True,
+        change_id=change_id,
+        message=f"Change '{change_id}' has been rejected.",
+        status="rejected",
+    )
+    if session_id:
+        result.ws_pushed = await _push_apply_result(
+            session_id, change_id, True, "rejected",
+            f"Change '{change_id}' has been rejected by user."
+        )
+    return result

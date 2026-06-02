@@ -236,9 +236,9 @@ class UnifiedDiffTool(Tool):
         ),
     ]
 
-    def __init__(self, workspace_root: Optional[Path] = None):
+    def __init__(self, workspace_root: Optional[Path | str] = None):
         super().__init__()
-        self._workspace_root = workspace_root
+        self._workspace_root = Path(workspace_root) if workspace_root else None
 
     @property
     def _guard(self) -> WorkspaceGuard:

@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
 from app.agents.registry import get_default_agent
-from app.core.config import load_env_file
+from app.core.config import get_settings, load_env_file
 from app.core.database import SessionLocal
 from app.core.security import decode_token
 from app.models.message import Message
@@ -95,6 +95,11 @@ def runtime_use_runtime_agent() -> bool:
     """Read the runtime-switch flag after loading project .env files."""
     load_env_file()
     return os.getenv("RUNTIME_USE_RUNTIME_AGENT", "0") in ("1", "true", "True")
+
+
+def chat_stream_output_enabled() -> bool:
+    """Whether WS should forward incremental message_delta events to clients."""
+    return get_settings().chat_stream_output_enabled
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
@@ -423,6 +428,7 @@ async def session_websocket(
         return
 
     agent = get_default_agent()
+    stream_output_enabled = chat_stream_output_enabled()
 
     db = SessionLocal()
     try:
@@ -496,8 +502,6 @@ async def session_websocket(
                     )
                     from app.runtime.llm_adapter import LLMAdapter
                     from app.providers.openai_compatible import QwenProvider
-                    from app.core.config import get_settings
-
                     settings = get_settings()
                     provider = QwenProvider(settings)
                     llm_adapter = LLMAdapter(provider=provider)
@@ -532,13 +536,14 @@ async def session_websocket(
                             active_stream_id = event.stream_id
                             active_agent_role = event.agent_role
                             active_message_id = event.message_id
-                            await ws_send_message_delta(
-                                websocket,
-                                agent_role=event.agent_role,
-                                stream_id=event.stream_id,
-                                message_id=event.message_id,
-                                delta=event.delta,
-                            )
+                            if stream_output_enabled:
+                                await ws_send_message_delta(
+                                    websocket,
+                                    agent_role=event.agent_role,
+                                    stream_id=event.stream_id,
+                                    message_id=event.message_id,
+                                    delta=event.delta,
+                                )
                         elif event.type == "message_end":
                             active_stream_id = event.stream_id
                             active_agent_role = event.agent_role
@@ -652,13 +657,14 @@ async def session_websocket(
                             active_stream_id = event.stream_id
                             active_agent_role = event.agent_role
                             active_message_id = event.message_id
-                            await ws_send_message_delta(
-                                websocket,
-                                agent_role=event.agent_role,
-                                stream_id=event.stream_id,
-                                message_id=event.message_id,
-                                delta=event.delta,
-                            )
+                            if stream_output_enabled:
+                                await ws_send_message_delta(
+                                    websocket,
+                                    agent_role=event.agent_role,
+                                    stream_id=event.stream_id,
+                                    message_id=event.message_id,
+                                    delta=event.delta,
+                                )
                         elif event.type == "message_end":
                             active_stream_id = event.stream_id
                             active_agent_role = event.agent_role
@@ -669,6 +675,7 @@ async def session_websocket(
                                 stream_id=event.stream_id,
                                 message_id=event.message_id,
                                 status=event.status,
+                                final_content=getattr(event, "final_content", None),
                             )
                         elif event.type == "message_error":
                             active_stream_id = event.stream_id

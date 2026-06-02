@@ -24,6 +24,17 @@ _PREFERRED_TAGS = (
     "context_analysis",
     "thinking",
 )
+_INTERNAL_PROMPT_MARKERS = (
+    "# Analysis and Next Action Decision Point",
+    "## Response Requirements",
+    "Provide exactly two raw XML blocks",
+    "## Last executed action result",
+    "## Response Format",
+    "Respond ONLY with the two raw XML blocks",
+    "Last executed tool",
+    "## Your Task",
+    "Task progress:",  # Internal agent loop prompt leaking into history
+)
 
 
 def collapse_whitespace(text: str) -> str:
@@ -99,6 +110,24 @@ def summarize_pending_change_memory(text: str) -> str:
     return truncate_text(" ".join(parts), MAX_PENDING_CHANGE_MEMORY_CHARS)
 
 
+_TOOL_NAME_RE = re.compile(r"<([a-z][a-z0-9_]*_tool|task_complete)\b", re.IGNORECASE)
+
+
+def _extract_tool_summary(text: str) -> str:
+    """Extract tool names from XML and return a brief summary.
+
+    Avoids the corruption caused by strip_protocol_markup, which turns
+    <action><write_file>...</write_file></action> into
+    "action write_file path content write_file action" — a pattern the
+    LLM then learns to mimic, breaking the XML parser.
+    """
+    names = _TOOL_NAME_RE.findall(text)
+    if names:
+        unique = list(dict.fromkeys(names))  # deduplicate preserving order
+        return f"[Tool: {', '.join(unique)}]"
+    return ""
+
+
 def sanitize_memory_content(role: str, content: str, max_chars: int = MAX_MEMORY_MESSAGE_CHARS) -> str:
     if not isinstance(content, str):
         content = str(content)
@@ -107,10 +136,23 @@ def sanitize_memory_content(role: str, content: str, max_chars: int = MAX_MEMORY
     if not text:
         return ""
 
+    if any(marker in text for marker in _INTERNAL_PROMPT_MARKERS):
+        return ""
+
     if "[PENDING CHANGE REVIEW REQUIRED]" in text or "Diff preview:" in text:
         return summarize_pending_change_memory(text)
 
-    if role == "assistant" or "<action>" in text or "<thinking>" in text:
+    if role == "assistant" and "<action>" in text:
+        # Tool-call message: summarize with tool name instead of stripping
+        # XML tags, which would corrupt the LLM's protocol understanding.
+        summary = _extract_tool_summary(text)
+        if summary:
+            return summary
+        # If no known tool found, skip the message entirely
+        return ""
+
+    if "<action>" in text or "<thinking>" in text:
+        # Non-assistant protocol content: extract meaningful text or strip
         text = extract_preferred_protocol_text(text) or strip_protocol_markup(text)
 
     return truncate_text(collapse_whitespace(text), max_chars)

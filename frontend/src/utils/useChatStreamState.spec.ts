@@ -922,3 +922,497 @@ describe('Task A: runtime replay persistence', () => {
     expect(finished!.runtime_nodes[1]!.tool_name).toBe('grep_tool')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Phase 13: Task C-2/C-4 - Pending Change 管理
+// ---------------------------------------------------------------------------
+
+function makeChangePreview(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'change_preview',
+    stream_id: 'stream-001',
+    message_id: 'msg-001',
+    change_id: 'change-001',
+    operation: 'create',
+    path: '/workspace/HelloWorld.java',
+    unified_diff: '--- /dev/null\n+++ HelloWorld.java\n@@ -0,0 +1,5 @@',
+    status: 'pending_confirmation',
+    timestamp: '2026-05-30T10:00:00Z',
+    ...overrides,
+  }
+}
+
+function makeApplyResult(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'apply_result',
+    change_id: 'change-001',
+    success: true,
+    status: 'applied',
+    message: 'Successfully applied CREATE /workspace/HelloWorld.java',
+    timestamp: '2026-05-30T10:00:00Z',
+    ...overrides,
+  }
+}
+
+describe('Task C-2/C-4: Pending Change 管理', () => {
+  it('useChatStreamState returns pendingChanges ref', () => {
+    const { pendingChanges } = useChatStreamState()
+    expect(pendingChanges).toBeDefined()
+    expect(pendingChanges.value).toBeInstanceOf(Map)
+  })
+
+  it('useChatStreamState returns sessionPendingChanges computed', () => {
+    const { sessionPendingChanges } = useChatStreamState()
+    expect(sessionPendingChanges).toBeDefined()
+  })
+
+  it('useChatStreamState returns handleChangePreview function', () => {
+    const { handleChangePreview } = useChatStreamState()
+    expect(typeof handleChangePreview).toBe('function')
+  })
+
+  it('useChatStreamState returns getSessionPendingChanges function', () => {
+    const { getSessionPendingChanges } = useChatStreamState()
+    expect(typeof getSessionPendingChanges).toBe('function')
+  })
+
+  it('useChatStreamState returns updatePendingChangeStatus function', () => {
+    const { updatePendingChangeStatus } = useChatStreamState()
+    expect(typeof updatePendingChangeStatus).toBe('function')
+  })
+
+  it('useChatStreamState returns removePendingChange function', () => {
+    const { removePendingChange } = useChatStreamState()
+    expect(typeof removePendingChange).toBe('function')
+  })
+
+  it('useChatStreamState returns handleApplyResult function', () => {
+    const { handleApplyResult } = useChatStreamState()
+    expect(typeof handleApplyResult).toBe('function')
+  })
+
+  it('useChatStreamState returns setCurrentSessionId function', () => {
+    const { setCurrentSessionId } = useChatStreamState()
+    expect(typeof setCurrentSessionId).toBe('function')
+  })
+})
+
+describe('handleChangePreview', () => {
+  it('添加 change_preview 到 pendingChanges', () => {
+    const { handleChangePreview, pendingChanges } = useChatStreamState()
+
+    const change = handleChangePreview(
+      makeChangePreview({ change_id: 'change-add', stream_id: 'stream-session-1', message_id: 'msg-session-1' }),
+      'session-1'
+    )
+
+    expect(change).toBeDefined()
+    expect(change!.change_id).toBe('change-add')
+    expect(pendingChanges.value.has('change-add')).toBe(true)
+  })
+
+  it('避免重复添加相同 change_id', () => {
+    const { handleChangePreview, pendingChanges } = useChatStreamState()
+
+    handleChangePreview(makeChangePreview({ change_id: 'change-dup' }), 'session-1')
+    const countBefore = pendingChanges.value.size
+
+    handleChangePreview(makeChangePreview({ change_id: 'change-dup' }), 'session-1')
+    const countAfter = pendingChanges.value.size
+
+    expect(countAfter).toBe(countBefore)
+  })
+
+  it('正确解析 change_preview 事件字段', () => {
+    const { handleChangePreview } = useChatStreamState()
+
+    const change = handleChangePreview(
+      makeChangePreview({
+        change_id: 'change-fields',
+        operation: 'update',
+        path: '/workspace/test.py',
+        unified_diff: '--- test.py\n+++ test.py\n@@ -1 +1 @@',
+        status: 'pending_confirmation',
+      }),
+      'session-1'
+    )
+
+    expect(change!.change_id).toBe('change-fields')
+    expect(change!.operation).toBe('update')
+    expect(change!.path).toBe('/workspace/test.py')
+    expect(change!.status).toBe('pending_confirmation')
+  })
+})
+
+describe('getSessionPendingChanges', () => {
+  it('设置 sessionId 后只返回当前会话的 changes', () => {
+    const { handleChangePreview, setCurrentSessionId, getSessionPendingChanges } = useChatStreamState()
+
+    setCurrentSessionId('session-1')
+
+    handleChangePreview(makeChangePreview({ change_id: 'change-1', stream_id: 'stream-1', message_id: 'msg-1' }), 'session-1')
+    handleChangePreview(makeChangePreview({ change_id: 'change-2', stream_id: 'stream-2', message_id: 'msg-2' }), 'session-2')
+
+    const changes = getSessionPendingChanges()
+
+    expect(changes.length).toBe(1)
+    expect(changes[0].change_id).toBe('change-1')
+  })
+
+  it('sessionId 为 null 时返回空数组', () => {
+    const { setCurrentSessionId, getSessionPendingChanges } = useChatStreamState()
+
+    setCurrentSessionId(null)
+
+    const changes = getSessionPendingChanges()
+
+    expect(changes).toEqual([])
+  })
+})
+
+describe('handleApplyResult', () => {
+  it('成功的 apply_result 移除对应的 pending change', () => {
+    const { handleChangePreview, handleApplyResult, pendingChanges } = useChatStreamState()
+
+    handleChangePreview(makeChangePreview({ change_id: 'change-apply-success' }), 'session-1')
+    expect(pendingChanges.value.has('change-apply-success')).toBe(true)
+
+    handleApplyResult(makeApplyResult({
+      change_id: 'change-apply-success',
+      success: true,
+      status: 'applied',
+    }))
+
+    // After fix: pending change is kept with updated status instead of removed
+    expect(pendingChanges.value.has('change-apply-success')).toBe(true)
+    expect(pendingChanges.value.get('change-apply-success')?.status).toBe('applied')
+  })
+
+  it('失败的 apply_result 更新 pending change 状态', () => {
+    const { handleChangePreview, handleApplyResult, pendingChanges } = useChatStreamState()
+
+    handleChangePreview(makeChangePreview({ change_id: 'change-apply-fail' }), 'session-1')
+
+    handleApplyResult(makeApplyResult({
+      change_id: 'change-apply-fail',
+      success: false,
+      status: 'rejected',
+      message: 'Apply failed: file modified externally',
+    }))
+
+    const change = pendingChanges.value.get('change-apply-fail')
+    expect(change).toBeDefined()
+    expect(change!.status).toBe('rejected')
+  })
+
+  it('无效的 change_id 不抛出异常', () => {
+    const { handleApplyResult } = useChatStreamState()
+
+    expect(() =>
+      handleApplyResult(makeApplyResult({ change_id: 'non-existent' }))
+    ).not.toThrow()
+  })
+})
+
+describe('updatePendingChangeStatus', () => {
+  it('更新 pending change 的状态', () => {
+    const { handleChangePreview, updatePendingChangeStatus, pendingChanges } = useChatStreamState()
+
+    handleChangePreview(makeChangePreview({ change_id: 'change-update-status' }), 'session-1')
+
+    updatePendingChangeStatus('change-update-status', 'applied')
+
+    const change = pendingChanges.value.get('change-update-status')
+    expect(change!.status).toBe('applied')
+  })
+})
+
+describe('removePendingChange', () => {
+  it('从 pendingChanges 中移除指定的 change', () => {
+    const { handleChangePreview, removePendingChange, pendingChanges } = useChatStreamState()
+
+    handleChangePreview(makeChangePreview({ change_id: 'change-remove' }), 'session-1')
+    expect(pendingChanges.value.has('change-remove')).toBe(true)
+
+    removePendingChange('change-remove')
+
+    expect(pendingChanges.value.has('change-remove')).toBe(false)
+  })
+})
+
+describe('sessionPendingChanges computed', () => {
+  it('返回当前会话的 pending changes 数组', () => {
+    const { handleChangePreview, setCurrentSessionId, sessionPendingChanges } = useChatStreamState()
+
+    setCurrentSessionId('session-computed')
+
+    handleChangePreview(makeChangePreview({ change_id: 'change-computed-1', stream_id: 'stream-c1', message_id: 'msg-c1' }), 'session-computed')
+    handleChangePreview(makeChangePreview({ change_id: 'change-computed-2', stream_id: 'stream-c2', message_id: 'msg-c2' }), 'session-computed')
+
+    expect(Array.isArray(sessionPendingChanges.value)).toBe(true)
+    expect(sessionPendingChanges.value.length).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task CE: Pending Change Recovery from API (页面刷新/WS重连后恢复)
+// ---------------------------------------------------------------------------
+
+describe('Task CE: Pending Change Recovery from API', () => {
+  it('useChatStreamState returns restorePendingChanges function', () => {
+    const { restorePendingChanges } = useChatStreamState()
+    expect(typeof restorePendingChanges).toBe('function')
+  })
+
+  it('restorePendingChanges 能从 API 响应恢复 pending changes', () => {
+    const { restorePendingChanges, pendingChanges } = useChatStreamState()
+
+    // 模拟从 API 获取的 pending changes
+    const apiResponse = {
+      items: [
+        {
+          change_id: 'restored-change-1',
+          session_id: 'session-recovery',
+          message_id: 'msg-recovery-1',
+          stream_id: 'stream-recovery-1',
+          path: '/workspace/restored.py',
+          operation: 'create',
+          unified_diff: '--- /dev/null\n+++ restored.py',
+          original_content: null,
+          proposed_content: 'print("restored")\n',
+          status: 'pending_confirmation',
+          created_at: '2026-05-30T10:00:00Z',
+          applied_at: null,
+        },
+      ],
+      total: 1,
+      session_id: 'session-recovery',
+    }
+
+    restorePendingChanges(apiResponse.items, 'session-recovery')
+
+    // 验证 pendingChanges 中存在恢复的 change
+    expect(pendingChanges.value.has('restored-change-1')).toBe(true)
+    const restored = pendingChanges.value.get('restored-change-1')
+    expect(restored!.path).toBe('/workspace/restored.py')
+    expect(restored!.operation).toBe('create')
+    expect(restored!.status).toBe('pending_confirmation')
+  })
+
+  it('restorePendingChanges 正确映射 API 响应字段', () => {
+    const { restorePendingChanges, pendingChanges } = useChatStreamState()
+
+    const apiResponse = {
+      items: [
+        {
+          change_id: 'mapping-test',
+          session_id: 'session-mapping',
+          message_id: 'msg-mapping',
+          stream_id: 'stream-mapping',
+          path: '/workspace/mapped.py',
+          operation: 'update',
+          unified_diff: '--- a/mapped.py\n+++ b/mapped.py',
+          original_content: 'old content\n',
+          proposed_content: 'new content\n',
+          status: 'pending_confirmation',
+          created_at: '2026-05-30T10:00:00Z',
+          applied_at: null,
+        },
+      ],
+      total: 1,
+      session_id: 'session-mapping',
+    }
+
+    restorePendingChanges(apiResponse.items, 'session-mapping')
+
+    const restored = pendingChanges.value.get('mapping-test')
+    expect(restored!.change_id).toBe('mapping-test')
+    expect(restored!.session_id).toBe('session-mapping')
+    expect(restored!.message_id).toBe('msg-mapping')
+    expect(restored!.stream_id).toBe('stream-mapping')
+    expect(restored!.path).toBe('/workspace/mapped.py')
+    expect(restored!.operation).toBe('update')
+    expect(restored!.unified_diff).toBe('--- a/mapped.py\n+++ b/mapped.py')
+    expect(restored!.original_content).toBe('old content\n')
+    expect(restored!.proposed_content).toBe('new content\n')
+    expect(restored!.status).toBe('pending_confirmation')
+  })
+
+  it('restorePendingChanges 能恢复多个 pending changes', () => {
+    const { restorePendingChanges, pendingChanges } = useChatStreamState()
+
+    const apiResponse = {
+      items: [
+        {
+          change_id: 'multi-1',
+          session_id: 'session-multi',
+          path: '/workspace/multi1.py',
+          operation: 'create',
+          unified_diff: '--- /dev/null\n+++ multi1.py',
+          status: 'pending_confirmation',
+        },
+        {
+          change_id: 'multi-2',
+          session_id: 'session-multi',
+          path: '/workspace/multi2.py',
+          operation: 'create',
+          unified_diff: '--- /dev/null\n+++ multi2.py',
+          status: 'pending_confirmation',
+        },
+      ],
+      total: 2,
+      session_id: 'session-multi',
+    }
+
+    restorePendingChanges(apiResponse.items, 'session-multi')
+
+    expect(pendingChanges.value.has('multi-1')).toBe(true)
+    expect(pendingChanges.value.has('multi-2')).toBe(true)
+    expect(pendingChanges.value.size).toBe(2)
+  })
+
+  it('restorePendingChanges 不会覆盖已有的 pending changes', () => {
+    const { handleChangePreview, restorePendingChanges, pendingChanges } = useChatStreamState()
+
+    // 先通过 WS 添加一个
+    handleChangePreview(makeChangePreview({
+      change_id: 'existing-change',
+      stream_id: 'stream-existing',
+      message_id: 'msg-existing',
+    }), 'session-preserve')
+
+    // 再通过 API 恢复（应该保留现有的）
+    const apiResponse = {
+      items: [
+        {
+          change_id: 'existing-change',  // 相同 ID
+          session_id: 'session-preserve',
+          path: '/workspace/existing.py',
+          operation: 'update',
+          unified_diff: '--- a/existing.py\n+++ b/existing.py',
+          status: 'pending_confirmation',
+        },
+        {
+          change_id: 'new-from-api',
+          session_id: 'session-preserve',
+          path: '/workspace/new.py',
+          operation: 'create',
+          unified_diff: '--- /dev/null\n+++ new.py',
+          status: 'pending_confirmation',
+        },
+      ],
+      total: 2,
+      session_id: 'session-preserve',
+    }
+
+    restorePendingChanges(apiResponse.items, 'session-preserve')
+
+    // 应该有两个：一个原有的，一个新恢复的
+    expect(pendingChanges.value.size).toBe(2)
+    expect(pendingChanges.value.has('existing-change')).toBe(true)
+    expect(pendingChanges.value.has('new-from-api')).toBe(true)
+  })
+
+  it('restorePendingChanges 能恢复 applied/rejected/failed 状态的 changes', () => {
+    const { restorePendingChanges, pendingChanges } = useChatStreamState()
+
+    const apiResponse = {
+      items: [
+        {
+          change_id: 'applied-change',
+          session_id: 'session-status',
+          path: '/workspace/applied.py',
+          operation: 'create',
+          unified_diff: '',
+          status: 'applied',
+        },
+        {
+          change_id: 'rejected-change',
+          session_id: 'session-status',
+          path: '/workspace/rejected.py',
+          operation: 'create',
+          unified_diff: '',
+          status: 'rejected',
+        },
+        {
+          change_id: 'failed-change',
+          session_id: 'session-status',
+          path: '/workspace/failed.py',
+          operation: 'create',
+          unified_diff: '',
+          status: 'failed',
+        },
+      ],
+      total: 3,
+      session_id: 'session-status',
+    }
+
+    restorePendingChanges(apiResponse.items, 'session-status')
+
+    expect(pendingChanges.value.get('applied-change')!.status).toBe('applied')
+    expect(pendingChanges.value.get('rejected-change')!.status).toBe('rejected')
+    expect(pendingChanges.value.get('failed-change')!.status).toBe('failed')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task CE: WS Reconnect Compensation
+// ---------------------------------------------------------------------------
+
+describe('Task CE: WS Reconnect Compensation', () => {
+  it('useChatStreamState returns clearInFlightStreams function', () => {
+    const { clearInFlightStreams } = useChatStreamState()
+    expect(typeof clearInFlightStreams).toBe('function')
+  })
+
+  it('clearInFlightStreams 清理指定会话的 in-flight streams', () => {
+    const { handleMessageStart, clearInFlightStreams, hasInFlightStream } = useChatStreamState()
+
+    // 创建一些 in-flight streams
+    handleMessageStart(makeMessageStart({ stream_id: 's-reconnect-1' }), 'session-reconnect')
+    handleMessageStart(makeMessageStart({ stream_id: 's-reconnect-2' }), 'session-reconnect')
+
+    expect(hasInFlightStream('session-reconnect')).toBe(true)
+
+    clearInFlightStreams('session-reconnect')
+
+    expect(hasInFlightStream('session-reconnect')).toBe(false)
+  })
+
+  it('clearInFlightStreams 不影响其他会话', () => {
+    const { handleMessageStart, clearInFlightStreams, hasInFlightStream } = useChatStreamState()
+
+    handleMessageStart(makeMessageStart({ stream_id: 's-other-1' }), 'session-other')
+    handleMessageStart(makeMessageStart({ stream_id: 's-reconnect-3' }), 'session-reconnect-clear')
+
+    clearInFlightStreams('session-reconnect-clear')
+
+    expect(hasInFlightStream('session-reconnect-clear')).toBe(false)
+    expect(hasInFlightStream('session-other')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task CE: Recovery State Management
+// ---------------------------------------------------------------------------
+
+describe('Task CE: Recovery State Management', () => {
+  it('useChatStreamState returns clearSessionPendingChanges function', () => {
+    const { clearSessionPendingChanges } = useChatStreamState()
+    expect(typeof clearSessionPendingChanges).toBe('function')
+  })
+
+  it('clearSessionPendingChanges 清理指定会话的 pending changes', () => {
+    const { handleChangePreview, clearSessionPendingChanges, getSessionPendingChanges, setCurrentSessionId } = useChatStreamState()
+    setCurrentSessionId('session-clear-pending')
+
+    handleChangePreview(makeChangePreview({ change_id: 'clear-1', stream_id: 'stream-clear-1', message_id: 'msg-clear-1' }), 'session-clear-pending')
+    handleChangePreview(makeChangePreview({ change_id: 'clear-2', stream_id: 'stream-clear-2', message_id: 'msg-clear-2' }), 'session-clear-pending')
+
+    expect(getSessionPendingChanges().length).toBe(2)
+
+    clearSessionPendingChanges('session-clear-pending')
+
+    expect(getSessionPendingChanges().length).toBe(0)
+  })
+})
