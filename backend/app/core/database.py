@@ -32,9 +32,14 @@ def configure_database(database_url: str, *, create_schema: bool = False) -> Non
     engine = create_engine(database_url, **_engine_kwargs(database_url))
     SessionLocal.configure(bind=engine)
     if create_schema:
-        from app.models import message, session  # noqa: F401
+        from app.models import agent, message, pending_change, session, session_member, workspace  # noqa: F401
 
         Base.metadata.create_all(bind=engine)
+
+        # 预置内置 Agent
+        from app.agents.seed import seed_builtin_agents
+        with SessionLocal() as db:
+            seed_builtin_agents(db)
 
 
 def get_db() -> Generator[Session, None, None]:

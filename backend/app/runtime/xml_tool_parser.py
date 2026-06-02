@@ -27,6 +27,12 @@ class ToolArguments(BaseModel):
 class ToolParser:
     """Parser for extracting and validating tool arguments from XML input."""
 
+    ARGUMENT_ALIASES: dict[str, tuple[str, ...]] = {
+        "path": ("file_path", "filepath"),
+        "file_path": ("path", "filepath"),
+        "directory_path": ("path", "dir_path", "directory"),
+    }
+
     def __init__(self: Self, tool: Tool) -> None:
         """Initialize the parser with a tool instance."""
         self.tool = tool
@@ -49,14 +55,15 @@ class ToolParser:
             logger.debug(f"Extracted elements from XML: {elements}")
 
             arguments = self.tool.get_non_injectable_arguments()
+            normalized_elements = self._normalize_argument_aliases(elements, arguments)
 
             for arg in arguments:
-                if arg.required and arg.name not in elements:
+                if arg.required and arg.name not in normalized_elements:
                     error_msg = f"argument {arg.name} not found"
                     logger.error(f"Error extracting XML elements: {error_msg}")
                     raise ValueError(f"Error extracting XML elements: {error_msg}")
 
-            argument_dict = {arg.name: elements.get(arg.name, "") for arg in arguments}
+            argument_dict = {arg.name: normalized_elements.get(arg.name, "") for arg in arguments}
             validated_args = ToolArguments(arguments=argument_dict)
             logger.debug(f"Successfully parsed arguments: {validated_args.arguments}")
             return validated_args.arguments
@@ -67,3 +74,15 @@ class ToolParser:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
             raise
+
+    def _normalize_argument_aliases(self, elements: dict[str, str], arguments: list) -> dict[str, str]:
+        """Map common alias argument names to the tool's canonical schema."""
+        normalized = dict(elements)
+        for arg in arguments:
+            if arg.name in normalized:
+                continue
+            for alias in self.ARGUMENT_ALIASES.get(arg.name, ()):
+                if alias in elements:
+                    normalized[arg.name] = elements[alias]
+                    break
+        return normalized

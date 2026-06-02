@@ -1,41 +1,70 @@
 <template>
-  <BaseDialog
-    v-model="visible"
-    title="添加自建 Agent"
-    @confirm="confirmAdd"
-  >
+  <BaseDialog v-model="visible" title="添加自建 Agent" @confirm="confirmAdd">
     <el-form label-position="top" class="edit-profile-form">
       <el-form-item label="名称">
-        <el-input v-model="newAgentName" maxlength="32" placeholder="例如：我的代码助手" />
+        <el-input v-model="form.name" maxlength="32" placeholder="例如：我的代码助手" />
       </el-form-item>
-      <el-form-item label="能力标签（逗号分隔）">
-        <el-input v-model="newAgentTags" maxlength="80" placeholder="代码生成, 测试, 文档" />
+
+      <el-form-item label="模型">
+        <el-select v-model="form.model" placeholder="请选择模型">
+          <el-option
+            v-for="model in availableModels"
+            :key="model"
+            :label="model"
+            :value="model"
+          />
+        </el-select>
       </el-form-item>
+
+      <el-form-item label="能力标签">
+        <el-checkbox-group v-model="form.capabilityTags" class="tag-grid">
+          <el-checkbox
+            v-for="tag in availableCapabilityTags"
+            :key="tag"
+            :label="tag"
+            :value="tag"
+          >
+            {{ tag }}
+          </el-checkbox>
+        </el-checkbox-group>
+      </el-form-item>
+
       <el-form-item label="简介（可选）">
         <el-input
-          v-model="newAgentDesc"
+          v-model="form.description"
           type="textarea"
           :rows="3"
-          maxlength="80"
-          placeholder="简要描述 Agent 能力"
+          maxlength="120"
+          placeholder="补充这个 Agent 的工作重点或适用场景"
         />
       </el-form-item>
+
+      <div class="prompt-hint">
+        系统提示词会根据名称、标签和简介自动生成，默认可使用全部工具。
+      </div>
     </el-form>
   </BaseDialog>
 </template>
 
 <script lang="ts" setup>
-import { computed, ref } from 'vue'
-import BaseDialog from './BaseDialog.vue'
-import type { SidebarAgent } from '@/types/agenthub'
+import { computed, reactive, watch } from 'vue'
 
-const props = defineProps<{
+import type { AgentDraft } from '@/types/agenthub'
+
+import BaseDialog from './BaseDialog.vue'
+
+const props = withDefaults(defineProps<{
   modelValue: boolean
-}>()
+  availableModels: string[]
+  availableCapabilityTags: string[]
+}>(), {
+  availableModels: () => [],
+  availableCapabilityTags: () => [],
+})
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  confirm: [agent: SidebarAgent]
+  confirm: [agent: AgentDraft]
 }>()
 
 const visible = computed({
@@ -43,26 +72,54 @@ const visible = computed({
   set: (val) => emit('update:modelValue', val),
 })
 
-const newAgentName = ref('')
-const newAgentTags = ref('')
-const newAgentDesc = ref('')
+const form = reactive({
+  name: '',
+  model: '',
+  capabilityTags: [] as string[],
+  description: '',
+})
+
+function resetForm() {
+  form.name = ''
+  form.model = props.availableModels[0] || ''
+  form.capabilityTags = []
+  form.description = ''
+}
+
+watch(
+  () => visible.value,
+  (val) => {
+    if (!val) return
+    resetForm()
+  },
+)
+
+watch(
+  () => props.availableModels,
+  (models) => {
+    if (!form.model && models.length > 0) {
+      form.model = models[0]
+    }
+  },
+  { immediate: true },
+)
 
 const confirmAdd = () => {
-  const tags = newAgentTags.value
-    .split(/[,，]/)
-    .map((t) => t.trim())
-    .filter(Boolean)
+  const name = form.name.trim()
+  const description = form.description.trim()
 
-  const newAgent: SidebarAgent = {
-    id: `custom_${Date.now()}`,
-    name: newAgentName.value.trim() || '自定义 Agent',
-    avatar: '',
-    capabilityTags: tags.length > 0 ? tags : ['自定义'],
-    description: newAgentDesc.value.trim() || undefined,
-    platform: 'custom',
+  if (!name || !form.model || form.capabilityTags.length === 0) {
+    return
   }
 
-  emit('confirm', newAgent)
+  emit('confirm', {
+    name,
+    model: form.model,
+    capabilityTags: [...form.capabilityTags],
+    description: description || undefined,
+    avatar: '',
+    platform: 'custom',
+  })
   visible.value = false
 }
 </script>
@@ -81,14 +138,14 @@ const confirmAdd = () => {
       font-weight: 600;
       color: #3b82f6;
       padding-bottom: 10px;
-      position: relative;
 
       &::before {
         display: none;
       }
     }
 
-    .el-input__wrapper {
+    .el-input__wrapper,
+    .el-select__wrapper {
       border-radius: 12px;
       box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.15);
       transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -122,5 +179,27 @@ const confirmAdd = () => {
       }
     }
   }
+}
+
+.tag-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+:deep(.el-checkbox) {
+  margin-right: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.prompt-hint {
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(59, 130, 246, 0.06);
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

@@ -71,6 +71,13 @@ class PendingChange:
             self.change_id = str(uuid.uuid4())[:8]
         if not self.created_at:
             self.created_at = datetime.now(timezone.utc).isoformat()
+        # Task C-3: Auto-compute unified_diff for frontend display
+        self._compute_diff()
+
+    def ensure_diff_computed(self) -> None:
+        """Ensure unified_diff is computed. Call this before accessing unified_diff."""
+        if not self._diff_computed:
+            self._compute_diff()
 
     @property
     def file_path(self) -> str:

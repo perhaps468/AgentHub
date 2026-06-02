@@ -56,13 +56,25 @@ const newMsgCount = ref(0)
 const isFirstLoad = ref(true)  // 标记是否首次加载
 
 // Map ChatMessage (backend format) → MessageRecord (Msg component format)
+const pendingChangesForSession = computed(() => sessionStore.streamState.getPendingChanges(props.targetId))
+
+function getPendingDiffsForMessage(messageId?: string, streamId?: string) {
+  if (!messageId && !streamId) return []
+  return pendingChangesForSession.value.filter((change) => {
+    if (messageId && change.message_id === messageId) return true
+    if (streamId && change.stream_id === streamId) return true
+    return false
+  })
+}
+
 const msgRecord = computed(() => {
   const historicalMessages: ChatMessage[] = sessionStore.messageMap[props.targetId] ?? []
   const streamingMessages = sessionStore.currentStreamingMessages
-  
+
   const historicalRecords = historicalMessages.map((m) => {
     const isHuman = m.sender_type === 'human'
     const senderId = isHuman ? userInfoStore.userId : `agent_${m.sender_role ?? 'default'}`
+    const pendingDiffs = getPendingDiffsForMessage(m.id)
     return {
       id: m.id,
       fromId: senderId,
@@ -86,6 +98,8 @@ const msgRecord = computed(() => {
       updateTime: m.created_at,
       deliveryStatus: m.status,
       isStreaming: false,
+      metadata: m.metadata || {},
+      pending_diffs: pendingDiffs,
     }
   })
 
@@ -93,10 +107,11 @@ const msgRecord = computed(() => {
     .filter((s) => !s.message_id || !historicalMessages.some((m) => m.id === s.message_id))
     .map((s) => {
       const senderId = `agent_${s.sender_role ?? 'default'}`
-      const displayContent = s.ui_status === 'thinking' 
-        ? `${s.sender_role || 'AI'} 正在思考...` 
+      const pendingDiffs = getPendingDiffsForMessage(s.message_id, s.stream_id)
+      const displayContent = s.ui_status === 'thinking'
+        ? `${s.sender_role || 'AI'} 正在思考...`
         : s.content
-      
+
       return {
         id: s.message_id || s.stream_id,
         fromId: senderId,
@@ -118,6 +133,8 @@ const msgRecord = computed(() => {
         updateTime: s.created_at,
         isStreaming: true,
         streamStatus: s.ui_status,
+        metadata: s.metadata || {},
+        pending_diffs: pendingDiffs,
       }
     })
 

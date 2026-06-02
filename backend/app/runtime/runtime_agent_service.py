@@ -25,15 +25,21 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.message import Message
 from app.models.session import utcnow
+from app.observability.audit_models import AuditContext
+from app.observability.audit_recorder import get_audit_recorder
+from app.runtime.context_hygiene import sanitize_history_messages
 from app.runtime.event_bridge import (
     EventBridge,
     MessageDeltaEvent,
     MessageEndEvent,
     MessageErrorEvent,
     MessageStartEvent,
+    RuntimeStateEvent,  # Task A: runtime state events
     ToolEvent,  # T4: structured tool events
+    ChangePreviewEvent,  # Task C-2: pending change preview
 )
 from app.runtime.memory import AgentMemory, Message as RuntimeMessage
 
@@ -105,6 +111,30 @@ def _iso_now() -> str:
     return utcnow().isoformat().replace("+00:00", "Z")
 
 
+class WorkspaceNotBoundError(Exception):
+    """Raised when a session has no workspace binding and no fallback is available."""
+    pass
+
+
+class WorkspaceNotFoundError(Exception):
+    """Raised when the workspace referenced by a session does not exist."""
+    pass
+
+
+class WorkspaceAccessDeniedError(Exception):
+    """Raised when the workspace owner doesn't match the session owner."""
+    pass
+
+
+class WorkspaceRootInvalidError(Exception):
+    """Raised when the workspace root path is inaccessible or invalid."""
+
+    def __init__(self, root_path: str, reason: str):
+        self.root_path = root_path
+        self.reason = reason
+        super().__init__(f"Invalid workspace root '{root_path}': {reason}")
+
+
 class RuntimeAgentService:
     """Bridges ReactAgent to WS-compatible event stream.
 
@@ -140,9 +170,14 @@ class RuntimeAgentService:
         self.llm_adapter = llm_adapter
         self.db = db
         self.stream_id = stream_id or str(uuid.uuid4())
-        self.workspace_root = workspace_root
         # T1: pre-loaded session history to inject into agent memory
         self._session_history: list[RuntimeMessage] = session_history or []
+
+        # Task B: Resolve workspace from formal session binding first.
+        # Priority: 1) session workspace_id binding, 2) explicit workspace_root param,
+        # 3) WORKSPACE_ROOT env var (compatibility fallback).
+        self._resolved_workspace_root = self._resolve_workspace_root(workspace_root)
+        self.workspace_root = self._resolved_workspace_root
 
         self._agent = None  # Initialized lazily in stream_events
         self._bridge = None  # Initialized lazily in stream_events
@@ -153,9 +188,131 @@ class RuntimeAgentService:
         self._message_id: str = ""
         self._accumulated_content: str = ""
         self._error_emitted: bool = False  # prevent double-yielding error events
+        self._pending_change_ids: set[str] = set()
+        self._message_completed: bool = False
+
+        # Audit: Create audit context for this session
+        self._audit_context = AuditContext(
+            session_id=session_id,
+            stream_id=self.stream_id,
+            agent_role=agent_role,
+            provider="qwen",
+            model="",
+        )
+        # Initialize audit recorder and set context
+        self._recorder = get_audit_recorder()
+
+    def _setup_audit_context(self) -> None:
+        """Set up audit context before streaming starts."""
+        # Update context with resolved workspace root
+        self._audit_context.session_id = self.session_id
+        self._audit_context.stream_id = self.stream_id
+        self._audit_context.agent_role = self.agent_role
+        self._audit_context.model = self._get_model_name()
+        # Set context in the recorder for propagation
+        self._recorder.set_context(self._audit_context)
+
+    def _get_model_name(self) -> str:
+        """Get the model name from the LLM adapter."""
+        try:
+            provider = getattr(self.llm_adapter, "provider", None)
+            if provider is not None:
+                model = getattr(provider, "_model", "")
+                if model:
+                    return model
+        except Exception:
+            pass
+        return "qwen-plus"
+
+    def _should_disable_streaming(self) -> bool:
+        """Disable streaming for models that are unstable with XML/tool protocol output."""
+        if not get_settings().chat_stream_output_enabled:
+            return True
+        model_name = (self._get_model_name() or "").lower()
+        return model_name.startswith("qwen3-coder")
+
+    def _resolve_workspace_root(self, explicit_root: str | None) -> str:
+        """Resolve workspace root from formal session binding, with fallback hierarchy.
+
+        Priority (highest to lowest):
+        1. Formal session -> workspace_id binding (checked first, NOT overridden by env)
+        2. Explicit workspace_root parameter
+        3. WORKSPACE_ROOT environment variable (legacy compatibility fallback)
+
+        Raises:
+            WorkspaceNotBoundError: Session has no workspace binding and no fallback.
+            WorkspaceNotFoundError: Bound workspace does not exist.
+            WorkspaceAccessDeniedError: Workspace owner doesn't match session owner.
+            WorkspaceRootInvalidError: Workspace root path is inaccessible.
+        """
+        import os
+
+        from app.models.session import ChatSession
+        from app.services.workspace import WorkspaceService
+
+        # If db.get returns a MagicMock (test scenario), treat it as no session
+        session = self.db.get(ChatSession, self.session_id)
+        if session is None or not isinstance(session, ChatSession):
+            if explicit_root:
+                return os.path.abspath(os.path.expanduser(explicit_root))
+            env_root = os.environ.get("WORKSPACE_ROOT", "")
+            if env_root:
+                return os.path.abspath(os.path.expanduser(env_root))
+            raise WorkspaceNotBoundError(
+                f"No session found for session_id={self.session_id} and no workspace fallback available"
+            )
+
+        # Priority 1: Formal session workspace_id binding
+        # Guard against MagicMock: workspace_id must be a non-empty string
+        workspace_id = getattr(session, "workspace_id", None)
+        if workspace_id and isinstance(workspace_id, str):
+            ws_service = WorkspaceService(db=self.db)
+            ws = ws_service.get_workspace(workspace_id)
+            # Owner boundary: session owner and workspace owner must match
+            if ws.owner_id != session.owner_id:
+                raise WorkspaceAccessDeniedError(
+                    ws.id, ws.owner_id, session.owner_id
+                )
+            from pathlib import Path
+
+            try:
+                p = Path(ws.root_path).expanduser().resolve()
+            except (OSError, RuntimeError) as e:
+                raise WorkspaceRootInvalidError(ws.root_path, str(e))
+            if not p.exists():
+                raise WorkspaceRootInvalidError(ws.root_path, "workspace root path does not exist")
+            if not p.is_dir():
+                raise WorkspaceRootInvalidError(ws.root_path, "workspace root path is not a directory")
+
+            from loguru import logger
+            logger.debug(
+                "_resolve_workspace_root from DB: session_id={}, workspace_id={}, ws.root_path={}, resolved={}",
+                self.session_id, workspace_id, ws.root_path, p,
+            )
+
+            return str(p)
+
+        # Priority 2: Explicit workspace_root parameter
+        if explicit_root:
+            return os.path.abspath(os.path.expanduser(explicit_root))
+
+        # Priority 3: WORKSPACE_ROOT env (legacy fallback - only when session has no workspace_id)
+        env_root = os.environ.get("WORKSPACE_ROOT", "")
+        if env_root:
+            from loguru import logger
+            logger.debug(
+                "_resolve_workspace_root from ENV: session_id={}, WORKSPACE_ROOT={}",
+                self.session_id, env_root,
+            )
+            return os.path.abspath(os.path.expanduser(env_root))
+
+        raise WorkspaceNotBoundError(
+            f"Session {self.session_id} has no workspace binding and no fallback available. "
+            "Create a workspace and bind it to this session, or set WORKSPACE_ROOT."
+        )
 
     async def stream_events(self) -> AsyncIterator[
-        MessageStartEvent | MessageDeltaEvent | MessageEndEvent | MessageErrorEvent | ToolEvent  # T4: +ToolEvent
+        MessageStartEvent | MessageDeltaEvent | MessageEndEvent | MessageErrorEvent | ToolEvent | ChangePreviewEvent  # T4: +ToolEvent, C-2: +ChangePreviewEvent
     ]:
         """Drive the agent and yield WS-compatible events.
 
@@ -168,6 +325,16 @@ class RuntimeAgentService:
         loop = asyncio.get_running_loop()
         done_future: asyncio.Future = asyncio.get_running_loop().create_future()
 
+        # Audit: Set up audit context and record session start
+        self._setup_audit_context()
+        self._recorder.record_runtime_session_start(
+            user_message=self.user_message,
+            workspace_root=self.workspace_root,
+            agent_role=self.agent_role,
+            model=self._get_model_name(),
+            context=self._audit_context,
+        )
+
         self._bridge = EventBridge(
             on_message_start=self._on_message_start,
             on_message_delta=self._on_message_delta,
@@ -175,6 +342,8 @@ class RuntimeAgentService:
             on_message_error=self._on_message_error,
             on_model_delta=self._on_model_delta,  # T2: token-level streaming
             on_tool_event=self._on_tool_event,  # T4: structured tool events
+            on_runtime_state=self._on_runtime_state,  # Task A: runtime state events
+            on_change_preview=self._on_change_preview,  # Task C-2: pending change preview
             agent_role=self.agent_role,
             stream_id=self.stream_id,
         )
@@ -267,6 +436,8 @@ class RuntimeAgentService:
         self._event_queue.put_nowait(("message_delta", kwargs))
 
     def _on_message_end(self, **kwargs) -> None:
+        if self._message_completed:
+            return
         self._event_queue.put_nowait(("message_end", kwargs))
 
     def _on_message_error(self, **kwargs) -> None:
@@ -274,7 +445,61 @@ class RuntimeAgentService:
 
     def _on_tool_event(self, **kwargs) -> None:
         """Handle structured tool events from EventBridge (T4)."""
+        # Audit: Record tool events
+        status = kwargs.get("status", "started")
+        tool_name = kwargs.get("tool_name", "unknown")
+        if status == "started":
+            self._recorder.record_tool_call_start(
+                tool_name=tool_name,
+                arguments=kwargs.get("arguments", {}),
+                context=self._audit_context,
+            )
+        else:
+            # Convert response to string if it's a PendingChange object (not JSON serializable)
+            response = kwargs.get("response", "")
+            if hasattr(response, 'to_display_string'):
+                response = response.to_display_string()
+            elif not isinstance(response, str):
+                response = str(response)
+            self._recorder.record_tool_call_finish(
+                tool_name=tool_name,
+                arguments=kwargs.get("arguments", {}),
+                response=response,
+                context=self._audit_context,
+            )
         self._event_queue.put_nowait(("tool_event", kwargs))
+
+    def _on_runtime_state(self, **kwargs) -> None:
+        """Handle runtime state events from EventBridge (Task A)."""
+        # Audit: Record runtime state changes
+        self._recorder.record_runtime_state(
+            state=kwargs.get("state", "thinking"),
+            context=self._audit_context,
+        )
+        self._event_queue.put_nowait(("runtime_state", kwargs))
+
+    def _on_change_preview(self, **kwargs) -> None:
+        """Handle pending change preview events from EventBridge (Task C-2)."""
+        # Audit: Record change preview events
+        self._recorder.record_change_preview(
+            change_id=kwargs.get("change_id", ""),
+            operation=kwargs.get("operation", "create"),
+            path=kwargs.get("path", ""),
+            unified_diff=kwargs.get("unified_diff", ""),
+            status=kwargs.get("status", "pending_confirmation"),
+            context=self._audit_context,
+        )
+        self._event_queue.put_nowait(("change_preview", kwargs))
+        if not self._message_completed:
+            review_text = self._build_pending_change_review_text(kwargs)
+            self._event_queue.put_nowait((
+                "message_end",
+                {
+                    "result": review_text,
+                    "accumulated_text": review_text,
+                },
+            ))
+            self._done = True
 
     async def _run_agent_in_background(self, done_future: asyncio.Future) -> None:
         """Run agent.solve_task() and propagate errors to event queue."""
@@ -283,7 +508,7 @@ class RuntimeAgentService:
             result = await agent.async_solve_task(
                 self.user_message,
                 max_iterations=30,
-                streaming=True,  # T2: enable real token-level streaming
+                streaming=not self._should_disable_streaming(),
                 clear_memory=False,  # T1: keep pre-populated session history
             )
             # Result is returned but already emitted via bridge events.
@@ -328,8 +553,8 @@ class RuntimeAgentService:
         # Build tools list with workspace_root
         tools = self._build_tools()
         tool_manager = ToolManager(tools={tool.name: tool for tool in tools})
-        environment = get_environment()
-        tools_markdown = tool_manager.to_markdown()
+        environment = get_environment(workspace_root=self.workspace_root)
+        tools_markdown = tool_manager.to_prompt_markdown()
 
         # T1: Pre-populate memory with session history + system prompt.
         # The system prompt goes FIRST (as required by LLM message-history format).
@@ -342,20 +567,19 @@ class RuntimeAgentService:
             agent_mode="react",
         )
         memory.add(RuntimeMessage(role="system", content=system_prompt_text))
-        for msg in self._session_history:
+        for msg in sanitize_history_messages(self._session_history):
             memory.add(msg)
 
-        configured_model = getattr(getattr(self.llm_adapter, "provider", None), "_model", "")
-        if configured_model:
-            from loguru import logger
-            logger.debug(
-                "RuntimeAgentService building agent with provider model='{}', session_history_count={}",
-                configured_model,
-                len(self._session_history),
-            )
+        configured_model = getattr(getattr(self.llm_adapter, "provider", None), "_model", "") or "qwen-plus"
+        from loguru import logger
+        logger.debug(
+            "RuntimeAgentService building agent with provider model='{}', session_history_count={}",
+            configured_model,
+            len(self._session_history),
+        )
 
         agent = Agent(
-            model_name="",
+            model_name=configured_model,
             llm_adapter=self.llm_adapter,
             memory=memory,
             tools=tools,
@@ -365,7 +589,11 @@ class RuntimeAgentService:
         return agent
 
     def _build_tools(self) -> list:
-        """Build tool list with workspace_root injected from environment or config."""
+        """Build tool list with workspace_root resolved from formal session binding.
+
+        All file/command tools receive the same workspace_root, ensuring consistent
+        boundary enforcement across the entire tool chain.
+        """
         from app.runtime.tools.task_complete_tool import TaskCompleteTool
         from app.runtime.tools.read_file_tool import ReadFileTool
         from app.runtime.tools.list_directory_tool import ListDirectoryTool
@@ -375,13 +603,17 @@ class RuntimeAgentService:
         from app.runtime.tools.unified_diff_tool import UnifiedDiffTool
         from app.runtime.tools.write_file_tool import WriteFileTool
         from app.runtime.tools.run_command_tool import RunCommandTool
+        from app.runtime.tools.apply_change_tool import ApplyChangeTool
 
         tools = []
 
+        from loguru import logger
         ws_root = self.workspace_root
-        if ws_root is None:
-            import os
-            ws_root = os.environ.get("WORKSPACE_ROOT", "")
+        logger.debug(
+            "_build_tools: session_id={}, workspace_root={}",
+            self.session_id,
+            ws_root,
+        )
 
         for tool_cls, extra_kwargs in [
             (ReadFileTool, {"workspace_root": ws_root}),
@@ -392,15 +624,18 @@ class RuntimeAgentService:
             (UnifiedDiffTool, {"workspace_root": ws_root}),
             (WriteFileTool, {"workspace_root": ws_root}),
             (RunCommandTool, {"workspace_root": ws_root}),
+            # T3: apply_change tool for confirmed write flow
+            (ApplyChangeTool, {"workspace_root": ws_root}),
             (TaskCompleteTool, {}),
         ]:
             try:
-                tools.append(tool_cls(**extra_kwargs))
+                tool = tool_cls(**extra_kwargs)
             except TypeError:
                 try:
-                    tools.append(tool_cls())
+                    tool = tool_cls()
                 except TypeError:
-                    pass
+                    continue
+            tools.append(tool)
 
         return tools
 
@@ -408,7 +643,7 @@ class RuntimeAgentService:
         self,
         event_type: str,
         data: dict[str, Any],
-    ) -> MessageDeltaEvent | MessageEndEvent | MessageErrorEvent | ToolEvent | None:  # T4: +ToolEvent
+    ) -> MessageDeltaEvent | MessageEndEvent | MessageErrorEvent | ToolEvent | RuntimeStateEvent | None:  # T4 + Task A
         """Convert bridge event data to WS event, update DB in-place."""
         if event_type == "message_start":
             return None
@@ -421,6 +656,8 @@ class RuntimeAgentService:
                 delta=data.get("delta", ""),
             )
         elif event_type == "message_end":
+            if self._message_completed:
+                return None
             result = data.get("result", "")
             # Prefer bridge's accumulated_text (which accumulates model deltas via
             # _emit_model_delta and task_complete responses via the fix above)
@@ -430,6 +667,12 @@ class RuntimeAgentService:
             # Detect error strings returned by agent when LLM fails
             if isinstance(result, str) and result.startswith("Error:"):
                 self._finalize_agent_message("failed")
+                # Audit: Record message end with error status
+                self._recorder.record_message_end(
+                    final_content=result,
+                    status="failed",
+                    context=self._audit_context,
+                )
                 return MessageErrorEvent(
                     agent_role=self.agent_role,
                     stream_id=self.stream_id,
@@ -440,6 +683,12 @@ class RuntimeAgentService:
             # Also check accumulated text for error prefix
             if isinstance(accumulated, str) and accumulated.startswith("Error:"):
                 self._finalize_agent_message("failed")
+                # Audit: Record message end with error status
+                self._recorder.record_message_end(
+                    final_content=accumulated,
+                    status="failed",
+                    context=self._audit_context,
+                )
                 return MessageErrorEvent(
                     agent_role=self.agent_role,
                     stream_id=self.stream_id,
@@ -464,6 +713,13 @@ class RuntimeAgentService:
                     str(final_text)[:500].replace("\n", "\\n"),
                 )
             self._finalize_agent_message("completed", final_content=final_text)
+            self._message_completed = True
+            # Audit: Record successful message end
+            self._recorder.record_message_end(
+                final_content=final_text or "",
+                status="completed",
+                context=self._audit_context,
+            )
             return MessageEndEvent(
                 agent_role=self.agent_role,
                 stream_id=self.stream_id,
@@ -473,6 +729,12 @@ class RuntimeAgentService:
             )
         elif event_type == "message_error":
             self._mark_message_failed()
+            # Audit: Record message error
+            self._recorder.record_message_error(
+                error_code=data.get("error_code", "runtime_error"),
+                error_message=data.get("error_message", ""),
+                context=self._audit_context,
+            )
             return MessageErrorEvent(
                 agent_role=self.agent_role,
                 stream_id=self.stream_id,
@@ -488,6 +750,25 @@ class RuntimeAgentService:
                 status=data.get("status", "started"),
                 stream_id=self.stream_id,
                 message_id=self._message_id,
+            )
+        elif event_type == "runtime_state":  # Task A: runtime state events
+            return RuntimeStateEvent(
+                stream_id=self.stream_id,
+                message_id=self._message_id,
+                state=data.get("state", "thinking"),
+                timestamp=data.get("timestamp", ""),
+            )
+        elif event_type == "change_preview":  # Task C-2: pending change preview
+            self._persist_pending_change_preview(data)
+            return ChangePreviewEvent(
+                stream_id=self.stream_id,
+                message_id=self._message_id,
+                change_id=data.get("change_id", ""),
+                operation=data.get("operation", "create"),
+                path=data.get("path", ""),
+                unified_diff=data.get("unified_diff", ""),
+                status=data.get("status", "pending_confirmation"),
+                timestamp=data.get("timestamp", ""),
             )
         return None
 
@@ -533,6 +814,23 @@ class RuntimeAgentService:
         self._agent_message.content = final_text
         self._agent_message.payload = {"text": final_text}
         self._agent_message.status = status
+        # Task A: Persist runtime replay nodes for minimal replay support
+        runtime_nodes = []
+        if self._bridge is not None:
+            runtime_nodes = list(self._bridge.replay_nodes)
+        if runtime_nodes:
+            metadata = dict(self._agent_message.msg_metadata or {})
+            metadata["runtime_replay"] = runtime_nodes
+            metadata["runtime_path"] = "runtime_agent_service"
+            if self._pending_change_ids:
+                metadata["pending_change_ids"] = sorted(self._pending_change_ids)
+                metadata["has_pending_changes"] = True
+            self._agent_message.msg_metadata = metadata
+        elif self._pending_change_ids:
+            metadata = dict(self._agent_message.msg_metadata or {})
+            metadata["pending_change_ids"] = sorted(self._pending_change_ids)
+            metadata["has_pending_changes"] = True
+            self._agent_message.msg_metadata = metadata
         self.db.add(self._agent_message)
         self.db.commit()
 
@@ -543,3 +841,66 @@ class RuntimeAgentService:
         self._agent_message.status = "failed"
         self.db.add(self._agent_message)
         self.db.commit()
+
+    def _persist_pending_change_preview(self, data: dict[str, Any]) -> None:
+        """Persist a change preview so it can be recovered after refresh/reconnect."""
+        from app.models.pending_change import PendingChangeModel
+
+        change_id = data.get("change_id", "")
+        if not change_id:
+            return
+
+        model = (
+            self.db.query(PendingChangeModel)
+            .filter_by(change_id=change_id)
+            .first()
+        )
+        if model is None:
+            model = PendingChangeModel(
+                change_id=change_id,
+                session_id=self.session_id,
+            )
+
+        model.message_id = data.get("message_id") or self._message_id or model.message_id
+        model.stream_id = data.get("stream_id") or self.stream_id or model.stream_id
+        model.path = data.get("path", model.path or "")
+        model.operation = data.get("operation", model.operation or "create")
+        model.unified_diff = data.get("unified_diff", model.unified_diff or "")
+        model.original_content = data.get("original_content", model.original_content)
+        model.proposed_content = data.get("proposed_content", model.proposed_content)
+        model.status = data.get("status", model.status or "pending_confirmation")
+        self.db.add(model)
+        self.db.commit()
+
+        self._pending_change_ids.add(change_id)
+        self._attach_pending_change_metadata()
+
+    def _attach_pending_change_metadata(self) -> None:
+        """Attach pending change references to the in-flight agent message metadata."""
+        if self._agent_message is None or not self._pending_change_ids:
+            return
+
+        metadata = dict(self._agent_message.msg_metadata or {})
+        existing = metadata.get("pending_change_ids", [])
+        if not isinstance(existing, list):
+            existing = []
+        merged = sorted(set(existing) | self._pending_change_ids)
+        metadata["pending_change_ids"] = merged
+        metadata["has_pending_changes"] = True
+        self._agent_message.msg_metadata = metadata
+        self.db.add(self._agent_message)
+        self.db.commit()
+
+    def _build_pending_change_review_text(self, data: dict[str, Any]) -> str:
+        """Build the final user-facing text for a pending change review step."""
+        from pathlib import Path
+
+        change_id = data.get("change_id", "")
+        path = data.get("path", "")
+        file_name = Path(path).name if path else "目标文件"
+        return (
+            f"文件变更已生成，等待你确认写入。\n"
+            f"变更 ID: {change_id}\n"
+            f"文件: {file_name}\n"
+            "请在界面中点击“确认写入”完成落地。"
+        )

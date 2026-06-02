@@ -12,7 +12,7 @@
         </el-radio-group>
       </el-form-item>
 
-      <el-form-item :label="newConvType === 'single' ? '选择 Agent（单选）' : '选择 Agent（多选，至少 1 个）'">
+      <el-form-item :label="newConvType === 'single' ? '选择 Agent（单选）' : '选择协作 Agent（可选，默认为主 Agent）'">
         <div v-if="newConvType === 'single'" class="agent-picker-list">
           <label
             v-for="agent in agents"
@@ -33,8 +33,25 @@
         </div>
 
         <div v-else class="agent-picker-list agent-picker-checkboxes">
+          <!-- P6-7: Fixed primary agent card (always selected, disabled) -->
+          <div v-if="primaryAgent" class="agent-picker-item primary-agent-card selected">
+            <input type="checkbox" checked disabled />
+            <avatar :info="{ name: primaryAgent.name, avatar: primaryAgent.avatar }" size="32px" />
+            <div class="agent-picker-meta">
+              <span class="agent-picker-name">{{ primaryAgent.name }}</span>
+              <span class="primary-agent-badge">主 Agent</span>
+            </div>
+          </div>
+          <div v-if="!primaryAgent" class="agent-picker-item primary-agent-card selected">
+            <input type="checkbox" checked disabled />
+            <avatar :info="{ name: '主 PM Agent', avatar: '' }" size="32px" />
+            <div class="agent-picker-meta">
+              <span class="agent-picker-name">主 PM Agent</span>
+              <span class="primary-agent-badge">主 Agent</span>
+            </div>
+          </div>
           <label
-            v-for="agent in agents"
+            v-for="agent in agentsWithoutPrimary"
             :key="agent.id"
             :class="['agent-picker-item', selectedAgentsForGroup.includes(agent.id) ? 'selected' : '']"
           >
@@ -59,6 +76,59 @@
         />
       </el-form-item>
 
+      <el-form-item label="工作空间（开发型会话必选）">
+        <div class="workspace-picker">
+          <!-- Electron: use native folder picker -->
+          <template v-if="isElectron">
+            <input
+              ref="folderInputRef"
+              type="file"
+              webkitdirectory
+              class="hidden-folder-input"
+              @change="onFolderSelected"
+            />
+            <div v-if="selectedWorkspacePath" class="workspace-selected">
+              <span class="workspace-path-display">{{ formatShortPath(selectedWorkspacePath) }}</span>
+              <button type="button" class="workspace-change-btn" @click="openFolderPicker">更换</button>
+            </div>
+            <button
+              v-else
+              type="button"
+              class="workspace-select-btn"
+              :disabled="workspaceCreating"
+              @click="openFolderPicker"
+            >
+              <span v-if="workspaceCreating" class="loading-dots">创建中</span>
+              <span v-else>选择工作空间文件夹</span>
+            </button>
+          </template>
+          <!-- Browser: manual path input -->
+          <template v-else>
+            <el-input
+              v-model="manualPathInput"
+              placeholder="输入工作空间路径，如 D:\code\myproject"
+              @keyup.enter="onManualPathSubmit"
+            />
+            <div v-if="selectedWorkspacePath" class="workspace-selected">
+              <span class="workspace-path-display">{{ formatShortPath(selectedWorkspacePath) }}</span>
+              <button type="button" class="workspace-change-btn" @click="selectedWorkspacePath = null; selectedWorkspaceId = null">清除</button>
+            </div>
+            <button
+              v-else
+              type="button"
+              class="workspace-select-btn"
+              :disabled="workspaceCreating || !manualPathInput.trim()"
+              @click="onManualPathSubmit"
+            >
+              <span v-if="workspaceCreating" class="loading-dots">创建中</span>
+              <span v-else>创建工作空间</span>
+            </button>
+            <p class="workspace-hint-tip">提示：在 Electron 桌面应用中可直接选择文件夹</p>
+          </template>
+          <p v-if="workspaceCreateError" class="workspace-error-tip">{{ workspaceCreateError }}</p>
+        </div>
+      </el-form-item>
+
       <button class="link-to-agent-panel" type="button" @click="$emit('go-agent-panel')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
           <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -76,7 +146,11 @@
 import { computed, ref, watch } from 'vue'
 import BaseDialog from './BaseDialog.vue'
 import avatar from '@/veiws/img/avatar.vue'
+import { createWorkspace } from '@/api/modules/workspace'
 import type { AgentPlatform, ConversationMode, SidebarAgent } from '@/types/agenthub'
+
+// Detect if running in Electron
+const isElectron = typeof window !== 'undefined' && window.navigator.userAgent.includes('Electron')
 
 const props = defineProps<{
   modelValue: boolean
@@ -86,7 +160,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  confirm: [payload: { mode: ConversationMode; title: string; agentId?: string; participantAgentIds?: string[] }]
+  confirm: [payload: { mode: ConversationMode; title: string; agentId?: string; participantAgentIds?: string[]; workspace_id?: string | null }]
   'go-agent-panel': []
 }>()
 
@@ -100,6 +174,77 @@ const selectedAgentForConv = ref('')
 const selectedAgentsForGroup = ref<string[]>([])
 const newConvTitle = ref('')
 
+// Task B: workspace selection via native folder picker
+const folderInputRef = ref<HTMLInputElement | null>(null)
+const selectedWorkspacePath = ref<string | null>(null)
+const selectedWorkspaceId = ref<string | null>(null)
+const workspaceCreating = ref(false)
+const workspaceCreateError = ref('')
+
+// For non-Electron browsers: manual path input
+const manualPathInput = ref('')
+
+// P6-7: Primary agent for group mode
+const PRIMARY_AGENT_ID = 'primary_pm_agent'
+
+const primaryAgent = computed(() => {
+  return props.agents.find((a) => a.id === PRIMARY_AGENT_ID) || null
+})
+
+const agentsWithoutPrimary = computed(() => {
+  return props.agents.filter((a) => a.id !== PRIMARY_AGENT_ID)
+})
+
+function openFolderPicker() {
+  workspaceCreateError.value = ''
+  folderInputRef.value?.click()
+}
+
+async function onFolderSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = input.files
+  if (!files || files.length === 0) return
+
+  const dirPath = (files[0] as File & { path?: string }).path
+  if (!dirPath) {
+    workspaceCreateError.value = '无法获取文件夹路径，请使用 Chrome/Edge 或升级 Electron 版本'
+    return
+  }
+
+  await createWorkspaceFromPath(dirPath)
+}
+
+async function createWorkspaceFromPath(path: string) {
+  workspaceCreating.value = true
+  workspaceCreateError.value = ''
+  selectedWorkspacePath.value = path
+
+  try {
+    const ws = await createWorkspace({ root_path: path })
+    selectedWorkspaceId.value = ws.id
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    workspaceCreateError.value = `创建工作空间失败：${msg}`
+    selectedWorkspacePath.value = null
+  } finally {
+    workspaceCreating.value = false
+  }
+}
+
+function onManualPathSubmit() {
+  if (!manualPathInput.value.trim()) {
+    workspaceCreateError.value = '请输入工作空间路径'
+    return
+  }
+  createWorkspaceFromPath(manualPathInput.value.trim())
+  manualPathInput.value = ''
+}
+
+function formatShortPath(path: string): string {
+  // Always show the absolute path in full
+  return path
+}
+
 watch(
   () => props.modelValue,
   (val) => {
@@ -108,19 +253,28 @@ watch(
         newConvType.value = 'single'
         selectedAgentForConv.value = props.initialAgentId
       } else {
-        // Reset selection when dialog opens
         selectedAgentForConv.value = ''
         selectedAgentsForGroup.value = []
         newConvTitle.value = ''
         newConvType.value = 'single'
       }
+      selectedWorkspaceId.value = null
+      selectedWorkspacePath.value = null
+      workspaceCreateError.value = ''
     }
   },
 )
 
 const canCreateConversation = computed(() => {
-  if (newConvType.value === 'single') return !!selectedAgentForConv.value
-  return selectedAgentsForGroup.value.length >= 1
+  // Task B+C-1: Workspace selection is now mandatory
+  if (!selectedWorkspaceId.value) {
+    return false
+  }
+  if (newConvType.value === 'single') {
+    return !!selectedAgentForConv.value
+  }
+  // P6-7: Group mode always has the primary agent, so zero additional agents is allowed
+  return true
 })
 
 const formatPlatformLabel = (platform?: AgentPlatform) => {
@@ -142,6 +296,11 @@ const getDefaultConvTitle = () => {
 }
 
 const confirmCreate = () => {
+  // Task B+C-1: Ensure workspace is selected before allowing creation
+  if (!selectedWorkspaceId.value) {
+    workspaceCreateError.value = '请先选择工作空间文件夹'
+    return
+  }
   if (!canCreateConversation.value) {
     return
   }
@@ -152,6 +311,7 @@ const confirmCreate = () => {
     title,
     agentId: mode === 'single' ? selectedAgentForConv.value : undefined,
     participantAgentIds: mode === 'group' ? [...selectedAgentsForGroup.value] : undefined,
+    workspace_id: selectedWorkspaceId.value,
   })
   visible.value = false
 }
@@ -440,5 +600,131 @@ const confirmCreate = () => {
   &:active {
     transform: translateX(6px) scale(0.98);
   }
+}
+
+.workspace-select {
+  width: 100%;
+}
+
+.workspace-empty-tip {
+  margin: 4px 0 0;
+  color: #737373;
+  font-size: 12px;
+}
+
+.hidden-folder-input {
+  display: none;
+}
+
+.workspace-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workspace-select-btn {
+  align-self: flex-start;
+  padding: 8px 16px;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  background: #fafafa;
+  color: #262626;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.workspace-select-btn:hover:not(:disabled) {
+  border-color: #1a1a1a;
+  background: #f0f0f0;
+}
+
+.workspace-select-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.workspace-selected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9f9f9;
+}
+
+.workspace-path-display {
+  flex: 1;
+  color: #262626;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-change-btn {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #737373;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.workspace-change-btn:hover {
+  border-color: #1a1a1a;
+  color: #262626;
+}
+
+.workspace-error-tip {
+  margin: 0;
+  color: #ef4444;
+  font-size: 12px;
+}
+
+.workspace-hint-tip {
+  margin: 4px 0 0;
+  color: #737373;
+  font-size: 12px;
+}
+
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* P6-7: Primary agent card in group mode */
+.primary-agent-card {
+  border-color: #3b82f6 !important;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08)) !important;
+  box-shadow:
+    0 0 0 2px rgba(59, 130, 246, 0.2),
+    0 8px 24px rgba(59, 130, 246, 0.2) !important;
+  transform: none !important;
+
+  input[type="checkbox"] {
+    opacity: 0.6;
+  }
+
+  &::before {
+    opacity: 1 !important;
+  }
+}
+
+.primary-agent-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  border-radius: 6px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 </style>

@@ -66,6 +66,25 @@ class ToolManager(BaseModel):
             index += 1
         return markdown
 
+    def to_prompt_markdown(self, max_description_chars: int = 160):
+        """Create a compact tool summary suitable for system prompts."""
+        lines = []
+        for index, (tool_name, tool) in enumerate(self.tools.items(), start=1):
+            description = " ".join(str(getattr(tool, "description", "")).split())
+            if len(description) > max_description_chars:
+                description = description[: max_description_chars - 14].rstrip() + " ...[trimmed]"
+
+            parameter_names = []
+            for arg in getattr(tool, "arguments", []):
+                if tool._is_internal_injectable(arg):
+                    continue
+                suffix = "*" if arg.required else ""
+                parameter_names.append(f"{arg.name}{suffix}")
+
+            params = f" ({', '.join(parameter_names)})" if parameter_names else ""
+            lines.append(f"{index}. {tool_name}{params}: {description}".rstrip())
+        return "\n".join(lines)
+
     def validate_and_convert_arguments(self, tool_name: str, provided_args: dict) -> dict:
         """Validates and converts arguments based on tool definition.
 

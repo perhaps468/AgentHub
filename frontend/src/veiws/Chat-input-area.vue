@@ -20,14 +20,33 @@
 
     <!-- Main composer -->
     <div class="composer-row">
+      <!-- Toolbar -->
+      <div class="composer-toolbar" role="toolbar" aria-label="消息工具">
+        <button type="button" class="tool-btn" aria-label="表情" title="表情" @click="showEmoji = !showEmoji">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M8.5 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="currentColor"/>
+            <path d="M15.5 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" fill="currentColor"/>
+            <path d="M8.5 16.5c.8 1 2.2 1.5 3.5 1.5s2.7-.5 3.5-1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button type="button" class="tool-btn" aria-label="附件" title="发送文件" @click="msgInputRef?.openFilePicker?.()">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
       <!-- Input editor -->
-      <Input
-        ref="msgInputRef"
-        v-model:value="msgContent"
-        :handlerSubmitMsg="handlerSubmitMsg"
-        placeholder="输入消息..."
-        @send="handlerSubmitMsg"
-      />
+      <div class="composer-editor-wrap">
+        <Input
+          ref="msgInputRef"
+          v-model:value="msgContent"
+          :handlerSubmitMsg="handlerSubmitMsg"
+          placeholder="输入消息..."
+          @send="handlerSubmitMsg"
+        />
+      </div>
 
       <!-- Send button -->
       <button
@@ -39,12 +58,31 @@
        ➤
       </button>
     </div>
+
+    <!-- Emoji panel -->
+    <transition name="emoji-slide">
+      <div v-if="showEmoji" class="emoji-panel">
+        <div class="emoji-grid">
+          <button
+            v-for="e in emojis"
+            :key="e.icon"
+            type="button"
+            class="emoji-item"
+            :title="e.name"
+            @click="insertEmoji(e.icon)"
+          >
+            {{ e.icon }}
+          </button>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+import emojis from '../utils/emoji/emoji'
 import Input from './input-content/input.vue'
 
 const props = defineProps<{
@@ -57,6 +95,7 @@ const emit = defineEmits<{
 }>()
 
 const msgContent = ref('')
+const showEmoji = ref(false)
 const referenceMsg = ref<{ from: string; text: string } | null>(null)
 const msgInputRef = ref<any>(null)
 
@@ -72,6 +111,11 @@ const handlerSubmitMsg = () => {
   emit('send', text)
   msgContent.value = ''
   referenceMsg.value = null
+}
+
+const insertEmoji = (emoji: string) => {
+  msgInputRef.value?.insertEmoji?.(emoji)
+  showEmoji.value = false
 }
 </script>
 
@@ -159,9 +203,45 @@ const handlerSubmitMsg = () => {
 .composer-row {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
+  gap: 10px;
   padding: 12px 16px;
   background: rgb(var(--surface-color));
+}
+
+/* Toolbar */
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding-bottom: 4px;
+}
+
+.tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  color: rgb(var(--text-secondary));
+  transition: all 0.15s ease;
+}
+
+.tool-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.tool-btn:hover {
+  color: rgb(var(--primary-color));
+  background: rgb(var(--primary-soft));
+}
+
+/* Editor wrapper */
+.composer-editor-wrap {
+  flex: 1;
+  min-width: 0;
 }
 
 /* Send button */
@@ -173,7 +253,7 @@ const handlerSubmitMsg = () => {
   width: 45px;
   font-size: 20px;
   height: 45px;
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   background: rgb(var(--primary-color));
   color: #fff;
   cursor: pointer;
@@ -186,18 +266,82 @@ const handlerSubmitMsg = () => {
   transform: scale(1.05);
 }
 
+.send-btn.active:active {
+  transform: scale(0.95);
+}
+
+/* Emoji panel */
+.emoji-panel {
+  position: absolute;
+  left: 16px;
+  bottom: calc(100% + 10px);
+  z-index: 20;
+  border-radius: var(--radius-md);
+  border: 1px solid rgb(var(--border-color));
+  background: rgb(var(--surface-color));
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0;
+  padding: 10px;
+  gap: 4px;
+}
+
+.emoji-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  font-size: 20px;
+  line-height: 1;
+  transition: all 0.12s ease;
+  cursor: pointer;
+}
+
+.emoji-item:hover {
+  background: rgb(var(--primary-soft));
+  transform: scale(1.15);
+}
+
+.emoji-item:active {
+  transform: scale(0.92);
+}
+
+/* Emoji panel animation */
+.emoji-slide-enter-active,
+.emoji-slide-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.emoji-slide-enter-from,
+.emoji-slide-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+  transform-origin: bottom left;
+}
+
 @media (max-width: 720px) {
   .composer-row {
     flex-wrap: wrap;
   }
 
-  Input {
+  .composer-toolbar {
     order: 1;
+  }
+
+  .composer-editor-wrap {
+    order: 2;
     flex: 1 1 100%;
   }
 
   .send-btn {
-    order: 2;
+    order: 3;
   }
 }
 </style>

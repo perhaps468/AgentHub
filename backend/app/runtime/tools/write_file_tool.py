@@ -29,7 +29,8 @@ class WriteFileTool(Tool):
         "The file must not exist or will be overwritten. "
         "Returns a preview of the change; the change is not applied until explicitly confirmed."
     )
-    need_validation: bool = True
+    # C-2: Set to False - confirmation happens via apply_change tool, not validation prompt
+    need_validation: bool = False
 
     _workspace_root: Optional[Path] = None
 
@@ -50,9 +51,9 @@ class WriteFileTool(Tool):
         ),
     ]
 
-    def __init__(self, workspace_root: Optional[Path] = None):
+    def __init__(self, workspace_root: Optional[Path | str] = None):
         super().__init__()
-        self._workspace_root = workspace_root
+        self._workspace_root = Path(workspace_root) if workspace_root else None
 
     @property
     def _guard(self) -> WorkspaceGuard:
@@ -115,14 +116,21 @@ class WriteFileTool(Tool):
                 )
 
         # Return PendingChange with preview
+        # C-2: Auto-register PendingChange for confirmed apply flow
+        from app.runtime.tools.apply_change_tool import ApplyChangeTool
+
         if file_exists:
-            return PendingChange.make_update(
+            pc = PendingChange.make_update(
                 path=resolved_str,
                 original_content=original_content,
                 proposed_content=content,
             )
+            ApplyChangeTool.register_change(pc)
+            return pc
         else:
-            return PendingChange.make_create(
+            pc = PendingChange.make_create(
                 path=resolved_str,
                 proposed_content=content,
             )
+            ApplyChangeTool.register_change(pc)
+            return pc

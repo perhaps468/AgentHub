@@ -91,6 +91,12 @@ class ListDirectoryTool(Tool):
     def execute(self, directory_path: str, workspace_root: str | None = None, recursive: str = "false", max_depth: str = "10", start_line: str = "1", end_line: str = "200") -> str:
         # T6: use injected workspace_root if not provided
         ws = workspace_root or self._workspace_root
+        logger.debug(
+            "ListDirectoryTool.execute: directory_path={}, workspace_root={}, self._workspace_root={}",
+            directory_path,
+            ws,
+            self._workspace_root,
+        )
         if not ws:
             return f"Error: workspace_root is not configured."
         try:

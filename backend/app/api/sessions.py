@@ -1,16 +1,79 @@
+# -*- coding: utf-8 -*-
+"""Session API endpoints.
+
+Task B+C-1: Session creation requires workspace_id.
+Session responses include workspace details for frontend display.
+"""
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import CurrentUser
+from app.models.agent import Agent
 from app.models.message import Message
 from app.models.session import ChatSession
+from app.models.session_member import SessionMember
+from app.models.workspace import Workspace
 from app.schemas.common import Page
 from app.schemas.message import MessageResponse
-from app.schemas.session import SessionCreate, SessionResponse, SessionUpdate
+from app.schemas.session import SessionCreate, SessionResponse, SessionUpdate, WorkspaceSummary
+from app.schemas.session_member import MemberResponse
+
+PRIMARY_AGENT_ID = "primary_pm_agent"
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
+
+
+def _get_workspace_summary(db: Session, workspace_id: str | None) -> WorkspaceSummary | None:
+    """Get workspace summary for a workspace_id."""
+    if workspace_id is None:
+        return None
+    ws = db.get(Workspace, workspace_id)
+    if ws is None:
+        return None
+    return WorkspaceSummary(
+        id=ws.id,
+        name=ws.name,
+        root_path=ws.root_path,
+    )
+
+
+def _get_members_for_session(db: Session, session_id: str) -> list[MemberResponse]:
+    """Get members for a session."""
+    members = db.query(SessionMember).filter(
+        SessionMember.session_id == session_id
+    ).all()
+    return [
+        MemberResponse(
+            id=m.id,
+            session_id=m.session_id,
+            member_type=m.member_type,
+            member_id=m.member_id,
+            is_primary=m.is_primary,
+            health_status=m.health_status,
+            created_at=m.created_at.isoformat(),
+        )
+        for m in members
+    ]
+
+
+def _session_to_response(db: Session, session: ChatSession) -> SessionResponse:
+    """Convert a ChatSession to SessionResponse with workspace info."""
+    return SessionResponse(
+        id=session.id,
+        owner_id=session.owner_id,
+        workspace_id=session.workspace_id,
+        agent_id=session.agent_id,
+        title=session.title,
+        mode=session.mode,
+        is_pinned=session.is_pinned,
+        is_archived=session.is_archived,
+        created_at=session.created_at,
+        updated_at=session.updated_at,
+        workspace=_get_workspace_summary(db, session.workspace_id),
+        members=_get_members_for_session(db, session.id),
+    )
 
 
 def get_session_or_404(db: Session, session_id: str) -> ChatSession:
@@ -28,16 +91,69 @@ def get_session_with_ownership_check(db: Session, session_id: str, current_user:
 
 
 @router.post("", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
-def create_session(payload: SessionCreate, current_user: CurrentUser, db: Session = Depends(get_db)) -> ChatSession:
+def create_session(payload: SessionCreate, current_user: CurrentUser, db: Session = Depends(get_db)) -> SessionResponse:
+    # Task B+C-1: Validate workspace_id exists and belongs to current user
+    owner = str(current_user.id)
+    ws = db.get(Workspace, payload.workspace_id)
+    if ws is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if ws.owner_id != owner:
+        raise HTTPException(status_code=403, detail="Workspace does not belong to current user")
+
+    if payload.agent_id is not None:
+        agent = db.get(Agent, payload.agent_id)
+        if agent is None:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        if not agent.is_builtin and agent.owner_id != owner:
+            raise HTTPException(status_code=403, detail="Agent does not belong to current user")
+
     session = ChatSession(
-        owner_id=str(current_user.id),
+        owner_id=owner,
         title=payload.title,
         mode=payload.mode,
+        workspace_id=payload.workspace_id,
+        agent_id=payload.agent_id,
     )
     db.add(session)
+    db.flush()  # flush to get session.id for member creation
+
+    # P6-3: Group mode — auto-add primary agent and participant agents as members
+    if payload.mode == "group":
+        participant_ids = list(payload.participant_agent_ids or [])
+        # Always include primary agent, deduplicate
+        member_ids = set(participant_ids)
+        member_ids.discard(PRIMARY_AGENT_ID)
+
+        # Validate all participant agents exist
+        for agent_id in member_ids:
+            ag = db.get(Agent, agent_id)
+            if ag is None:
+                raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+            if not ag.is_builtin and ag.owner_id != owner:
+                raise HTTPException(status_code=403, detail=f"Agent does not belong to current user: {agent_id}")
+
+        # Add primary agent as primary member
+        db.add(SessionMember(
+            session_id=session.id,
+            member_type="agent",
+            member_id=PRIMARY_AGENT_ID,
+            is_primary=True,
+            health_status="connected",
+        ))
+
+        # Add participant agents as non-primary members
+        for agent_id in member_ids:
+            db.add(SessionMember(
+                session_id=session.id,
+                member_type="agent",
+                member_id=agent_id,
+                is_primary=False,
+                health_status="connected",
+            ))
+
     db.commit()
     db.refresh(session)
-    return session
+    return _session_to_response(db, session)
 
 
 @router.get("", response_model=Page[SessionResponse])
@@ -61,7 +177,7 @@ def list_sessions(
         .limit(page_size)
     ).all()
     return Page(
-        items=items,
+        items=[_session_to_response(db, session) for session in items],
         total=total,
         page=page,
         page_size=page_size,
@@ -70,8 +186,9 @@ def list_sessions(
 
 
 @router.get("/{session_id}", response_model=SessionResponse)
-def get_session(session_id: str, current_user: CurrentUser, db: Session = Depends(get_db)) -> ChatSession:
-    return get_session_with_ownership_check(db, session_id, current_user)
+def get_session(session_id: str, current_user: CurrentUser, db: Session = Depends(get_db)) -> SessionResponse:
+    session = get_session_with_ownership_check(db, session_id, current_user)
+    return _session_to_response(db, session)
 
 
 @router.patch("/{session_id}", response_model=SessionResponse)
@@ -80,7 +197,7 @@ def update_session(
     payload: SessionUpdate,
     current_user: CurrentUser,
     db: Session = Depends(get_db),
-) -> ChatSession:
+) -> SessionResponse:
     session = get_session_with_ownership_check(db, session_id, current_user)
     updates = payload.model_dump(exclude_unset=True)
     for field, value in updates.items():
@@ -88,7 +205,7 @@ def update_session(
     db.add(session)
     db.commit()
     db.refresh(session)
-    return session
+    return _session_to_response(db, session)
 
 
 @router.delete("/{session_id}")

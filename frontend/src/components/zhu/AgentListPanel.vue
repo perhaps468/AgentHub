@@ -35,7 +35,12 @@
       >
         <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="42px" :style="getAgentAvatarStyle(agent)" />
         <div class="agent-info">
-          <span class="agent-name">{{ agent.name }}</span>
+          <div class="agent-title-row">
+            <span class="agent-name">{{ agent.name }}</span>
+            <span class="agent-badge" :class="agent.isCustom ? 'custom' : 'builtin'">
+              {{ agent.isCustom ? '自建' : '内置' }}
+            </span>
+          </div>
           <span class="agent-desc">{{ agent.description || getAgentPlatformLabel(agent) }}</span>
           <div class="capability-tags">
             <span v-for="tag in getVisibleCapabilityTags(agent.capabilityTags)" :key="tag" class="capability-tag">{{ tag }}</span>
@@ -243,6 +248,29 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
   font-size: 14px;
   font-weight: 600;
   color: #1e293b;
+}
+
+.agent-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.agent-badge.builtin {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+.agent-badge.custom {
+  background: rgba(249, 115, 22, 0.12);
+  color: #c2410c;
 }
 
 .agent-desc {

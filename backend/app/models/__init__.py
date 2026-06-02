@@ -1,5 +1,9 @@
+from app.models.agent import Agent
 from app.models.message import Message
+from app.models.pending_change import PendingChangeModel
 from app.models.session import ChatSession
+from app.models.session_member import SessionMember
 from app.models.user import User
+from app.models.workspace import Workspace
 
-__all__ = ["ChatSession", "Message", "User"]
+__all__ = ["Agent", "ChatSession", "Message", "SessionMember", "User", "Workspace", "PendingChangeModel"]

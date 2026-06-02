@@ -223,6 +223,17 @@ htmlcov/
 # Test databases
 test.db
 
+# Local test files (development only)
+backend/test_*.py
+frontend/src/**/*.spec.ts
+frontend/src/veiws/
+
+# Backend tests directory
+backend/tests/
+
+# OpenSpec / migration docs
+openspec/docs/
+
 # Secrets (MUST NEVER be committed)
 *.pem
 *.key

@@ -6,6 +6,7 @@
       :connection-state="connectionState"
       :reconnect-attempt="reconnectAttempt"
       :format-time="formatTime"
+      :workspace="workspace"
       @open-left="$emit('open-left')"
       @retry="$emit('retry')"
     />
@@ -34,11 +35,11 @@
 <script lang="ts" setup>
 import ChatInputArea from '../../veiws/Chat-input-area.vue'
 import ChatShowArea from '../../veiws/Chat-show-area.vue'
-import type { ConversationItem } from '../../types/agenthub'
+import type { ConversationItem, Workspace } from '../../types/agenthub'
 import type { ConnectionState } from '../../utils/ws-client'
 import ChatHeader from './ChatHeader.vue'
 
-defineProps<{
+const props = defineProps<{
   currentSession: ConversationItem | null | undefined
   currentSessionId: string
   connectionState: ConnectionState
@@ -46,9 +47,10 @@ defineProps<{
   isLoadingMessages: boolean
   isSendLoading: boolean
   formatTime: (iso: string) => string
+  workspace: Workspace | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'open-left'): void
   (e: 'retry'): void
   (e: 'send', content: string): void
@@ -73,6 +75,8 @@ defineEmits<{
   background: rgba(255, 255, 255, 0.5);
   border-radius: 16px;
   margin: 0 4px;
+  display: flex;
+  flex-direction: column;
 }
 
 .chat-composer-panel {

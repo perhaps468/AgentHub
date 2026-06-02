@@ -8,14 +8,35 @@ export type AgentPlatform = 'claude-code' | 'codex' | 'opencode' | 'custom'
 
 export interface AgentProfile {
   id: string
+  owner_id?: string | null
   name: string
   avatar?: string | null
   avatar_url?: string | null
   platform: string
-  capabilityTags: string[]
+  capabilityTags?: string[]
+  capability_tags?: string[]
+  tool_permissions?: string[]
+  is_builtin?: boolean
+  is_active?: boolean
   status?: 'online' | 'offline'
   role?: string
   model?: string
+  description?: string | null
+  system_prompt?: string
+}
+
+export interface AgentConfig {
+  available_models: string[]
+  available_capability_tags: string[]
+}
+
+export interface AgentDraft {
+  name: string
+  model: string
+  capabilityTags: string[]
+  description?: string
+  avatar?: string
+  platform?: AgentPlatform
 }
 
 export interface SidebarAgent {
@@ -26,120 +47,72 @@ export interface SidebarAgent {
   description?: string
   platform?: AgentPlatform
   isCustom?: boolean
-}
-
-export interface SidebarUser {
-  id: string
-  name: string
-  avatar: string
-  email?: string
-  bio?: string
-}
-
-export interface PersonProfile {
-  id: string
-  name: string
-  avatar?: string | null
   role?: string
+  model?: string
+  system_prompt?: string
+}
+
+// ── Session & Message Types ──────────────────────────────
+
+export interface Workspace {
+  id: string
+  name: string
+  root_path: string
+}
+
+export interface SessionMember {
+  id: string
+  session_id: string
+  member_type: 'agent' | 'user'
+  member_id: string
+  is_primary: boolean
+  health_status: string
+  created_at: string
 }
 
 export interface ConversationItem {
   id: string
   owner_id: string
+  workspace_id: string | null
+  agent_id: string | null
   title: string | null
-  mode: ConversationMode
+  mode: string
   is_pinned: boolean
   is_archived: boolean
   created_at: string
   updated_at: string
-}
-
-export interface MessageReference {
-  id: string
-  senderName: string
-  summary: string
-}
-
-export interface MessageCodeArtifact {
-  fileName: string
-  language: string
-  code: string
-}
-
-export interface MessageFileArtifact {
-  fileName: string
-  fileSize?: string
-  fileType?: string
-  downloadUrl?: string
-}
-
-export interface MessagePreviewArtifact {
-  title: string
-  url?: string
-  description?: string
-}
-
-export interface MentionEntity {
-  id: string
-  name: string
-  mentionType: 'member' | 'agent' | 'all'
-}
-
-export type ComposerNode =
-  | { type: 'text'; text: string }
-  | { type: 'emoji'; text: string }
-  | { type: 'mention'; entity: MentionEntity }
-  | { type: 'line-break' }
-
-export interface ComposerFile {
-  uid: string
-  file: File
-  name: string
-  size: number
-  type: string
-  status: 'pending' | 'uploading' | 'success' | 'error'
-  url?: string
-}
-
-export interface ComposerDraft {
-  sessionId: string
-  text: string
-  nodes: ComposerNode[]
-  mentions: MentionEntity[]
-  files: ComposerFile[]
-  replyTo?: {
-    messageId: string
-    summary: string
-    senderName: string
-  } | null
+  workspace?: Workspace | null
+  members?: SessionMember[] | null
 }
 
 export interface ChatMessage {
   id: string
   session_id: string
-  sender_type: SenderType
+  sender_type: string
   sender_role: string | null
-  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
   content: string
+  type: string
+  status: string
   payload: Record<string, unknown>
   metadata: Record<string, unknown>
-  status: 'pending' | 'streaming' | 'completed' | 'failed'
   created_at: string
 }
 
-export interface StreamingMessage {
-  stream_id: string
-  message_id?: string
-  session_id: string
-  sender_type: SenderType
-  sender_role: string | null
-  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
-  content: string
-  payload: Record<string, unknown>
-  metadata: Record<string, unknown>
-  ui_status: 'thinking' | 'streaming' | 'done' | 'syncing_interrupted'
-  is_ephemeral: boolean
-  created_at: string
+export interface CreateSessionPayload {
+  owner_id?: string | null
+  title?: string | null
+  mode: 'single' | 'group'
+  workspace_id: string
+  agent_id?: string | null
+  participant_agent_ids?: string[] | null
+}
+
+export interface UpdateSessionPayload {
+  title?: string | null
+  is_pinned?: boolean
+  is_archived?: boolean
+  workspace_id?: string | null
+  agent_id?: string | null
 }
 
 export interface PaginatedResponse<T> {
@@ -149,39 +122,3 @@ export interface PaginatedResponse<T> {
   page_size: number
   has_more: boolean
 }
-
-export interface CreateSessionPayload {
-  title?: string | null
-  mode: ConversationMode
-}
-
-export interface UpdateSessionPayload {
-  title?: string | null
-  is_pinned?: boolean
-  is_archived?: boolean
-}
-
-export interface SendMessagePayload {
-  action: 'send_message'
-  session_id: string
-  content: string
-}
-
-export interface PreviewState {
-  type: PreviewType
-  title: string
-  language?: string
-  code?: string
-  url?: string
-  description?: string
-  fileName?: string
-  fileSize?: string
-  fileType?: string
-}
-
-export interface WsIncomingMessage {
-  type: string
-  message?: ChatMessage
-  data?: unknown
-}
-

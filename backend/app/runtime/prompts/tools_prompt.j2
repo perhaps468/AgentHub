@@ -1,11 +1,14 @@
-To accomplish this task, you have access to these tools:
+Runtime tool reference:
 
 {{ tool_names }}
 
 Instructions:
 
-1. Select ONE tool per message
-2. You will receive the tool's output in the next user response
-3. Choose the most appropriate tool for each step
-4. Give the final full answer using all the variables
-5. Use task_complete tool to confirm task completion with the full content of the final answer
+1. Select exactly ONE tool per response.
+2. If you call a tool, return raw XML only and nothing else.
+3. Do not wrap XML in markdown code fences.
+4. Use exactly one `<action>` block and exactly one tool tag inside it.
+5. Use the exact tool name and exact argument names shown above.
+6. Provide each argument as its own XML tag. Do not put free text directly under `<action>`.
+7. Do not output multiple tools in one response.
+8. When the task is complete, call `task_complete` with the full final user-facing answer in `<answer>`.

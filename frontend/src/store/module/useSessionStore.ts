@@ -9,6 +9,7 @@ import {
   fetchConversationMessages,
   deleteConversation,
 } from '@/api/modules/session'
+import { fetchPendingChanges } from '@/api/modules/pendingChanges'
 import type {
   ConversationItem,
   CreateSessionPayload,
@@ -68,6 +69,10 @@ function reorganizeByRounds(messages: ChatMessage[]): ChatMessage[] {
   // reverse rounds 数组让最新沉到末尾（但不破坏每对内部的 H→A 顺序）
   // 再 flat: [[H_1, A_1], [H_2, A_2], ...] → [H_1, A_1, H_2, A_2, ...]
   return rounds.reverse().flat()
+}
+
+function toChronologicalOrder(messages: ChatMessage[]): ChatMessage[] {
+  return [...messages].reverse()
 }
 
 export const useSessionStore = defineStore(
@@ -181,7 +186,7 @@ export const useSessionStore = defineStore(
             updatedList.push(msg)
           }
           // 后端 desc() 排序会导致 A 在 H 前面，按轮次重组
-          updatedList = reorganizeByRounds(updatedList)
+          updatedList = toChronologicalOrder(updatedList)
           messageMap.value[sessionId] = updatedList
         } else {
           // page>1 时，加载更早的消息，追加到列表顶部
@@ -193,8 +198,8 @@ export const useSessionStore = defineStore(
             }
             newItems.push(msg)
           }
-          const reorganized = reorganizeByRounds(newItems)
-          messageMap.value[sessionId] = [...reorganized, ...existing]
+          const chronological = toChronologicalOrder(newItems)
+          messageMap.value[sessionId] = [...chronological, ...existing]
         }
 
         messagePageMap.value[sessionId] = {
@@ -209,43 +214,78 @@ export const useSessionStore = defineStore(
       }
     }
 
-    function appendMessage(sessionId: string, msg: ChatMessage) {
-      if (!messageMap.value[sessionId]) {
-        messageMap.value[sessionId] = []
+    async function restorePendingChangesForSession(
+      sessionId: string,
+      opts: { clearExisting?: boolean; clearInFlight?: boolean } = {},
+    ) {
+      const { clearExisting = true, clearInFlight = false } = opts
+
+      if (clearExisting) {
+        streamState.clearSessionPendingChanges(sessionId)
       }
-      if (msg.id && messageMap.value[sessionId].some((m) => m.id === msg.id)) return
-      messageMap.value[sessionId].push(msg)
+      if (clearInFlight) {
+        streamState.clearInFlightStreams(sessionId)
+      }
+
+      const res = await fetchPendingChanges(sessionId)
+      streamState.restorePendingChanges(res.items, sessionId)
+      return res
+    }
+
+    function appendMessage(sessionId: string, msg: ChatMessage) {
+      const existing = messageMap.value[sessionId] ?? []
+      if (msg.id && existing.some((m) => m.id === msg.id)) return
+      messageMap.value = {
+        ...messageMap.value,
+        [sessionId]: [...existing, msg],
+      }
     }
 
     function appendHumanMessage(sessionId: string, msg: ChatMessage) {
-      if (!messageMap.value[sessionId]) {
-        messageMap.value[sessionId] = []
+      const existing = messageMap.value[sessionId] ?? []
+      if (msg.id && existing.some((m) => m.id === msg.id)) return
+      messageMap.value = {
+        ...messageMap.value,
+        [sessionId]: [...existing, msg],
       }
-      if (msg.id && messageMap.value[sessionId].some((m) => m.id === msg.id)) return
-      messageMap.value[sessionId].push(msg)
     }
 
     function mergeOrUpdateMessage(sessionId: string, msg: ChatMessage) {
-      if (!messageMap.value[sessionId]) {
-        messageMap.value[sessionId] = []
-      }
-      const existingIndex = messageMap.value[sessionId].findIndex((m) => m.id === msg.id)
+      const existing = messageMap.value[sessionId] ?? []
+      const existingIndex = existing.findIndex((m) => m.id === msg.id)
       if (existingIndex !== -1) {
-        messageMap.value[sessionId][existingIndex] = msg
+        const updated = [...existing]
+        updated[existingIndex] = msg
+        messageMap.value = {
+          ...messageMap.value,
+          [sessionId]: updated,
+        }
       } else {
-        messageMap.value[sessionId].push(msg)
+        messageMap.value = {
+          ...messageMap.value,
+          [sessionId]: [...existing, msg],
+        }
       }
     }
 
     function upsertMessage(messageId: string, msg: ChatMessage) {
       // upsert based on message.id
-      const list = messageMap.value[currentSessionId.value]
+      const sessionId = currentSessionId.value
+      const list = sessionId ? messageMap.value[sessionId] : undefined
       if (!list) return
       const idx = list.findIndex((m) => m.id === messageId)
       if (idx !== -1) {
-        messageMap.value[currentSessionId.value][idx] = msg
+        const updated = [...list]
+        updated[idx] = msg
+        messageMap.value = {
+          ...messageMap.value,
+          [sessionId]: updated,
+        }
       } else {
-        messageMap.value[currentSessionId.value].push(msg)
+        messageMap.value = {
+          ...messageMap.value,
+          [sessionId]: [...list, msg],
+        }
       }
     }
 
@@ -274,6 +314,8 @@ export const useSessionStore = defineStore(
 
     function setCurrentSessionId(id: string | null) {
       currentSessionId.value = id
+      // 同步更新 streamState 的 sessionId
+      streamState.setCurrentSessionId(id)
     }
 
     async function deleteSession(sessionId: string) {
@@ -311,6 +353,7 @@ export const useSessionStore = defineStore(
       updateSession,
       archiveSession,
       fetchMessages,
+      restorePendingChangesForSession,
       deleteSession,
       appendMessage,
       appendHumanMessage,
