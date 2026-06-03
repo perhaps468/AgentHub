@@ -22,6 +22,10 @@ interface InFlightStream {
   created_at: string
   runtime_nodes: RuntimeProcessNode[]
   runtime_state?: RuntimeStateValue
+  // M6: Change preview data for inline confirmation buttons
+  change_preview?: ChangePreviewStreamData
+  // M6: Track confirmed/rejected status for change previews
+  change_status?: 'pending' | 'confirmed' | 'rejected'
 }
 
 interface RestoreTaskStreamSnapshot {
@@ -29,6 +33,8 @@ interface RestoreTaskStreamSnapshot {
   tasks: Array<{
     id: string
     assigned_agent_id?: string
+    agent_role?: string  // M6: actual agent role for display
+    agent_name?: string  // M6: actual agent name for display
     latest_stream?: {
       stream_id: string
       message_id?: string
@@ -55,6 +61,18 @@ interface RepairStateEventData {
   attempt: number
   max_attempts: number
   message: string
+}
+
+// M6: Change preview as message - for rendering confirmation buttons inline in chat
+interface ChangePreviewStreamData {
+  change_id: string
+  operation: string
+  path: string
+  unified_diff: string
+  status: string
+  run_id?: string | null
+  task_id?: string | null
+  agent_id?: string | null
 }
 
 const STATE_TO_UI: Record<string, InFlightStream['ui_status']> = {
@@ -155,6 +173,7 @@ export function useChatStreamState() {
         sender_type: 'agent',
         sender_role: stream.sender_role,
         content: stream.accumulated_content,
+        accumulated_content: stream.accumulated_content,
         ui_status: stream.ui_status,
         is_ephemeral: !stream.message_id,
         created_at: stream.created_at,
@@ -406,9 +425,12 @@ export function useChatStreamState() {
       const latestStream = task.latest_stream
       if (!latestStream?.stream_id) return
 
+      // M6: Use actual agent role/name from task data instead of hardcoded 'PM'
+      const senderRole = (task.agent_role as AgentRole) || 'PM'
+
       const stream = ensureStream(latestStream.stream_id, sessionId, {
         messageId: latestStream.message_id,
-        senderRole: 'PM',
+        senderRole: senderRole,
         timestamp: new Date().toISOString(),
         uiStatus: latestStream.status === 'completed' ? 'done' : 'thinking',
       })
@@ -418,6 +440,8 @@ export function useChatStreamState() {
         ...(snapshot.run_id ? { run_id: snapshot.run_id } : {}),
         task_id: task.id,
         ...(task.assigned_agent_id ? { agent_id: task.assigned_agent_id } : {}),
+        ...(task.agent_role ? { agent_role: task.agent_role } : {}),
+        ...(task.agent_name ? { agent_name: task.agent_name } : {}),
       }
 
       if (latestStream.message_id) {
@@ -449,6 +473,13 @@ export function useChatStreamState() {
   }
 
   const sessionPendingChanges = computed(() => getSessionPendingChanges())
+
+  // M6: Task status update callback - replaces window.dispatchEvent as primary sync
+  let _onTaskStatusUpdate: ((taskId: string, runId: string | null, status: string) => void) | null = null
+
+  function setOnTaskStatusUpdate(callback: (taskId: string, runId: string | null, status: string) => void) {
+    _onTaskStatusUpdate = callback
+  }
 
   function handleChangePreview(event: ChangePreviewEvent, sessionId: string) {
     const { change_id, operation, path, unified_diff, status, stream_id, message_id } = event
@@ -489,6 +520,120 @@ export function useChatStreamState() {
 
     console.log('[StreamState] change_preview:', change_id, 'operation:', operation, 'path:', path)
     return change
+  }
+
+  // M6: Handle change_preview as an inline message with confirmation buttons
+  // This replaces the panel-based approach where changes are shown in a separate section
+  function handleChangePreviewAsMessage(event: ChangePreviewEvent, sessionId: string): InFlightStream | null {
+    const { change_id, operation, path, unified_diff, status, stream_id, message_id, run_id, task_id, agent_id, agent_role, timestamp } = event
+
+    if (!change_id || !stream_id) {
+      console.warn('[StreamState] handleChangePreviewAsMessage: missing change_id or stream_id')
+      return null
+    }
+
+    // Generate a unique stream_id for the change preview message if not provided
+    const previewStreamId = `change_preview_${change_id}`
+
+    // Build the confirmation message content
+    const operationText = operation === 'create' ? '创建' : operation === 'update' ? '更新' : '删除'
+    const content = `我将${operationText}文件 \`${path}\`，内容如下：
+
+\`\`\`
+${formatDiffForDisplay(unified_diff)}
+\`\`\`
+
+请确认是否执行此操作：`
+
+    // Also store in pendingChanges map for backend sync
+    const change: PendingChange = {
+      change_id,
+      operation,
+      path,
+      unified_diff,
+      status,
+      session_id: sessionId,
+      stream_id: previewStreamId,
+      message_id: message_id || '',
+      run_id: run_id || null,
+      task_id: task_id || null,
+      agent_id: agent_id || null,
+      batch_id: event.batch_id || null,
+    }
+    const newMap = new Map(pendingChanges.value)
+    newMap.set(change_id, change)
+    pendingChanges.value = newMap
+
+    // Create a stream for this change preview
+    const stream = ensureStream(previewStreamId, sessionId, {
+      messageId: message_id,
+      senderRole: (agent_role as AgentRole) || 'PM',
+      timestamp: timestamp || new Date().toISOString(),
+      uiStatus: 'done',
+      type: 'text',
+    })
+
+    // Update stream with change preview data
+    stream.accumulated_content = content
+    stream.content = content
+    stream.payload.text = content
+    stream.change_preview = {
+      change_id,
+      operation,
+      path,
+      unified_diff,
+      status,
+      run_id: run_id || null,
+      task_id: task_id || null,
+      agent_id: agent_id || null,
+    }
+    stream.change_status = 'pending'
+    stream.metadata = {
+      ...(stream.metadata || {}),
+      ...(run_id ? { run_id } : {}),
+      ...(task_id ? { task_id } : {}),
+      ...(agent_id ? { agent_id } : {}),
+      is_change_preview: true,
+    }
+
+    replaceStream(previewStreamId, stream)
+    console.log('[StreamState] handleChangePreviewAsMessage:', change_id, 'operation:', operation, 'path:', path)
+    return stream
+  }
+
+  // M6: Format diff for display in message content
+  function formatDiffForDisplay(diff: string): string {
+    if (!diff) return ''
+    // Extract content from diff format (remove +++ and --- lines)
+    const lines = diff.split('\n')
+    const contentLines: string[] = []
+    for (const line of lines) {
+      if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) continue
+      contentLines.push(line)
+    }
+    return contentLines.join('\n').trim()
+  }
+
+  // M6: Update change preview status (confirmed/rejected)
+  function updateChangePreviewStatus(changeId: string, status: 'confirmed' | 'rejected') {
+    // Find the stream associated with this change
+    for (const [streamId, stream] of streams.value.entries()) {
+      if (stream.change_preview?.change_id === changeId) {
+        stream.change_status = status
+        if (status === 'confirmed') {
+          stream.accumulated_content = `${stream.accumulated_content}\n\n✅ 已确认写入`
+        } else {
+          stream.accumulated_content = `${stream.accumulated_content}\n\n❌ 已取消`
+        }
+        stream.content = stream.accumulated_content
+        stream.payload.text = stream.accumulated_content
+        replaceStream(streamId, stream)
+        break
+      }
+    }
+
+    // Also update pendingChanges map
+    updatePendingChangeStatus(changeId, status === 'confirmed' ? 'applied' : 'rejected')
   }
 
   function getPendingChanges(sessionId: string): PendingChange[] {
@@ -543,13 +688,19 @@ export function useChatStreamState() {
     // instead of removing the change (which causes the status to revert to default).
     updatePendingChangeStatus(change_id, status as PendingChange['status'])
 
-    // M4: If this is a task-aware change, trigger task status update callback
+    // M6: If this is a task-aware change, trigger task status update callback
+    // Primary: call the registered callback (replaces window.dispatchEvent as main sync)
+    // Secondary: still dispatch window event for non-store components as optional subscription
     if (task_id) {
       const change = pendingChanges.value.get(change_id)
       if (change?.task_id) {
         const newStatus = status === 'applied' ? 'completed' : status === 'rejected' ? 'rejected' : null
         if (newStatus) {
-          // Emit event for task status update (handled by caller/component)
+          // M6: Primary sync via callback
+          if (_onTaskStatusUpdate) {
+            _onTaskStatusUpdate(change.task_id, change.run_id ?? null, newStatus)
+          }
+          // Secondary: window event for optional subscription (non-store components)
           window.dispatchEvent(new CustomEvent('orchestration:task-status-update', {
             detail: {
               task_id: change.task_id,
@@ -668,6 +819,8 @@ export function useChatStreamState() {
     sessionPendingChanges,
     setCurrentSessionId,
     handleChangePreview,
+    handleChangePreviewAsMessage, // M6: new method for inline change preview
+    updateChangePreviewStatus,    // M6: update change preview confirmation status
     getPendingChanges,
     getSessionPendingChanges,
     updatePendingChangeStatus,
@@ -681,7 +834,7 @@ export function useChatStreamState() {
     restoreTaskStreams,
     clearInFlightStreams,
     clearOtherSessionStreams,
-    ensureStream,
-    getStreamIdForTask,
+    // M6: Task status update callback for store integration
+    setOnTaskStatusUpdate,
   }
 }

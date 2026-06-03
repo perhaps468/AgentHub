@@ -17,12 +17,15 @@ from sqlalchemy import desc
 
 from app.core.database import get_db, Session as DBSession
 from app.core.security import CurrentUser
+from app.models.message import Message
 from app.models.pending_change import PendingChangeModel
 from app.models.session import ChatSession
+from app.observability.group_chat_audit import get_group_chat_audit_recorder
 from app.runtime.tools.apply_change_tool import ApplyChangeTool
 from app.runtime.pending_change import ChangeStatus
 
 router = APIRouter(prefix="/api/pending-changes", tags=["pending-changes"])
+_GROUP_CHAT_AUDIT = get_group_chat_audit_recorder()
 
 
 class ApplyChangeRequest(BaseModel):
@@ -134,6 +137,63 @@ async def _push_apply_result(
         )
     except Exception:
         return False
+
+
+async def _push_host_completion_message(
+    session_id: str,
+    run_id: str | None,
+    db: DBSession,
+) -> bool:
+    if not session_id or not run_id:
+        return False
+
+    try:
+        from app.api.ws import get_ws_connection_manager, ws_send_message_end, ws_send_message_start
+    except Exception:
+        return False
+
+    conn = get_ws_connection_manager().get_connection(session_id)
+    if conn is None:
+        return False
+
+    host_message = (
+        db.query(Message)
+        .filter(Message.session_id == session_id)
+        .order_by(Message.created_at.desc())
+        .all()
+    )
+    completion_message = next(
+        (
+            item for item in host_message
+            if (item.msg_metadata or {}).get("run_id") == run_id
+            and (item.msg_metadata or {}).get("is_host_completion") is True
+        ),
+        None,
+    )
+    if completion_message is None:
+        return False
+
+    websocket, _ = conn
+    stream_id = f"host-complete-{run_id}"
+    await ws_send_message_start(
+        websocket,
+        agent_role=completion_message.sender_role or "PM",
+        stream_id=stream_id,
+        message=completion_message,
+        run_id=run_id,
+        agent_id=(completion_message.msg_metadata or {}).get("agent_id"),
+    )
+    await ws_send_message_end(
+        websocket,
+        agent_role=completion_message.sender_role or "PM",
+        stream_id=stream_id,
+        message_id=completion_message.id,
+        status="completed",
+        final_content=completion_message.content,
+        run_id=run_id,
+        agent_id=(completion_message.msg_metadata or {}).get("agent_id"),
+    )
+    return True
 
 
 def _update_task_status_on_apply(db: DBSession, db_change, change_id: str) -> None:
@@ -376,6 +436,18 @@ async def apply_pending_change(
             agent_id=db_change.agent_id,
         )
         # 成功后从 registry 移除
+        _GROUP_CHAT_AUDIT.record_pending_change_decision(
+            session_id=db_change.session_id,
+            run_id=db_change.run_id,
+            task_id=db_change.task_id,
+            agent_id=db_change.agent_id,
+            change_id=change_id,
+            decision="apply",
+            path=db_change.path,
+            operation=db_change.operation,
+            status="applied",
+            message=result.message,
+        )
         ApplyChangeTool.clear_change(change_id)
         if session_id:
             result.ws_pushed = await _push_apply_result(
@@ -385,6 +457,8 @@ async def apply_pending_change(
                 task_id=db_change.task_id,
                 agent_id=db_change.agent_id,
             )
+            if db_change.run_id:
+                result.ws_pushed = await _push_host_completion_message(session_id, db_change.run_id, db) or result.ws_pushed
         return result
     else:
         # Transition to REJECTED status
@@ -400,6 +474,18 @@ async def apply_pending_change(
             run_id=db_change.run_id,
             task_id=db_change.task_id,
             agent_id=db_change.agent_id,
+        )
+        _GROUP_CHAT_AUDIT.record_pending_change_decision(
+            session_id=db_change.session_id,
+            run_id=db_change.run_id,
+            task_id=db_change.task_id,
+            agent_id=db_change.agent_id,
+            change_id=change_id,
+            decision="apply_failed",
+            path=db_change.path,
+            operation=db_change.operation,
+            status="rejected",
+            message=result.message,
         )
         if session_id:
             result.ws_pushed = await _push_apply_result(
@@ -504,6 +590,18 @@ async def reject_pending_change(
         task_id=db_change.task_id,
         agent_id=db_change.agent_id,
     )
+    _GROUP_CHAT_AUDIT.record_pending_change_decision(
+        session_id=db_change.session_id,
+        run_id=db_change.run_id,
+        task_id=db_change.task_id,
+        agent_id=db_change.agent_id,
+        change_id=change_id,
+        decision="reject",
+        path=db_change.path,
+        operation=db_change.operation,
+        status="rejected",
+        message=result.message,
+    )
     if session_id:
         result.ws_pushed = await _push_apply_result(
             session_id, change_id, True, "rejected",
@@ -512,4 +610,6 @@ async def reject_pending_change(
             task_id=db_change.task_id,
             agent_id=db_change.agent_id,
         )
+        if db_change.run_id:
+            result.ws_pushed = await _push_host_completion_message(session_id, db_change.run_id, db) or result.ws_pushed
     return result

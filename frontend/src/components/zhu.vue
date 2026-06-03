@@ -477,21 +477,6 @@ async function restoreCurrentSession() {
   wsClient.connect(sessionId)
 }
 
-async function handleOrchestrationTaskStatusUpdate(event: Event) {
-  const detail = (event as CustomEvent<{ task_id?: string; run_id?: string; status?: string }>).detail
-  if (!detail?.task_id || !detail.status) return
-
-  sessionStore.updateTaskStatus(detail.task_id, detail.status)
-
-  if (detail.run_id) {
-    try {
-      await sessionStore.fetchRun(detail.run_id)
-    } catch (error) {
-      console.error('刷新编排状态失败', error)
-    }
-  }
-}
-
 // ==================== 预览区 ====================
 
 /** 关闭预览区 */
@@ -563,8 +548,16 @@ onMounted(async () => {
     } else if (msg.type === 'runtime_state') {
       sessionStore.streamState.handleRuntimeState(msg, resolvedSessionId)
     } else if (msg.type === 'change_preview') {
-      sessionStore.streamState.handleChangePreview(msg, resolvedSessionId)
+      // M6: Use handleChangePreviewAsMessage to render confirmation inline in chat
+      // instead of in a separate panel
+      sessionStore.streamState.handleChangePreviewAsMessage(msg, resolvedSessionId)
     } else if (msg.type === 'apply_result') {
+      // M6: Update change preview status in stream state
+      const changeId = msg.change_id
+      if (changeId) {
+        const newStatus = msg.status === 'applied' ? 'confirmed' : 'rejected'
+        sessionStore.streamState.updateChangePreviewStatus(changeId, newStatus)
+      }
       sessionStore.streamState.handleApplyResult(msg)
     } else if (msg.type === 'preview_result') {
       previewState.value = {
@@ -582,11 +575,20 @@ onMounted(async () => {
   })
 
   await restoreCurrentSession()
-  window.addEventListener('orchestration:task-status-update', handleOrchestrationTaskStatusUpdate)
+
+  // M6: Register task status update callback - replaces window event as primary sync
+  sessionStore.streamState.setOnTaskStatusUpdate((taskId, runId, status) => {
+    sessionStore.updateTaskStatus(taskId, status)
+    if (runId) {
+      sessionStore.fetchRun(runId).catch((error) => {
+        console.error('刷新编排状态失败', error)
+      })
+    }
+  })
 })
 
 onUnmounted(() => {
-  window.removeEventListener('orchestration:task-status-update', handleOrchestrationTaskStatusUpdate)
+  sessionStore.streamState.setOnTaskStatusUpdate(() => {})
   wsClient.disconnect()
 })
 </script>

@@ -1112,6 +1112,44 @@ describe('handleApplyResult', () => {
       handleApplyResult(makeApplyResult({ change_id: 'non-existent' }))
     ).not.toThrow()
   })
+
+  it('task-aware apply_result only invokes the registered callback once', () => {
+    const addEventListenerSpy = vi.spyOn(window, 'addEventListener')
+    const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
+    const callback = vi.fn()
+    const eventListener = vi.fn()
+
+    window.addEventListener('orchestration:task-status-update', eventListener)
+
+    const { handleChangePreview, handleApplyResult, setOnTaskStatusUpdate } = useChatStreamState()
+    setOnTaskStatusUpdate(callback)
+
+    handleChangePreview(
+      makeChangePreview({
+        change_id: 'change-callback-once',
+        run_id: 'run-1',
+        task_id: 'task-1',
+        agent_id: 'agent-1',
+      }),
+      'session-1'
+    )
+
+    handleApplyResult(makeApplyResult({
+      change_id: 'change-callback-once',
+      success: true,
+      status: 'applied',
+      task_id: 'task-1',
+      run_id: 'run-1',
+      agent_id: 'agent-1',
+    }))
+
+    expect(callback).toHaveBeenCalledTimes(1)
+    expect(callback).toHaveBeenCalledWith('task-1', 'run-1', 'completed')
+
+    window.removeEventListener('orchestration:task-status-update', eventListener)
+    addEventListenerSpy.mockRestore()
+    removeEventListenerSpy.mockRestore()
+  })
 })
 
 describe('updatePendingChangeStatus', () => {

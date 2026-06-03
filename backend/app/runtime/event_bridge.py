@@ -151,6 +151,7 @@ class ChangePreviewEvent:
         unified_diff: Human-readable unified diff string.
         status: Always "pending_confirmation" for preview changes.
         timestamp: ISO8601 timestamp.
+        agent_role: The role of the agent sending this change preview.
     """
 
     def __init__(
@@ -163,6 +164,7 @@ class ChangePreviewEvent:
         unified_diff: str = "",
         status: str = "pending_confirmation",
         timestamp: str = "",
+        agent_role: str = "PM",
     ) -> None:
         self.type = "change_preview"
         self.stream_id = stream_id
@@ -173,6 +175,7 @@ class ChangePreviewEvent:
         self.unified_diff = unified_diff
         self.status = status
         self.timestamp = timestamp
+        self.agent_role = agent_role
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -186,6 +189,7 @@ class ChangePreviewEvent:
             "unified_diff": self.unified_diff,
             "status": self.status,
             "timestamp": self.timestamp,
+            "agent_role": self.agent_role,
         }
 
 
@@ -587,6 +591,7 @@ class EventBridge:
             stream_id=self._stream_id,
             message_id=self._message_id,
             timestamp=data.get("timestamp", ""),
+            agent_role=self._agent_role,
         )
 
     def _emit_message_end(self, data: dict[str, Any]) -> None:

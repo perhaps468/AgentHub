@@ -251,10 +251,13 @@ watch(
     // Defensive: ensure streamState and pendingChanges are available
     const pendingMap = sessionStore?.streamState?.pendingChanges?.value
     if (!pendingMap) return 'pending_confirmation'
-    return pendingMap.get(changeId)?.status || 'pending_confirmation'
+    const storedStatus = pendingMap.get(changeId)?.status
+    // If not in pendingChanges map, default to pending_confirmation
+    return storedStatus || 'pending_confirmation'
   },
   (newStatus) => {
-    if (newStatus && newStatus !== 'pending_confirmation') {
+    // Always update local status to match the stored status
+    if (newStatus) {
       pendingReviewStatus.value = newStatus
     }
   },
@@ -305,7 +308,7 @@ const handleConfirmDiff = async (changeId: string) => {
   pendingReviewLoading.value = true
   try {
     const sessionId = sessionStore.currentSessionId || undefined
-    const result = await applyPendingChange(changeId, sessionId)
+    const result = await applyPendingChange({ change_id: changeId, session_id: sessionId })
     if (result.success || result.status === 'applied') {
       sessionStore.streamState?.updatePendingChangeStatus(changeId, 'applied')
     } else {
@@ -323,7 +326,7 @@ const handleCancelDiff = async (changeId: string) => {
   if (!changeId) return
   try {
     const sessionId = sessionStore.currentSessionId || undefined
-    await rejectPendingChange(changeId, sessionId)
+    await rejectPendingChange({ change_id: changeId, session_id: sessionId })
   } catch {
     // Fallback: mark as rejected locally
   }
@@ -337,7 +340,7 @@ const handleConfirmPendingReview = async () => {
   pendingReviewLoading.value = true
   try {
     const sessionId = sessionStore.currentSessionId || undefined
-    const result = await applyPendingChange(changeId, sessionId)
+    const result = await applyPendingChange({ change_id: changeId, session_id: sessionId })
     if (result.success || result.status === 'applied') {
       pendingReviewStatus.value = 'applied'
     } else {
@@ -357,7 +360,7 @@ const handleCancelPendingReview = async () => {
 
   try {
     const sessionId = sessionStore.currentSessionId || undefined
-    await rejectPendingChange(changeId, sessionId)
+    await rejectPendingChange({ change_id: changeId, session_id: sessionId })
     pendingReviewStatus.value = 'rejected'
   } catch {
     // Fallback: mark as rejected locally even if backend call fails
