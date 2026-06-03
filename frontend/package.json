@@ -26,6 +26,7 @@
     "mitt": "^3.0.1",
     "pinia": "^3.0.4",
     "pinia-plugin-persistedstate": "^4.7.1",
+    "uipro-cli": "^2.2.3",
     "vue": "^3.5.32",
     "vue-router": "^5.0.4"
   },

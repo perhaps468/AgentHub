@@ -81,8 +81,6 @@
               @click="isLoginMode = true"
             >
               <span class="tab-text">登录</span>
-              <!-- 激活状态下滑块指示器 -->
-              <span class="tab-indicator" v-if="isLoginMode"></span>
             </button>
             <button
               class="tab-btn"
@@ -90,8 +88,6 @@
               @click="isLoginMode = false"
             >
               <span class="tab-text">注册</span>
-              <!-- 激活状态下滑块指示器 -->
-              <span class="tab-indicator" v-if="!isLoginMode"></span>
             </button>
           </div>
 
@@ -272,6 +268,9 @@
           </Transition>
         </div>
       </div>
+
+      <div class="formFlow"></div>
+      <div class="form-inner"></div>
     </div>
   </div>
 </template>
@@ -693,80 +692,48 @@ const registering = async () => {
 /* ==================== 玻璃态卡片 + 动态边框 ==================== */
 .glass-card {
   position: relative;
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
+  width: 100%;
+  height: 100%;
+  background: rgba(246, 246, 246, 0.4);
   border-radius: 24px;
   padding: 40px;
-  box-shadow:
-    0 25px 50px -12px rgba(59, 130, 246, 0.15),
-    0 12px 24px -8px rgba(0, 0, 0, 0.08);
+  z-index: 2;
+  box-shadow: 0 25px 50px -12px rgba(59, 130, 246, 0.15),
+              0 12px 24px -8px rgba(0, 0, 0, 0.08);
   overflow: hidden;
 }
 
-/* ==================== 动态渐变边框 - 蓝色主题 ==================== */
-/* 边框渐变层 */
+/* 流光边框层 */
 .glass-card::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: 24px;
-  padding: 2px;
-  /* 蓝色渐变边框流动 */
+  padding: 3px;
   background: linear-gradient(
-    135deg,
-    #3b82f6 0%,
-    #f5f5f5 25%,
-    #c7e3f4 50%,
-    #3b82f6 75%,
-    #06b6d4 100%
+    90deg,
+    #60a5fa,
+    #e9e7f0,
+    #f3f1f2,
+    #60a5fa
   );
-  background-size: 400% 400%;
-  animation: border-flow 4s linear infinite;
-  /* Webkit 内核浏览器 mask */
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+  background-size: 300% 100%;
+  animation: border-flow 3s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
-  /* 标准 mask 属性，兼容性处理 */
-  mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
   pointer-events: none;
 }
 
-/* 边框发光效果层 */
-.glass-card::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 27px;
-  background: linear-gradient(
-    135deg,
-    #60a5fa 0%,
-    #d1d4f0 25%,
-    #f3f2f4 50%,
-    #60a5fa 75%,
-    #22d3ee 100%
-  );
-  background-size: 400% 400%;
-  animation: border-flow 4s linear infinite;
-  filter: blur(12px);
-  opacity: 0.6;
-  z-index: -1;
-  pointer-events: none;
-}
-
-/* 边框流动动画 */
 @keyframes border-flow {
   0% {
-    background-position: 0% 0%;
+    background-position: 0% 50%;
   }
   100% {
-    background-position: 100% 50%;
+    background-position: 200% 50%;
   }
 }
-
 /* ==================== 标签页切换器 ==================== */
 .tab-header {
   display: flex;
@@ -797,17 +764,7 @@ const registering = async () => {
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
 }
 
-/* 激活状态下滑块指示器 */
-.tab-indicator {
-  position: absolute;
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 24px;
-  height: 3px;
-  background: linear-gradient(90deg, #3b82f6, #6366f1);
-  border-radius: 2px;
-}
+
 
 /* ==================== 表单样式 ==================== */
 .form-title {

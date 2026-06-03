@@ -100,22 +100,6 @@ export class WsClient {
     console.log(`[WsClient] Connecting to ${url}`)
     console.log(`[WsClient] WS_BASE_URL=${WS_BASE_URL}, sessionId=${sessionId}, token=${token}`)
 
-    // #region debug log
-    fetch('http://127.0.0.1:7351/ingest/f6734860-d025-44b4-ac1d-bc01de0a6e77', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f14211' },
-      body: JSON.stringify({
-        sessionId: 'f14211',
-        location: 'ws-client.ts:43',
-        message: 'WsClient.connect called',
-        data: { WS_BASE_URL, sessionId, token: token ? 'present' : 'missing', url },
-        timestamp: Date.now(),
-        runId: 'initial',
-        hypothesisId: 'H5',
-      }),
-    }).catch(() => {})
-    // #endregion
-
     try {
       this.ws = new WebSocket(url)
       this.ws.onopen = this.onOpen.bind(this)
@@ -201,22 +185,6 @@ export class WsClient {
     this.reconnectAttempt = 0
     this.setState('connected')
     this.startPing()
-
-    // #region debug log
-    fetch('http://127.0.0.1:7351/ingest/f6734860-d025-44b4-ac1d-bc01de0a6e77', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f14211' },
-      body: JSON.stringify({
-        sessionId: 'f14211',
-        location: 'ws-client.ts:140',
-        message: 'WsClient.onOpen - WebSocket connected successfully',
-        data: { sessionId: this.sessionId },
-        timestamp: Date.now(),
-        runId: 'initial',
-        hypothesisId: 'H1,H2,H3,H4,H5',
-      }),
-    }).catch(() => {})
-    // #endregion
   }
 
   private onMessage(event: MessageEvent<string>): void {
@@ -246,22 +214,6 @@ export class WsClient {
     console.log(`[WsClient] Closed (code=${event.code}, reason=${event.reason})`)
     this.clearTimers()
 
-    // #region debug log
-    fetch('http://127.0.0.1:7351/ingest/f6734860-d025-44b4-ac1d-bc01de0a6e77', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f14211' },
-      body: JSON.stringify({
-        sessionId: 'f14211',
-        location: 'ws-client.ts:171',
-        message: 'WsClient.onClose',
-        data: { code: event.code, reason: event.reason, wasClean: event.wasClean, sessionId: this.sessionId, state: this.state },
-        timestamp: Date.now(),
-        runId: 'initial',
-        hypothesisId: 'H1,H2,H3,H4',
-      }),
-    }).catch(() => {})
-    // #endregion
-
     if (event.code === 1000) {
       this.setState('disconnected')
       return
@@ -274,21 +226,6 @@ export class WsClient {
     console.error('[WsClient] Error:', event)
     this.clearTimers()
 
-    // #region debug log
-    fetch('http://127.0.0.1:7351/ingest/f6734860-d025-44b4-ac1d-bc01de0a6e77', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'f14211' },
-      body: JSON.stringify({
-        sessionId: 'f14211',
-        location: 'ws-client.ts:183',
-        message: 'WsClient.onError',
-        data: { type: event.type, sessionId: this.sessionId },
-        timestamp: Date.now(),
-        runId: 'initial',
-        hypothesisId: 'H1,H2,H3,H4',
-      }),
-    }).catch(() => {})
-    // #endregion
 
     this.handleReconnect()
   }
