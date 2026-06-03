@@ -1,24 +1,5 @@
 <template>
   <div class="chat-show-area" ref="chatShowAreaRef">
-    <section v-if="activeRun" class="orchestration-panel">
-      <div class="orchestration-header">
-        <div>
-          <h3>编排计划</h3>
-          <p>Run #{{ activeRun.id }} · {{ activeRun.status }}</p>
-        </div>
-      </div>
-      <div v-if="activeRun.summary" class="orchestration-summary">
-        {{ activeRun.summary }}
-      </div>
-      <ul v-if="activeTasks.length" class="task-list">
-        <li v-for="task in activeTasks" :key="task.id" class="task-item">
-          <div class="task-meta">#{{ task.sequence }} · {{ task.status }}</div>
-          <div class="task-title">{{ task.title }}</div>
-          <div class="task-agent">{{ task.assigned_agent_id }}</div>
-        </li>
-      </ul>
-    </section>
-
     <div v-if="sessionStore.currentPageInfo.hasMore && !sessionStore.isLoadingMessages" class="load-more-row">
       <button type="button" class="load-more-btn" @click="handleLoadMore">加载更多</button>
     </div>
@@ -73,8 +54,6 @@ const chatShowAreaRef = ref<HTMLElement>()
 const newMsgCount = ref(0)
 const isFirstLoad = ref(true)
 
-const activeRun = computed(() => sessionStore.activeRun)
-const activeTasks = computed(() => sessionStore.activeTasks)
 const pendingChangesForSession = computed(() => sessionStore.streamState.getPendingChanges(props.targetId))
 
 function getPendingDiffsForMessage(messageId?: string, streamId?: string) {
@@ -230,23 +209,5 @@ onUnmounted(() => {
   overflow-y: auto;
   padding: 20px 24px;
   background: transparent;
-}
-.orchestration-panel {
-  border: 1px solid rgba(59, 130, 246, 0.18);
-  background: rgba(255, 255, 255, 0.72);
-  border-radius: 18px;
-  padding: 16px;
-}
-.task-list {
-  display: grid;
-  gap: 12px;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.task-item {
-  border-radius: 14px;
-  padding: 12px;
-  background: rgba(248, 250, 252, 0.95);
 }
 </style>
