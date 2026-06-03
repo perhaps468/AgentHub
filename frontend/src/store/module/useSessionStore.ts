@@ -1,26 +1,29 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import {
-  fetchConversationList,
-  fetchConversationDetail,
   createConversation,
-  updateConversation as updateConversationApi,
-  fetchConversationMessages,
   deleteConversation,
+  fetchConversationDetail,
+  fetchConversationList,
+  fetchConversationMessages,
+  fetchLatestRun,
+  fetchRun,
+  fetchActiveRun as fetchActiveRunApi,
+  updateConversation as updateConversationApi,
 } from '@/api/modules/session'
 import { fetchPendingChanges } from '@/api/modules/pendingChanges'
 import type {
+  ChatMessage,
   ConversationItem,
   CreateSessionPayload,
+  OrchestrationRun,
+  OrchestrationTask,
   UpdateSessionPayload,
-  ChatMessage,
-  StreamingMessage,
 } from '@/types/agenthub'
-import type { ConnectionState } from '@/utils/ws-client'
 import { useChatStreamState } from '@/utils/useChatStreamState'
+import type { ConnectionState } from '@/utils/ws-client'
 
-// In-flight stream type for streaming messages (P1-3-4)
 export interface InFlightStream {
   stream_id: string
   message_id?: string
@@ -35,42 +38,6 @@ export interface InFlightStream {
   created_at: string
 }
 
-/**
- * 后端 desc() 排序时，消息顺序是 [A_n, H_n, A_(n-1), H_(n-1), ...]。
- * 本函数按对话轮次重组：每对 H+A 为一轮，轮次内 H→A，新轮在前。
- * 输入 desc 顺序 → 输出 asc 顺序（H→A，新在下）。
- */
-function reorganizeByRounds(messages: ChatMessage[]): ChatMessage[] {
-  const rounds: ChatMessage[][] = []
-  // 两两一组（A, H），因为 desc 时 A 排在 H 前面
-  for (let i = 0; i < messages.length; i += 2) {
-    // 假设第 i 条是 agent，第 i+1 条是 human
-    const agentMsg = messages[i]
-    const humanMsg = messages[i + 1]
-    if (agentMsg && humanMsg) {
-      // 确保 H 在 A 前
-      if (agentMsg.sender_type === 'agent' && humanMsg.sender_type === 'human') {
-        rounds.push([humanMsg, agentMsg])
-      } else if (agentMsg.sender_type === 'human' && humanMsg?.sender_type === 'agent') {
-        // 边界情况：偶数条时最后一组可能顺序反了
-        rounds.push([agentMsg, humanMsg])
-      } else {
-        // 单条情况或其他组合，直接加
-        rounds.push([agentMsg])
-        if (humanMsg) rounds.push([humanMsg])
-      }
-    } else if (agentMsg) {
-      rounds.push([agentMsg])
-    } else if (humanMsg) {
-      rounds.push([humanMsg])
-    }
-  }
-  // rounds 本身是按最新轮次在前排列的 [[H_8, A_8], [H_7, A_7], ...]
-  // reverse rounds 数组让最新沉到末尾（但不破坏每对内部的 H→A 顺序）
-  // 再 flat: [[H_1, A_1], [H_2, A_2], ...] → [H_1, A_1, H_2, A_2, ...]
-  return rounds.reverse().flat()
-}
-
 function toChronologicalOrder(messages: ChatMessage[]): ChatMessage[] {
   return [...messages].reverse()
 }
@@ -78,7 +45,6 @@ function toChronologicalOrder(messages: ChatMessage[]): ChatMessage[] {
 export const useSessionStore = defineStore(
   'session',
   () => {
-    // ── State ────────────────────────────────────────────────
     const sessionList = ref<ConversationItem[]>([])
     const currentSessionId = ref<string | null>(null)
     const currentSession = ref<ConversationItem | null>(null)
@@ -87,13 +53,11 @@ export const useSessionStore = defineStore(
     const connectionState = ref<ConnectionState>('disconnected')
     const isLoadingList = ref(false)
     const isLoadingMessages = ref(false)
-
-    // In-flight streaming messages (P1-3-4 reconciliation)
+    const activeRun = ref<OrchestrationRun | null>(null)
+    const activeTasks = ref<OrchestrationTask[]>([])
     const inFlightMessages = ref<Map<string, InFlightStream>>(new Map())
-
     const streamState = useChatStreamState()
 
-    // ── Getters ──────────────────────────────────────────────
     const currentMessages = computed(() => {
       if (!currentSessionId.value) return []
       return messageMap.value[currentSessionId.value] ?? []
@@ -110,8 +74,6 @@ export const useSessionStore = defineStore(
         messagePageMap.value[currentSessionId.value] ?? { page: 1, hasMore: false, total: 0 }
       )
     })
-
-    // ── Actions ──────────────────────────────────────────────
 
     async function fetchSessionList(params: {
       page?: number
@@ -136,20 +98,15 @@ export const useSessionStore = defineStore(
 
     async function createSession(payload: CreateSessionPayload) {
       const res = await createConversation(payload)
-      if (!sessionList.value) {
-        sessionList.value = []
-      }
       sessionList.value.unshift(res)
       return res
     }
 
     async function updateSession(sessionId: string, payload: UpdateSessionPayload) {
       const res = await updateConversationApi(sessionId, payload)
-      if (sessionList.value) {
-        const idx = sessionList.value.findIndex((s) => s.id === sessionId)
-        if (idx !== -1) {
-          sessionList.value[idx] = res
-        }
+      const idx = sessionList.value.findIndex((s) => s.id === sessionId)
+      if (idx !== -1) {
+        sessionList.value[idx] = res
       }
       if (currentSession.value?.id === sessionId) {
         currentSession.value = res
@@ -159,9 +116,7 @@ export const useSessionStore = defineStore(
 
     async function archiveSession(sessionId: string) {
       await updateSession(sessionId, { is_archived: true })
-      if (sessionList.value) {
-        sessionList.value = sessionList.value.filter((s) => s.id !== sessionId)
-      }
+      sessionList.value = sessionList.value.filter((s) => s.id !== sessionId)
       if (currentSessionId.value === sessionId) {
         currentSessionId.value = null
         currentSession.value = null
@@ -176,30 +131,13 @@ export const useSessionStore = defineStore(
       try {
         const page = opts.page ?? 1
         const res = await fetchConversationMessages(sessionId, opts)
+        const filtered = res.items.filter((msg) => msg.metadata?.source !== 'optimistic_human')
 
         if (page === 1) {
-          let updatedList: ChatMessage[] = []
-          for (const msg of res.items) {
-            if (msg.metadata?.source === 'optimistic_human') {
-              continue
-            }
-            updatedList.push(msg)
-          }
-          // 后端 desc() 排序会导致 A 在 H 前面，按轮次重组
-          updatedList = toChronologicalOrder(updatedList)
-          messageMap.value[sessionId] = updatedList
+          messageMap.value[sessionId] = toChronologicalOrder(filtered)
         } else {
-          // page>1 时，加载更早的消息，追加到列表顶部
           const existing = messageMap.value[sessionId] ?? []
-          const newItems: ChatMessage[] = []
-          for (const msg of res.items) {
-            if (msg.metadata?.source === 'optimistic_human') {
-              continue
-            }
-            newItems.push(msg)
-          }
-          const chronological = toChronologicalOrder(newItems)
-          messageMap.value[sessionId] = [...chronological, ...existing]
+          messageMap.value[sessionId] = [...toChronologicalOrder(filtered), ...existing]
         }
 
         messagePageMap.value[sessionId] = {
@@ -207,7 +145,6 @@ export const useSessionStore = defineStore(
           hasMore: res.has_more,
           total: res.total,
         }
-
         return res
       } finally {
         isLoadingMessages.value = false
@@ -232,6 +169,140 @@ export const useSessionStore = defineStore(
       return res
     }
 
+    async function fetchLatestRunForSession(sessionId: string) {
+      const run = await fetchLatestRun(sessionId)
+      activeRun.value = run
+      activeTasks.value = run?.tasks ?? []
+      if (run) {
+        streamState.restoreTaskStreams(sessionId, {
+          run_id: run.id,
+          tasks: run.tasks.map((task) => ({
+            id: task.id,
+            assigned_agent_id: task.assigned_agent_id,
+            latest_stream: task.result_payload?.stream_id
+              ? {
+                  stream_id: String(task.result_payload.stream_id),
+                  message_id: task.result_payload?.message_id ? String(task.result_payload.message_id) : undefined,
+                  status: task.status,
+                }
+              : task.error_payload?.stream_id
+                ? {
+                    stream_id: String(task.error_payload.stream_id),
+                    status: task.status,
+                  }
+                : null,
+          })),
+        })
+      }
+      return run
+    }
+
+    // M4: Get pending changes by task
+    function getPendingChangesByTask(taskId: string): ReturnType<typeof streamState.getPendingChanges> {
+      const allChanges = streamState.getPendingChanges(currentSessionId.value || '')
+      return allChanges.filter((c) => c.task_id === taskId)
+    }
+
+    // M4: Get pending changes by run
+    function getPendingChangesByRun(runId: string): ReturnType<typeof streamState.getPendingChanges> {
+      const allChanges = streamState.getPendingChanges(currentSessionId.value || '')
+      return allChanges.filter((c) => c.run_id === runId)
+    }
+
+    // M4: Update task status from apply/reject result
+    function updateTaskStatus(taskId: string, status: string) {
+      const taskIndex = activeTasks.value.findIndex((t) => t.id === taskId)
+      if (taskIndex !== -1) {
+        activeTasks.value[taskIndex] = {
+          ...activeTasks.value[taskIndex],
+          status: status as any,
+        }
+      }
+    }
+
+    // M4: Get task by ID
+    function getTaskById(taskId: string) {
+      return activeTasks.value.find((t) => t.id === taskId)
+    }
+
+    // M4: Check if all tasks are in terminal state
+    function areAllTasksTerminal(): boolean {
+      const terminalStates = ['completed', 'rejected', 'cancelled', 'failed']
+      return activeTasks.value.every((t) => terminalStates.includes(t.status))
+    }
+
+    // M6: Fetch active run for session recovery
+    async function fetchActiveRun(sessionId: string) {
+      const res = await fetchActiveRunApi(sessionId)
+      if (res.run) {
+        activeRun.value = res.run
+        activeTasks.value = res.tasks || []
+        // Restore task streams for UI attribution
+        if (res.run) {
+          streamState.restoreTaskStreams(sessionId, {
+            run_id: res.run.id,
+            tasks: (res.tasks || []).map((task: any) => ({
+              id: task.id,
+              assigned_agent_id: task.assigned_agent_id,
+              latest_stream: task.result_payload?.stream_id
+                ? {
+                    stream_id: String(task.result_payload.stream_id),
+                    message_id: task.result_payload?.message_id ? String(task.result_payload.message_id) : undefined,
+                    status: task.status,
+                  }
+                : task.error_payload?.stream_id
+                  ? {
+                      stream_id: String(task.error_payload.stream_id),
+                      status: task.status,
+                    }
+                  : null,
+            })),
+          })
+        }
+        // Restore pending changes if any
+        if (res.pending_changes && res.pending_changes.length > 0) {
+          streamState.restorePendingChanges(res.pending_changes, sessionId)
+        }
+      } else {
+        activeRun.value = null
+        activeTasks.value = []
+      }
+      return res
+    }
+
+    // M6: Restore complete orchestration state for a session
+    async function restoreOrchestrationState(sessionId: string) {
+      // Fetch active run and pending changes together
+      const res = await fetchActiveRun(sessionId)
+      return res
+    }
+
+    async function fetchRunById(runId: string) {
+      const run = await fetchRun(runId)
+      activeRun.value = run
+      activeTasks.value = run.tasks
+      streamState.restoreTaskStreams(run.session_id, {
+        run_id: run.id,
+        tasks: run.tasks.map((task) => ({
+          id: task.id,
+          assigned_agent_id: task.assigned_agent_id,
+          latest_stream: task.result_payload?.stream_id
+            ? {
+                stream_id: String(task.result_payload.stream_id),
+                message_id: task.result_payload?.message_id ? String(task.result_payload.message_id) : undefined,
+                status: task.status,
+              }
+            : task.error_payload?.stream_id
+              ? {
+                  stream_id: String(task.error_payload.stream_id),
+                  status: task.status,
+                }
+              : null,
+        })),
+      })
+      return run
+    }
+
     function appendMessage(sessionId: string, msg: ChatMessage) {
       const existing = messageMap.value[sessionId] ?? []
       if (msg.id && existing.some((m) => m.id === msg.id)) return
@@ -242,12 +313,7 @@ export const useSessionStore = defineStore(
     }
 
     function appendHumanMessage(sessionId: string, msg: ChatMessage) {
-      const existing = messageMap.value[sessionId] ?? []
-      if (msg.id && existing.some((m) => m.id === msg.id)) return
-      messageMap.value = {
-        ...messageMap.value,
-        [sessionId]: [...existing, msg],
-      }
+      appendMessage(sessionId, msg)
     }
 
     function mergeOrUpdateMessage(sessionId: string, msg: ChatMessage) {
@@ -260,16 +326,12 @@ export const useSessionStore = defineStore(
           ...messageMap.value,
           [sessionId]: updated,
         }
-      } else {
-        messageMap.value = {
-          ...messageMap.value,
-          [sessionId]: [...existing, msg],
-        }
+        return
       }
+      appendMessage(sessionId, msg)
     }
 
     function upsertMessage(messageId: string, msg: ChatMessage) {
-      // upsert based on message.id
       const sessionId = currentSessionId.value
       const list = sessionId ? messageMap.value[sessionId] : undefined
       if (!list) return
@@ -281,31 +343,36 @@ export const useSessionStore = defineStore(
           ...messageMap.value,
           [sessionId]: updated,
         }
-      } else {
-        messageMap.value = {
-          ...messageMap.value,
-          [sessionId]: [...list, msg],
-        }
+        return
+      }
+      messageMap.value = {
+        ...messageMap.value,
+        [sessionId]: [...list, msg],
       }
     }
 
     function deleteMessage(messageId: string) {
-      const list = messageMap.value[currentSessionId.value]
+      const sessionId = currentSessionId.value
+      if (!sessionId) return
+      const list = messageMap.value[sessionId]
       if (!list) return
-      messageMap.value[currentSessionId.value] = list.filter((m) => m.id !== messageId)
+      messageMap.value[sessionId] = list.filter((m) => m.id !== messageId)
     }
 
     function clearMessages(sessionId: string) {
       delete messageMap.value[sessionId]
       delete messagePageMap.value[sessionId]
-      // Clear in-flight messages for this session
       inFlightMessages.value.forEach((_, streamId) => {
         const stream = inFlightMessages.value.get(streamId)
-        if (stream && stream.session_id === sessionId) {
+        if (stream?.session_id === sessionId) {
           inFlightMessages.value.delete(streamId)
         }
       })
       streamState.clearSession(sessionId)
+      if (activeRun.value?.session_id === sessionId) {
+        activeRun.value = null
+        activeTasks.value = []
+      }
     }
 
     function setConnectionState(state: ConnectionState) {
@@ -314,15 +381,16 @@ export const useSessionStore = defineStore(
 
     function setCurrentSessionId(id: string | null) {
       currentSessionId.value = id
-      // 同步更新 streamState 的 sessionId
       streamState.setCurrentSessionId(id)
+      if (id === null) {
+        activeRun.value = null
+        activeTasks.value = []
+      }
     }
 
     async function deleteSession(sessionId: string) {
       await deleteConversation(sessionId)
-      if (sessionList.value) {
-        sessionList.value = sessionList.value.filter((s) => s.id !== sessionId)
-      }
+      sessionList.value = sessionList.value.filter((s) => s.id !== sessionId)
       clearMessages(sessionId)
       if (currentSessionId.value === sessionId) {
         currentSessionId.value = null
@@ -331,7 +399,6 @@ export const useSessionStore = defineStore(
     }
 
     return {
-      // state
       sessionList,
       currentSessionId,
       currentSession,
@@ -340,13 +407,13 @@ export const useSessionStore = defineStore(
       connectionState,
       isLoadingList,
       isLoadingMessages,
+      activeRun,
+      activeTasks,
       inFlightMessages,
       streamState,
-      // getters
       currentMessages,
       currentStreamingMessages,
       currentPageInfo,
-      // actions
       fetchSessionList,
       fetchSessionDetail,
       createSession,
@@ -354,6 +421,8 @@ export const useSessionStore = defineStore(
       archiveSession,
       fetchMessages,
       restorePendingChangesForSession,
+      fetchLatestRun: fetchLatestRunForSession,
+      fetchRun: fetchRunById,
       deleteSession,
       appendMessage,
       appendHumanMessage,
@@ -363,6 +432,15 @@ export const useSessionStore = defineStore(
       clearMessages,
       setConnectionState,
       setCurrentSessionId,
+      // M4: Task-aware methods
+      getPendingChangesByTask,
+      getPendingChangesByRun,
+      updateTaskStatus,
+      getTaskById,
+      areAllTasksTerminal,
+      // M6: Active run recovery methods
+      fetchActiveRun,
+      restoreOrchestrationState,
     }
   },
   {

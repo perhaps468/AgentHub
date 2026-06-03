@@ -1,6 +1,24 @@
 <template>
   <div class="chat-show-area" ref="chatShowAreaRef">
-    <!-- Load more -->
+    <section v-if="activeRun" class="orchestration-panel">
+      <div class="orchestration-header">
+        <div>
+          <h3>编排计划</h3>
+          <p>Run #{{ activeRun.id }} · {{ activeRun.status }}</p>
+        </div>
+      </div>
+      <div v-if="activeRun.summary" class="orchestration-summary">
+        {{ activeRun.summary }}
+      </div>
+      <ul v-if="activeTasks.length" class="task-list">
+        <li v-for="task in activeTasks" :key="task.id" class="task-item">
+          <div class="task-meta">#{{ task.sequence }} · {{ task.status }}</div>
+          <div class="task-title">{{ task.title }}</div>
+          <div class="task-agent">{{ task.assigned_agent_id }}</div>
+        </li>
+      </ul>
+    </section>
+
     <div v-if="sessionStore.currentPageInfo.hasMore && !sessionStore.isLoadingMessages" class="load-more-row">
       <button type="button" class="load-more-btn" @click="handleLoadMore">加载更多</button>
     </div>
@@ -53,9 +71,10 @@ const agentStore = useAgentStore()
 const userInfoStore = useUserInfoStore()
 const chatShowAreaRef = ref<HTMLElement>()
 const newMsgCount = ref(0)
-const isFirstLoad = ref(true)  // 标记是否首次加载
+const isFirstLoad = ref(true)
 
-// Map ChatMessage (backend format) → MessageRecord (Msg component format)
+const activeRun = computed(() => sessionStore.activeRun)
+const activeTasks = computed(() => sessionStore.activeTasks)
 const pendingChangesForSession = computed(() => sessionStore.streamState.getPendingChanges(props.targetId))
 
 function getPendingDiffsForMessage(messageId?: string, streamId?: string) {
@@ -81,9 +100,7 @@ const msgRecord = computed(() => {
       toId: props.targetId,
       fromInfo: {
         id: senderId,
-        name: isHuman
-          ? userInfoStore.userName || '我'
-          : agentStore.agent?.name ?? m.sender_role ?? 'AI助手',
+        name: isHuman ? userInfoStore.userName || '我' : agentStore.agent?.name ?? m.sender_role ?? 'AI助手',
         avatar: null,
         type: isHuman ? 'User' : 'Agent',
         badge: null,
@@ -108,9 +125,7 @@ const msgRecord = computed(() => {
     .map((s) => {
       const senderId = `agent_${s.sender_role ?? 'default'}`
       const pendingDiffs = getPendingDiffsForMessage(s.message_id, s.stream_id)
-      const displayContent = s.ui_status === 'thinking'
-        ? `${s.sender_role || 'AI'} 正在思考...`
-        : s.content
+      const displayContent = s.ui_status === 'thinking' ? `${s.sender_role || 'AI'} 正在思考...` : s.content
 
       return {
         id: s.message_id || s.stream_id,
@@ -141,28 +156,17 @@ const msgRecord = computed(() => {
   return [...historicalRecords, ...streamingRecords]
 })
 
-watch(
-  () => props.targetId,
-  () => {
-    newMsgCount.value = 0
-    isFirstLoad.value = true  // 切换 session 时重置
-  },
-)
+watch(() => props.targetId, () => {
+  newMsgCount.value = 0
+  isFirstLoad.value = true
+})
 
 const handleLoadMore = async () => {
   const container = chatShowAreaRef.value
   const pageInfo = sessionStore.currentPageInfo
   if (!props.targetId || !pageInfo.hasMore) return
-
-  // 加载前记录滚动高度，加载后保持相对位置
   const oldScrollHeight = container?.scrollHeight ?? 0
-
-  await sessionStore.fetchMessages(props.targetId, {
-    page: pageInfo.page + 1,
-    page_size: 20,
-  })
-
-  // 加载后修正滚动位置：加上新增的高度差
+  await sessionStore.fetchMessages(props.targetId, { page: pageInfo.page + 1, page_size: 20 })
   nextTick(() => {
     const newContainer = chatShowAreaRef.value
     if (newContainer && oldScrollHeight > 0) {
@@ -182,29 +186,19 @@ const scrollToBottom = () => {
   })
 }
 
-watch(
-  () => sessionStore.messageMap[props.targetId]?.length ?? 0,
-  (newLen, oldLen) => {
-    if (newLen > oldLen) {
-      // 仅首次加载时滚动到底部，加载更多时保持当前位置
-      if (isFirstLoad.value) {
-        isFirstLoad.value = false
-        scrollToBottom()
-      }
-    }
-  },
-)
+watch(() => sessionStore.messageMap[props.targetId]?.length ?? 0, (newLen, oldLen) => {
+  if (newLen > oldLen && isFirstLoad.value) {
+    isFirstLoad.value = false
+    scrollToBottom()
+  }
+})
 
-// 监听流式消息，有就滚动（AI 回复过程中实时跟随）
-watch(
-  () => sessionStore.currentStreamingMessages,
-  () => {
-    const container = chatShowAreaRef.value
-    if (container && sessionStore.currentStreamingMessages.length > 0) {
-      container.scrollTop = container.scrollHeight
-    }
-  },
-)
+watch(() => sessionStore.currentStreamingMessages, () => {
+  const container = chatShowAreaRef.value
+  if (container && sessionStore.currentStreamingMessages.length > 0) {
+    container.scrollTop = container.scrollHeight
+  }
+})
 
 const handleScroll = () => {
   const container = chatShowAreaRef.value
@@ -227,7 +221,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ==================== 聊天展示区容器 ==================== */
 .chat-show-area {
   position: relative;
   height: 100%;
@@ -238,82 +231,22 @@ onUnmounted(() => {
   padding: 20px 24px;
   background: transparent;
 }
-
-/* 滚动条样式 */
-.chat-show-area::-webkit-scrollbar {
-  width: 6px;
+.orchestration-panel {
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 18px;
+  padding: 16px;
 }
-
-.chat-show-area::-webkit-scrollbar-track {
-  background: transparent;
+.task-list {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
 }
-
-.chat-show-area::-webkit-scrollbar-thumb {
-  background: rgba(59, 130, 246, 0.2);
-  border-radius: 3px;
-}
-
-/* ==================== 加载更多按钮 ==================== */
-.load-more-row {
-  display: flex;
-  justify-content: center;
-}
-
-.load-more-btn {
-  padding: 8px 18px;
-  border-radius: 999px;
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  background: rgba(255, 255, 255, 0.6);
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.25s ease;
-}
-
-.load-more-btn:hover {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.08));
-  border-color: rgba(59, 130, 246, 0.4);
-  color: #3b82f6;
-  transform: translateY(-1px);
-}
-
-/* ==================== 加载中状态 ==================== */
-.loading-row {
-  display: flex;
-  width: 100%;
-  justify-content: center;
-  align-items: center;
-}
-
-/* ==================== 消息项 ==================== */
-.msg-item {
-  display: flex;
-  width: 100%;
-}
-
-/* ==================== 新消息提示按钮 ==================== */
-.new-msg-count {
-  position: sticky;
-  bottom: 12px;
-  align-self: center;
-  padding: 8px 18px;
-  border-radius: 999px;
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(10px);
-  color: #3b82f6;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.15);
-}
-
-.new-msg-count:hover {
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  color: #ffffff;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+.task-item {
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(248, 250, 252, 0.95);
 }
 </style>
