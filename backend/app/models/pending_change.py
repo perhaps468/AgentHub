@@ -3,9 +3,10 @@
 
 This module provides the SQLAlchemy ORM model for persisting pending changes
 to the database. It enables:
-- Pending change persistence across page refreshes
-- Recovery of pending changes on WS reconnect
-- History query for applied/rejected/failed changes
+|- Pending change persistence across page refreshes
+|- Recovery of pending changes on WS reconnect
+|- History query for applied/rejected/failed changes
+|- Task-aware attribution for orchestration scenarios (M4)
 """
 
 import uuid
@@ -40,6 +41,12 @@ class PendingChangeModel(Base):
     - status: pending_confirmation/applied/rejected/failed
     - created_at: Creation timestamp
     - applied_at: Apply timestamp (if applied)
+
+    M4 Task-aware fields:
+    - run_id: Associated orchestration run
+    - task_id: Associated orchestration task
+    - agent_id: Agent that generated this change
+    - batch_id: Optional batch identifier (for future multi-change tasks)
     """
 
     __tablename__ = "pending_changes"
@@ -70,6 +77,12 @@ class PendingChangeModel(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # M4 Task-aware fields
+    run_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    task_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    agent_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    batch_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+
     @classmethod
     def from_runtime(
         cls,
@@ -77,6 +90,10 @@ class PendingChangeModel(Base):
         session_id: str,
         message_id: Optional[str] = None,
         stream_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        batch_id: Optional[str] = None,
     ) -> "PendingChangeModel":
         """Create a DB model from a runtime PendingChange.
 
@@ -85,6 +102,10 @@ class PendingChangeModel(Base):
             session_id: Associated session ID
             message_id: Associated message ID (optional)
             stream_id: Associated stream ID (optional)
+            run_id: Associated orchestration run ID (optional, M4)
+            task_id: Associated orchestration task ID (optional, M4)
+            agent_id: Agent that generated this change (optional, M4)
+            batch_id: Batch identifier for multi-change tasks (optional, M4)
 
         Returns:
             PendingChangeModel instance ready for DB persistence
@@ -94,6 +115,10 @@ class PendingChangeModel(Base):
             session_id=session_id,
             message_id=message_id,
             stream_id=stream_id,
+            run_id=run_id,
+            task_id=task_id,
+            agent_id=agent_id,
+            batch_id=batch_id,
             path=pc.path,
             operation=pc.operation.value if hasattr(pc.operation, "value") else str(pc.operation),
             unified_diff=pc.unified_diff,
@@ -172,6 +197,10 @@ class PendingChangeModel(Base):
             "session_id": self.session_id,
             "message_id": self.message_id,
             "stream_id": self.stream_id,
+            "run_id": self.run_id,
+            "task_id": self.task_id,
+            "agent_id": self.agent_id,
+            "batch_id": self.batch_id,
             "path": self.path,
             "operation": self.operation,
             "unified_diff": self.unified_diff,
