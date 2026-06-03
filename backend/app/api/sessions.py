@@ -5,6 +5,7 @@ Task B+C-1: Session creation requires workspace_id.
 Session responses include workspace details for frontend display.
 """
 from typing import Optional
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -16,14 +17,14 @@ from app.core.security import CurrentUser
 from app.models.agent import Agent
 from app.models.message import Message
 from app.models.session import ChatSession
+from app.models.session import utcnow
 from app.models.session_member import SessionMember
 from app.models.workspace import Workspace
 from app.schemas.common import Page
 from app.schemas.message import MessageResponse
 from app.schemas.session import SessionCreate, SessionResponse, SessionUpdate, WorkspaceSummary
 from app.schemas.session_member import MemberResponse
-
-PRIMARY_AGENT_ID = "primary_pm_agent"
+from app.services.group_host_agent import ensure_user_group_host_agent
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -122,10 +123,10 @@ def create_session(payload: SessionCreate, current_user: CurrentUser, db: Sessio
 
     # P6-3: Group mode — auto-add primary agent and participant agents as members
     if payload.mode == "group":
+        host_agent = ensure_user_group_host_agent(db, owner)
         participant_ids = list(payload.participant_agent_ids or [])
-        # Always include primary agent, deduplicate
         member_ids = set(participant_ids)
-        member_ids.discard(PRIMARY_AGENT_ID)
+        member_ids.discard(host_agent.id)
 
         # Validate all participant agents exist
         for agent_id in member_ids:
@@ -139,7 +140,7 @@ def create_session(payload: SessionCreate, current_user: CurrentUser, db: Sessio
         db.add(SessionMember(
             session_id=session.id,
             member_type="agent",
-            member_id=PRIMARY_AGENT_ID,
+            member_id=host_agent.id,
             is_primary=True,
             health_status="connected",
         ))
@@ -259,6 +260,7 @@ class ActiveRunRecoveryResponse(BaseModel):
     run: Optional[dict] = None
     tasks: list[dict] = []
     pending_changes: list[dict] = []
+    is_recent: bool = False  # M6: indicates if this is a recently completed run
 
 
 from app.models.orchestration import OrchestrationRun as OrchRun
@@ -289,8 +291,9 @@ def get_active_run(
     # Check session ownership
     get_session_with_ownership_check(db, session_id, current_user)
 
-    # Get latest active run for this session
     from sqlalchemy import desc
+
+    # M6: First try to get active run (planned/running/waiting_confirmation)
     run = db.scalars(
         select(OrchRun)
         .options(selectinload(OrchRun.tasks))
@@ -301,6 +304,25 @@ def get_active_run(
         .order_by(desc(OrchRun.created_at))
         .limit(1)
     ).first()
+
+    # M6: If no active run, try to get the most recent completed/partial run
+    # (within last 5 minutes) for refresh recovery
+    is_recent = False
+    if run is None:
+        five_minutes_ago = utcnow() - timedelta(minutes=5)
+        run = db.scalars(
+            select(OrchRun)
+            .options(selectinload(OrchRun.tasks))
+            .where(
+                OrchRun.session_id == session_id,
+                OrchRun.status.in_(['completed', 'partial', 'cancelled', 'failed']),
+                OrchRun.updated_at >= five_minutes_ago,
+            )
+            .order_by(desc(OrchRun.updated_at))
+            .limit(1)
+        ).first()
+        if run is not None:
+            is_recent = True
 
     if run is None:
         return ActiveRunRecoveryResponse(run=None, tasks=[], pending_changes=[])
@@ -317,15 +339,26 @@ def get_active_run(
         'updated_at': run.updated_at.isoformat() if run.updated_at else None,
     }
 
-    # Build tasks response
+    # Build tasks response with agent role/name for M6
     tasks_data = []
+    from app.models.agent import Agent as AgentModel
     for task in run.tasks:
+        # M6: Look up agent to get role and name
+        agent_role = None
+        agent_name = None
+        agent = db.get(AgentModel, task.assigned_agent_id)
+        if agent:
+            agent_role = getattr(agent, 'role', None)
+            agent_name = getattr(agent, 'name', None)
+
         tasks_data.append({
             'id': task.id,
             'run_id': task.run_id,
             'parent_task_id': task.parent_task_id,
             'sequence': task.sequence,
             'assigned_agent_id': task.assigned_agent_id,
+            'agent_role': agent_role,  # M6: for frontend display
+            'agent_name': agent_name,  # M6: for frontend display
             'kind': task.kind,
             'title': task.title,
             'goal': task.goal,
@@ -370,4 +403,5 @@ def get_active_run(
         run=run_data,
         tasks=tasks_data,
         pending_changes=pending_changes_data,
+        is_recent=is_recent,  # M6: indicates if this is a recently completed run
     )

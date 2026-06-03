@@ -244,6 +244,9 @@ export const useSessionStore = defineStore(
             tasks: (res.tasks || []).map((task: any) => ({
               id: task.id,
               assigned_agent_id: task.assigned_agent_id,
+              // M6: Pass actual agent role/name for correct display
+              agent_role: task.agent_role,
+              agent_name: task.agent_name,
               latest_stream: task.result_payload?.stream_id
                 ? {
                     stream_id: String(task.result_payload.stream_id),

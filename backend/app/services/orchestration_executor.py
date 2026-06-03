@@ -13,6 +13,8 @@ from app.models.agent import Agent
 from app.models.message import Message
 from app.models.orchestration import OrchestrationRun, OrchestrationTask
 from app.models.pending_change import PendingChangeModel
+from app.models.session_member import SessionMember
+from app.observability.group_chat_audit import get_group_chat_audit_recorder
 from app.runtime.memory import Message as RuntimeMessage
 from app.runtime.runtime_agent_service import RuntimeAgentService
 from app.schemas.common import to_iso_z
@@ -38,6 +40,7 @@ class TaskContext:
 class OrchestrationExecutor:
     def __init__(self, db: Session) -> None:
         self.db = db
+        self._group_chat_audit = get_group_chat_audit_recorder()
 
     def _generate_stream_id(self, task_id: str) -> str:
         return str(uuid.uuid4())
@@ -61,6 +64,7 @@ class OrchestrationExecutor:
         task = self.get_task(task_id)
         if task is None:
             return None
+        previous_status = task.status
 
         task.status = status
         if result_payload is not None:
@@ -71,6 +75,20 @@ class OrchestrationExecutor:
         self.db.add(task)
         self.db.commit()
         self.db.refresh(task)
+        self._group_chat_audit.record_task_status_changed(
+            session_id=task.run.session_id if task.run is not None else "",
+            run_id=task.run_id,
+            task_id=task.id,
+            agent_id=task.assigned_agent_id,
+            stream_id=((task.result_payload or {}).get("stream_id") if isinstance(task.result_payload, dict) else None),
+            title=task.title,
+            from_status=previous_status,
+            to_status=status,
+            result_payload=result_payload,
+            error_payload=error_payload,
+            final_output=((result_payload or {}).get("final_content") if isinstance(result_payload, dict) else None),
+            change_id=((result_payload or {}).get("change_id") if isinstance(result_payload, dict) else None),
+        )
         return task
 
     def build_task_context(self, task_id: str) -> TaskContext | None:
@@ -219,6 +237,21 @@ class OrchestrationExecutor:
             return {"status": "failed", "error": f"Task {task_id} not found"}
 
         active_stream_id = stream_id or self._generate_stream_id(task_id)
+        context = self.build_task_context(task_id)
+        if context is not None:
+            self._group_chat_audit.record_task_started(
+                session_id=context.session_id,
+                run_id=context.run_id,
+                task_id=context.task_id,
+                stream_id=active_stream_id,
+                agent_id=context.agent_id,
+                agent_role=context.agent_role,
+                title=context.title,
+                goal=context.goal,
+                input_payload=context.input_payload,
+                user_request=context.user_request,
+                planner_summary=context.planner_summary,
+            )
         self.update_task_status(task_id, "running", result_payload={"stream_id": active_stream_id})
 
         try:
@@ -264,6 +297,19 @@ class OrchestrationExecutor:
         if context is None:
             raise ValueError(f"Could not build context for task {task_id}")
 
+        self._group_chat_audit.record_task_started(
+            session_id=context.session_id,
+            run_id=context.run_id,
+            task_id=context.task_id,
+            stream_id=stream_id,
+            agent_id=context.agent_id,
+            agent_role=context.agent_role,
+            title=context.title,
+            goal=context.goal,
+            input_payload=context.input_payload,
+            user_request=context.user_request,
+            planner_summary=context.planner_summary,
+        )
         self.update_task_status(task_id, "running", result_payload={"stream_id": stream_id})
 
         try:
@@ -448,7 +494,74 @@ class OrchestrationExecutor:
             self.db.refresh(run)
 
         self._generate_run_summary(run)
+        self._generate_host_completion_message(run)
+        refreshed_run = self.get_run(run_id)
+        if refreshed_run is not None:
+            self._group_chat_audit.record_run_finished(
+                session_id=refreshed_run.session_id,
+                run_id=refreshed_run.id,
+                status=refreshed_run.status,
+                summary=refreshed_run.summary,
+                tasks=[
+                    {
+                        "task_id": task.id,
+                        "sequence": task.sequence,
+                        "title": task.title,
+                        "agent_id": task.assigned_agent_id,
+                        "status": task.status,
+                    }
+                    for task in refreshed_run.tasks
+                ],
+        )
         return run
+
+    def _generate_host_completion_message(self, run: OrchestrationRun) -> None:
+        if run.status != "completed":
+            return
+
+        existing = next(
+            (
+                message
+                for message in self.db.query(Message)
+                .filter(Message.session_id == run.session_id)
+                .order_by(Message.created_at.asc())
+                .all()
+                if (message.msg_metadata or {}).get("run_id") == run.id
+                and (message.msg_metadata or {}).get("is_host_completion") is True
+            ),
+            None,
+        )
+        if existing is not None:
+            return
+
+        primary_member = (
+            self.db.query(SessionMember)
+            .filter(
+                SessionMember.session_id == run.session_id,
+                SessionMember.member_type == "agent",
+                SessionMember.is_primary == True,  # noqa: E712
+            )
+            .first()
+        )
+        host_agent = self.get_agent(primary_member.member_id) if primary_member is not None else self.get_agent(run.planner_agent_id)
+        host_role = getattr(host_agent, "role", None) or "PM"
+
+        message = Message(
+            session_id=run.session_id,
+            sender_type="agent",
+            sender_role=host_role,
+            content="全部任务完成。",
+            type="text",
+            status="completed",
+            payload={"run_status": run.status, "run_id": run.id},
+            msg_metadata={
+                "run_id": run.id,
+                "is_host_completion": True,
+                "agent_id": getattr(host_agent, "id", None) or run.planner_agent_id,
+            },
+        )
+        self.db.add(message)
+        self.db.commit()
 
     def _generate_run_summary(self, run: OrchestrationRun) -> None:
         existing = self.db.query(Message).filter(

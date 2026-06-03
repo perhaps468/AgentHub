@@ -16,6 +16,7 @@ from typing import Any
 
 from loguru import logger
 
+from app.observability.audit_paths import get_llm_audit_log_path
 from app.observability.audit_models import (
     AuditContext,
     BaseAuditEvent,
@@ -67,7 +68,7 @@ class AuditRecorder:
     def __init__(
         self,
         enabled: bool = True,
-        log_path: str = "backend/.audit/llm_traces.jsonl",
+        log_path: str | None = None,
         full_content: bool = True,
     ) -> None:
         """Initialize the audit recorder.
@@ -78,7 +79,7 @@ class AuditRecorder:
             full_content: Whether to record full content (vs. truncated)
         """
         self._enabled = enabled
-        self._log_path = log_path
+        self._log_path = log_path or get_llm_audit_log_path()
         self._full_content = full_content
         self._file_lock = threading.Lock()
 
@@ -89,7 +90,7 @@ class AuditRecorder:
     def get_instance(
         cls,
         enabled: bool = True,
-        log_path: str = "backend/.audit/llm_traces.jsonl",
+        log_path: str | None = None,
         full_content: bool = True,
     ) -> "AuditRecorder":
         """Get or create the singleton instance.
@@ -573,7 +574,7 @@ class AuditRecorder:
 
 def get_audit_recorder(
     enabled: bool = True,
-    log_path: str = "backend/.audit/llm_traces.jsonl",
+    log_path: str | None = None,
     full_content: bool = True,
 ) -> AuditRecorder:
     """Get the global AuditRecorder singleton.

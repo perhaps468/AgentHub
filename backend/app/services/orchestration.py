@@ -55,3 +55,17 @@ class OrchestrationService:
             .order_by(OrchestrationRun.created_at.desc(), OrchestrationRun.updated_at.desc())
             .limit(1)
         )
+
+    def update_run_status(self, run_id: str, status: str) -> OrchestrationRun | None:
+        """Update run status.
+
+        M2: Used to transition run from 'planned' to 'running' when tasks start.
+        """
+        run = self.db.get(OrchestrationRun, run_id)
+        if run is None:
+            return None
+        run.status = status
+        self.db.add(run)
+        self.db.commit()
+        self.db.refresh(run)
+        return run

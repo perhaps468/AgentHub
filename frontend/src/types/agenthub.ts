@@ -124,6 +124,8 @@ export interface ChangePreviewEvent {
   task_id?: string | null
   agent_id?: string | null
   batch_id?: string | null
+  // M6: Agent role for inline change preview
+  agent_role?: string
 }
 
 export type RuntimeStateValue = 'thinking' | 'calling_tool' | 'observing' | 'responding' | 'finished' | 'error'

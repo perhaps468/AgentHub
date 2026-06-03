@@ -205,11 +205,20 @@ class RuntimeAgentService:
             provider="qwen",
             model="",
         )
+        if run_id:
+            setattr(self._audit_context, "run_id", run_id)
+        if task_id:
+            setattr(self._audit_context, "task_id", task_id)
+        if task_agent_id:
+            setattr(self._audit_context, "task_agent_id", task_agent_id)
         # Initialize audit recorder and set context
         self._recorder = get_audit_recorder()
 
     def _setup_audit_context(self) -> None:
         """Set up audit context before streaming starts."""
+        if self.run_id is None and self.task_id is None:
+            self._recorder.set_context(None)
+            return
         # Update context with resolved workspace root
         self._audit_context.session_id = self.session_id
         self._audit_context.stream_id = self.stream_id

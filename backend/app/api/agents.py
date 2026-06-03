@@ -18,6 +18,7 @@ from app.schemas.agent import (
     AgentResponse,
     AgentUpdate,
 )
+from app.services.group_host_agent import get_user_group_host_agent
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -116,6 +117,7 @@ def _build_agent_system_prompt(
             "- Be direct, practical, and execution-oriented.",
             "- Keep responses structured and easy to act on.",
             "- Stay focused on the selected capability tags.",
+            "- In group chat, your primary duty is to analyze user requirements, break them into tasks, assign tasks to other agents, and summarize final completion.",
         ]
     )
     return "\n".join(lines)
@@ -149,10 +151,50 @@ def _get_agent_or_404(db: Session, agent_id: str) -> Agent:
     return agent
 
 
+def resolve_default_agent(db: Session, owner_id: str | None = None) -> Agent | None:
+    if owner_id:
+        host_agent = get_user_group_host_agent(db, owner_id)
+        if host_agent is not None and host_agent.is_active:
+            return host_agent
+
+        owner_agent = (
+            db.execute(
+                select(Agent)
+                .where(
+                    Agent.owner_id == owner_id,
+                    Agent.is_builtin == False,  # noqa: E712
+                    Agent.is_active == True,  # noqa: E712
+                )
+                .order_by(Agent.updated_at.desc(), Agent.created_at.desc())
+            )
+            .scalars()
+            .first()
+        )
+        if owner_agent is not None:
+            return owner_agent
+
+    non_builtin_agent = (
+        db.execute(
+            select(Agent)
+            .where(
+                Agent.is_builtin == False,  # noqa: E712
+                Agent.is_active == True,  # noqa: E712
+            )
+            .order_by(Agent.updated_at.desc(), Agent.created_at.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if non_builtin_agent is not None:
+        return non_builtin_agent
+
+    return db.get(Agent, "pm_agent")
+
+
 @router.get("/default", response_model=AgentResponse)
 def get_default_agent(db: _Db) -> AgentResponse:
     """获取默认 Agent 的展示信息。"""
-    agent = db.get(Agent, "pm_agent")
+    agent = resolve_default_agent(db)
     if agent is None:
         raise HTTPException(status_code=404, detail="Default agent not found")
     return _agent_to_response(agent)
