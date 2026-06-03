@@ -5,6 +5,10 @@ export interface PendingChangeItem {
   session_id: string
   message_id?: string | null
   stream_id?: string | null
+  run_id?: string | null
+  task_id?: string | null
+  agent_id?: string | null
+  batch_id?: string | null
   path: string
   operation: 'create' | 'update' | 'delete'
   unified_diff: string
@@ -32,6 +36,9 @@ export interface ApplyChangeResponse {
   message: string
   status: 'applied' | 'rejected' | 'failed'
   ws_pushed?: boolean
+  run_id?: string | null
+  task_id?: string | null
+  agent_id?: string | null
 }
 
 export const fetchPendingChanges = async (
@@ -44,25 +51,15 @@ export const fetchPendingChanges = async (
 }
 
 export const applyPendingChange = async (
-  changeId: string,
-  sessionId?: string,
+  payload: ApplyChangeRequest,
 ): Promise<ApplyChangeResponse> => {
-  const payload: ApplyChangeRequest = { change_id: changeId }
-  if (sessionId) {
-    payload.session_id = sessionId
-  }
   const { data } = await agenthubRequest.post<ApplyChangeResponse>('/pending-changes/apply', payload)
   return data
 }
 
 export const rejectPendingChange = async (
-  changeId: string,
-  sessionId?: string,
+  payload: ApplyChangeRequest,
 ): Promise<ApplyChangeResponse> => {
-  const payload: ApplyChangeRequest = { change_id: changeId }
-  if (sessionId) {
-    payload.session_id = sessionId
-  }
   const { data } = await agenthubRequest.post<ApplyChangeResponse>('/pending-changes/reject', payload)
   return data
 }

@@ -36,6 +36,10 @@ class ApplyChangeResponse(BaseModel):
     message: str
     status: str = "applied"  # applied, rejected, failed
     ws_pushed: bool = False  # 是否成功推送到 WebSocket
+    # M4: Task-aware fields for frontend state sync
+    run_id: str | None = None
+    task_id: str | None = None
+    agent_id: str | None = None
 
 
 class PendingChangeResponse(BaseModel):
@@ -44,6 +48,10 @@ class PendingChangeResponse(BaseModel):
     session_id: str
     message_id: str | None
     stream_id: str | None
+    run_id: str | None = None
+    task_id: str | None = None
+    agent_id: str | None = None
+    batch_id: str | None = None
     path: str
     operation: str
     unified_diff: str
@@ -99,10 +107,15 @@ async def _push_apply_result(
     success: bool,
     status: str,
     message: str,
+    run_id: str | None = None,
+    task_id: str | None = None,
+    agent_id: str | None = None,
 ) -> bool:
     """向 WebSocket 会话推送 apply_result 事件。
 
     使用异步方式推送，避免阻塞 REST 请求。
+
+    M4: Added task-aware fields for precise frontend state sync.
     """
     if not session_id:
         return False
@@ -115,9 +128,91 @@ async def _push_apply_result(
             success=success,
             status=status,
             message=message,
+            run_id=run_id,
+            task_id=task_id,
+            agent_id=agent_id,
         )
     except Exception:
         return False
+
+
+def _update_task_status_on_apply(db: DBSession, db_change, change_id: str) -> None:
+    """M4: Update associated task status to completed when apply succeeds.
+
+    Args:
+        db: Database session
+        db_change: The pending change that was applied
+        change_id: The change ID
+    """
+    if not db_change.task_id:
+        return
+
+    try:
+        from app.models.orchestration import OrchestrationTask
+        from app.services.orchestration_executor import OrchestrationExecutor
+
+        task = db.get(OrchestrationTask, db_change.task_id)
+        if task is not None and task.status == "waiting_confirmation":
+            executor = OrchestrationExecutor(db)
+            executor.update_task_status(
+                db_change.task_id,
+                "completed",
+                result_payload={"change_id": change_id, "applied": True}
+            )
+            # M5: Try to finalize run after task completion
+            _try_finalize_run(db, db_change.run_id)
+    except Exception:
+        pass
+
+
+def _update_task_status_on_reject(db: DBSession, db_change, change_id: str) -> None:
+    """M4: Update associated task status to rejected when user rejects.
+
+    Args:
+        db: Database session
+        db_change: The pending change that was rejected
+        change_id: The change ID
+    """
+    if not db_change.task_id:
+        return
+
+    try:
+        from app.models.orchestration import OrchestrationTask
+        from app.services.orchestration_executor import OrchestrationExecutor
+
+        task = db.get(OrchestrationTask, db_change.task_id)
+        if task is not None and task.status == "waiting_confirmation":
+            executor = OrchestrationExecutor(db)
+            executor.update_task_status(
+                db_change.task_id,
+                "rejected",
+                result_payload={"change_id": change_id, "rejected": True}
+            )
+            # M5: Try to finalize run after task completion
+            _try_finalize_run(db, db_change.run_id)
+    except Exception:
+        pass
+
+
+def _try_finalize_run(db: DBSession, run_id: str | None) -> None:
+    """M5: Try to finalize run if all tasks are in terminal states.
+
+    Args:
+        db: Database session
+        run_id: The run ID to finalize
+    """
+    if not run_id:
+        return
+
+    try:
+        from app.services.orchestration_executor import OrchestrationExecutor
+        executor = OrchestrationExecutor(db)
+        if hasattr(executor, 'finalize_run'):
+            executor.finalize_run(run_id)
+        elif hasattr(executor, 'aggregate_run'):
+            executor.aggregate_run(run_id)
+    except Exception:
+        pass
 
 
 @router.get("", response_model=PendingChangeListResponse)
@@ -224,12 +319,18 @@ async def apply_pending_change(
             change_id=change_id,
             message=f"Change '{change_id}' has already been applied.",
             status="applied",
+            run_id=db_change.run_id,
+            task_id=db_change.task_id,
+            agent_id=db_change.agent_id,
         )
         # 推送 WebSocket 事件
         if session_id:
             result.ws_pushed = await _push_apply_result(
                 session_id, change_id, False, "applied",
-                f"Change '{change_id}' has already been applied."
+                f"Change '{change_id}' has already been applied.",
+                run_id=db_change.run_id,
+                task_id=db_change.task_id,
+                agent_id=db_change.agent_id,
             )
         return result
 
@@ -239,11 +340,17 @@ async def apply_pending_change(
             change_id=change_id,
             message=f"Change '{change_id}' was previously rejected.",
             status="rejected",
+            run_id=db_change.run_id,
+            task_id=db_change.task_id,
+            agent_id=db_change.agent_id,
         )
         if session_id:
             result.ws_pushed = await _push_apply_result(
                 session_id, change_id, False, "rejected",
-                f"Change '{change_id}' was previously rejected."
+                f"Change '{change_id}' was previously rejected.",
+                run_id=db_change.run_id,
+                task_id=db_change.task_id,
+                agent_id=db_change.agent_id,
             )
         return result
 
@@ -254,19 +361,29 @@ async def apply_pending_change(
         db_change.status = "applied"
         db_change.applied_at = datetime.now(timezone.utc)
         db.add(db_change)
+
+        # M4: Update associated task status to completed
+        _update_task_status_on_apply(db, db_change, change_id)
+
         db.commit()
         result = ApplyChangeResponse(
             success=True,
             change_id=change_id,
             message=f"Successfully applied {pending.operation.value.upper()} {pending.path}",
             status="applied",
+            run_id=db_change.run_id,
+            task_id=db_change.task_id,
+            agent_id=db_change.agent_id,
         )
         # 成功后从 registry 移除
         ApplyChangeTool.clear_change(change_id)
         if session_id:
             result.ws_pushed = await _push_apply_result(
                 session_id, change_id, True, "applied",
-                f"Successfully applied {pending.operation.value.upper()} {pending.path}"
+                f"Successfully applied {pending.operation.value.upper()} {pending.path}",
+                run_id=db_change.run_id,
+                task_id=db_change.task_id,
+                agent_id=db_change.agent_id,
             )
         return result
     else:
@@ -280,11 +397,17 @@ async def apply_pending_change(
             change_id=change_id,
             message=f"Apply failed: {pending.error}. The file may have been modified after preview.",
             status="rejected",
+            run_id=db_change.run_id,
+            task_id=db_change.task_id,
+            agent_id=db_change.agent_id,
         )
         if session_id:
             result.ws_pushed = await _push_apply_result(
                 session_id, change_id, False, "rejected",
-                f"Apply failed: {pending.error}. The file may have been modified after preview."
+                f"Apply failed: {pending.error}. The file may have been modified after preview.",
+                run_id=db_change.run_id,
+                task_id=db_change.task_id,
+                agent_id=db_change.agent_id,
             )
         return result
 
@@ -322,11 +445,17 @@ async def reject_pending_change(
             change_id=change_id,
             message=f"Change '{change_id}' has already been rejected.",
             status="rejected",
+            run_id=db_change.run_id,
+            task_id=db_change.task_id,
+            agent_id=db_change.agent_id,
         )
         if session_id:
             result.ws_pushed = await _push_apply_result(
                 session_id, change_id, False, "rejected",
-                f"Change '{change_id}' has already been rejected."
+                f"Change '{change_id}' has already been rejected.",
+                run_id=db_change.run_id,
+                task_id=db_change.task_id,
+                agent_id=db_change.agent_id,
             )
         return result
 
@@ -336,11 +465,17 @@ async def reject_pending_change(
             change_id=change_id,
             message=f"Change '{change_id}' has already been applied and cannot be rejected.",
             status="applied",
+            run_id=db_change.run_id,
+            task_id=db_change.task_id,
+            agent_id=db_change.agent_id,
         )
         if session_id:
             result.ws_pushed = await _push_apply_result(
                 session_id, change_id, False, "applied",
-                f"Change '{change_id}' has already been applied and cannot be rejected."
+                f"Change '{change_id}' has already been applied and cannot be rejected.",
+                run_id=db_change.run_id,
+                task_id=db_change.task_id,
+                agent_id=db_change.agent_id,
             )
         return result
 
@@ -348,6 +483,10 @@ async def reject_pending_change(
     db_change.status = "rejected"
     db_change.applied_at = datetime.now(timezone.utc)
     db.add(db_change)
+
+    # M4: Update associated task status to rejected
+    _update_task_status_on_reject(db, db_change, change_id)
+
     db.commit()
 
     # Also mark in memory registry if present
@@ -361,10 +500,16 @@ async def reject_pending_change(
         change_id=change_id,
         message=f"Change '{change_id}' has been rejected.",
         status="rejected",
+        run_id=db_change.run_id,
+        task_id=db_change.task_id,
+        agent_id=db_change.agent_id,
     )
     if session_id:
         result.ws_pushed = await _push_apply_result(
             session_id, change_id, True, "rejected",
-            f"Change '{change_id}' has been rejected by user."
+            f"Change '{change_id}' has been rejected by user.",
+            run_id=db_change.run_id,
+            task_id=db_change.task_id,
+            agent_id=db_change.agent_id,
         )
     return result

@@ -281,6 +281,7 @@ const selectSession = async (item: ConversationItem) => {
   sessionStore.setCurrentSessionId(item.id)
   await sessionStore.fetchSessionDetail(item.id)
   await sessionStore.fetchMessages(item.id, { page: 1, page_size: 20 })
+  await sessionStore.fetchLatestRun(item.id)
   await restorePendingChangesForCurrentSession(item.id)
   wsClient.connect(item.id)
   showLeft.value = false
@@ -326,13 +327,6 @@ const handleCreateConversation = async (payload: {
     showToast('请先选择一个 Agent', true)
     return
   }
-  if (
-    payload.mode === 'group' &&
-    (!payload.participantAgentIds || payload.participantAgentIds.length === 0)
-  ) {
-    showToast('请至少选择一个 Agent', true)
-    return
-  }
   if (!payload.workspace_id) {
     showToast('请先选择工作空间', true)
     return
@@ -351,7 +345,9 @@ const handleCreateConversation = async (payload: {
       currentWorkspace.value = session.workspace as Workspace
     }
     sessionStore.setCurrentSessionId(session.id)
+  await sessionStore.fetchSessionDetail(session.id)
     await sessionStore.fetchMessages(session.id, { page: 1, page_size: 20 })
+    await sessionStore.fetchLatestRun(session.id)
     await restorePendingChangesForCurrentSession(session.id)
     wsClient.connect(session.id)
     showNewConversationDialog.value = false
@@ -476,8 +472,24 @@ async function restoreCurrentSession() {
   if (!sessionId) return
   await sessionStore.fetchSessionDetail(sessionId)
   await sessionStore.fetchMessages(sessionId, { page: 1, page_size: 20 })
+  await sessionStore.fetchLatestRun(sessionId)
   await restorePendingChangesForCurrentSession(sessionId)
   wsClient.connect(sessionId)
+}
+
+async function handleOrchestrationTaskStatusUpdate(event: Event) {
+  const detail = (event as CustomEvent<{ task_id?: string; run_id?: string; status?: string }>).detail
+  if (!detail?.task_id || !detail.status) return
+
+  sessionStore.updateTaskStatus(detail.task_id, detail.status)
+
+  if (detail.run_id) {
+    try {
+      await sessionStore.fetchRun(detail.run_id)
+    } catch (error) {
+      console.error('刷新编排状态失败', error)
+    }
+  }
 }
 
 // ==================== 预览区 ====================
@@ -570,9 +582,11 @@ onMounted(async () => {
   })
 
   await restoreCurrentSession()
+  window.addEventListener('orchestration:task-status-update', handleOrchestrationTaskStatusUpdate)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('orchestration:task-status-update', handleOrchestrationTaskStatusUpdate)
   wsClient.disconnect()
 })
 </script>

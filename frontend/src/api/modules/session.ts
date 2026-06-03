@@ -5,6 +5,7 @@ import type {
   PaginatedResponse,
   UpdateSessionPayload,
   ChatMessage,
+  OrchestrationRun,
 } from '@/types/agenthub'
 
 export const fetchConversationList = async (params: {
@@ -49,3 +50,22 @@ export const deleteConversation = async (sessionId: string) => {
   return data
 }
 
+export const fetchLatestRun = async (sessionId: string) => {
+  const { data } = await agenthubRequest.get<OrchestrationRun | null>(`/orchestration/sessions/${sessionId}/runs/latest`)
+  return data
+}
+
+export const fetchRun = async (runId: string) => {
+  const { data } = await agenthubRequest.get<OrchestrationRun>(`/orchestration/runs/${runId}`)
+  return data
+}
+
+// M6: Fetch active run for session recovery
+export const fetchActiveRun = async (sessionId: string) => {
+  const { data } = await agenthubRequest.get<{
+    run: OrchestrationRun | null
+    tasks: OrchestrationTask[]
+    pending_changes: any[]
+  }>(`/sessions/${sessionId}/active-run`)
+  return data
+}

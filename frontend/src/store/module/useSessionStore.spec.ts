@@ -9,6 +9,7 @@ const {
   restorePendingChanges,
   fetchPendingChanges,
   setStreamCurrentSessionId,
+  restoreTaskStreams,
 } = vi.hoisted(() => ({
   getStreamingMessages: vi.fn(),
   clearSession: vi.fn(),
@@ -17,6 +18,38 @@ const {
   restorePendingChanges: vi.fn(),
   fetchPendingChanges: vi.fn(),
   setStreamCurrentSessionId: vi.fn(),
+  restoreTaskStreams: vi.fn(),
+}))
+
+const {
+  fetchConversationList,
+  fetchConversationDetail,
+  createConversation,
+  updateConversation,
+  fetchConversationMessages,
+  deleteConversation,
+  fetchLatestRun,
+  fetchRun,
+} = vi.hoisted(() => ({
+  fetchConversationList: vi.fn(),
+  fetchConversationDetail: vi.fn(),
+  createConversation: vi.fn(),
+  updateConversation: vi.fn(),
+  fetchConversationMessages: vi.fn(),
+  deleteConversation: vi.fn(),
+  fetchLatestRun: vi.fn(),
+  fetchRun: vi.fn(),
+}))
+
+vi.mock('@/api/modules/session', () => ({
+  fetchConversationList,
+  fetchConversationDetail,
+  createConversation,
+  updateConversation,
+  fetchConversationMessages,
+  deleteConversation,
+  fetchLatestRun,
+  fetchRun,
 }))
 
 vi.mock('@/api/modules/pendingChanges', () => ({
@@ -36,6 +69,7 @@ vi.mock('@/utils/useChatStreamState', () => ({
     clearSessionPendingChanges,
     clearInFlightStreams,
     restorePendingChanges,
+    restoreTaskStreams,
     hasInFlightStream: vi.fn(),
     checkStreamComplete: vi.fn(),
   }),
@@ -51,8 +85,11 @@ describe('useSessionStore', () => {
     clearSessionPendingChanges.mockReset()
     clearInFlightStreams.mockReset()
     restorePendingChanges.mockReset()
+    restoreTaskStreams.mockReset()
     fetchPendingChanges.mockReset()
     setStreamCurrentSessionId.mockReset()
+    fetchLatestRun.mockReset()
+    fetchRun.mockReset()
   })
 
   it('returns current session streaming messages from stream state', () => {
@@ -177,5 +214,113 @@ describe('useSessionStore', () => {
     expect(store.currentMessages).toHaveLength(1)
     expect(store.currentMessages[0].content).toBe('new reply')
     expect(store.currentMessages[0].status).toBe('completed')
+  })
+
+  it('stores latest orchestration run and tasks for the active session', async () => {
+    fetchLatestRun.mockResolvedValue({
+      id: 'run-1',
+      session_id: 'session-1',
+      trigger_message_id: 'msg-1',
+      planner_agent_id: 'primary_pm_agent',
+      status: 'planned',
+      summary: 'planned 2 tasks',
+      tasks: [
+        {
+          id: 'task-1',
+          run_id: 'run-1',
+          parent_task_id: null,
+          sequence: 1,
+          assigned_agent_id: 'primary_pm_agent',
+          kind: 'file_write',
+          title: 'Task 1',
+          goal: 'Create alpha.py',
+          input_payload: { raw: 'alpha.py' },
+          status: 'planned',
+        },
+      ],
+    })
+
+    const store = useSessionStore()
+    const run = await store.fetchLatestRun('session-1')
+
+    expect(fetchLatestRun).toHaveBeenCalledWith('session-1')
+    expect(run.id).toBe('run-1')
+    expect(store.activeRun?.id).toBe('run-1')
+    expect(store.activeTasks).toHaveLength(1)
+    expect(store.activeTasks[0].title).toBe('Task 1')
+    expect(restoreTaskStreams).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      run_id: 'run-1',
+    }))
+  })
+
+  it('clears orchestration state when current session is cleared', async () => {
+    fetchLatestRun.mockResolvedValue({
+      id: 'run-1',
+      session_id: 'session-1',
+      trigger_message_id: 'msg-1',
+      planner_agent_id: 'primary_pm_agent',
+      status: 'planned',
+      summary: 'planned 1 task',
+      tasks: [],
+    })
+
+    const store = useSessionStore()
+    await store.fetchLatestRun('session-1')
+
+    store.setCurrentSessionId(null)
+
+    expect(store.activeRun).toBeNull()
+    expect(store.activeTasks).toEqual([])
+    expect(setStreamCurrentSessionId).toHaveBeenCalledWith(null)
+  })
+
+  // M4: Tests for task-aware pending change methods
+  it('filters pending changes by task_id', async () => {
+    const store = useSessionStore()
+    store.setCurrentSessionId('session-1')
+
+    // Setup mock for getPendingChanges
+    const mockGetPendingChanges = vi.fn().mockReturnValue([
+      { change_id: 'change-1', task_id: 'task-1', run_id: 'run-1', path: 'a.txt' },
+      { change_id: 'change-2', task_id: 'task-2', run_id: 'run-1', path: 'b.txt' },
+    ])
+    ;(store.streamState as any).getPendingChanges = mockGetPendingChanges
+
+    const task1Changes = store.getPendingChangesByTask('task-1')
+    expect(task1Changes).toHaveLength(1)
+    expect(task1Changes[0].change_id).toBe('change-1')
+
+    const task2Changes = store.getPendingChangesByTask('task-2')
+    expect(task2Changes).toHaveLength(1)
+    expect(task2Changes[0].change_id).toBe('change-2')
+  })
+
+  it('updates task status in activeTasks', () => {
+    const store = useSessionStore()
+    store.activeTasks = [
+      { id: 'task-1', status: 'waiting_confirmation' },
+      { id: 'task-2', status: 'waiting_confirmation' },
+    ] as any
+
+    store.updateTaskStatus('task-1', 'completed')
+
+    expect(store.activeTasks[0].status).toBe('completed')
+    expect(store.activeTasks[1].status).toBe('waiting_confirmation')
+  })
+
+  it('checks if all tasks are in terminal state', () => {
+    const store = useSessionStore()
+
+    store.activeTasks = [
+      { id: 'task-1', status: 'completed' },
+      { id: 'task-2', status: 'completed' },
+    ] as any
+    expect(store.areAllTasksTerminal()).toBe(true)
+
+    store.activeTasks = [
+      { id: 'task-1', status: 'completed' },
+      { id: 'task-2', status: 'waiting_confirmation' },
+    ] as any
+    expect(store.areAllTasksTerminal()).toBe(false)
   })
 })

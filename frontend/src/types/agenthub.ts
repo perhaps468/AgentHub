@@ -1,124 +1,129 @@
-export type SidebarMode = 'conversations' | 'agents'
-export type SidebarPanel = 'messages' | 'agents'
-export type ConversationMode = 'single' | 'group'
-export type ConversationKind = 'legacy-group' | 'group' | 'single-agent' | 'private'
-export type SenderType = 'human' | 'agent' | 'system'
-export type PreviewType = 'empty' | 'code' | 'web' | 'ppt' | 'file'
-export type AgentPlatform = 'claude-code' | 'codex' | 'opencode' | 'custom'
-
-export interface AgentProfile {
+export interface OrchestrationTask {
   id: string
-  owner_id?: string | null
-  name: string
-  avatar?: string | null
-  avatar_url?: string | null
-  platform: string
-  capabilityTags?: string[]
-  capability_tags?: string[]
-  tool_permissions?: string[]
-  is_builtin?: boolean
-  is_active?: boolean
-  status?: 'online' | 'offline'
-  role?: string
-  model?: string
-  description?: string | null
-  system_prompt?: string
+  run_id: string
+  parent_task_id?: string | null
+  sequence: number
+  assigned_agent_id: string
+  kind: string
+  title: string
+  goal: string
+  input_payload: Record<string, unknown>
+  result_payload?: Record<string, unknown> | null
+  error_payload?: Record<string, unknown> | null
+  status: TaskStatus
 }
 
-export interface AgentConfig {
-  available_models: string[]
-  available_capability_tags: string[]
-}
+// M4: Extended task statuses for confirmation flow
+export type TaskStatus =
+  | 'planned'
+  | 'running'
+  | 'waiting_confirmation'
+  | 'completed'
+  | 'rejected'
+  | 'cancelled'
+  | 'failed'
 
-export interface AgentDraft {
-  name: string
-  model: string
-  capabilityTags: string[]
-  description?: string
-  avatar?: string
-  platform?: AgentPlatform
-}
-
-export interface SidebarAgent {
-  id: string
-  name: string
-  avatar: string
-  capabilityTags: string[]
-  description?: string
-  platform?: AgentPlatform
-  isCustom?: boolean
-  role?: string
-  model?: string
-  system_prompt?: string
-}
-
-// ── Session & Message Types ──────────────────────────────
-
-export interface Workspace {
-  id: string
-  name: string
-  root_path: string
-}
-
-export interface SessionMember {
+export interface OrchestrationRun {
   id: string
   session_id: string
-  member_type: 'agent' | 'user'
-  member_id: string
-  is_primary: boolean
-  health_status: string
-  created_at: string
+  trigger_message_id: string
+  planner_agent_id: string
+  status: RunStatus
+  summary?: string | null
+  tasks: OrchestrationTask[]
 }
 
-export interface ConversationItem {
-  id: string
-  owner_id: string
-  workspace_id: string | null
-  agent_id: string | null
-  title: string | null
-  mode: string
-  is_pinned: boolean
-  is_archived: boolean
-  created_at: string
-  updated_at: string
-  workspace?: Workspace | null
-  members?: SessionMember[] | null
+// M5: Extended run statuses for aggregation
+export type RunStatus =
+  | 'planned'
+  | 'running'
+  | 'waiting_confirmation'
+  | 'completed'
+  | 'partial'
+  | 'cancelled'
+  | 'failed'
+
+export interface RuntimeProcessNode {
+  stream_id: string
+  message_id: string
+  timestamp: string
+  node_type: 'tool_event' | 'runtime_state' | 'change_preview'
+  tool_name?: string
+  tool_status?: string
+  state?: string
 }
 
-export interface ChatMessage {
-  id: string
+export interface StreamingMessage {
+  stream_id: string
+  message_id?: string
   session_id: string
-  sender_type: string
+  sender_type: 'agent' | 'human'
   sender_role: string | null
   content: string
-  type: string
-  status: string
-  payload: Record<string, unknown>
-  metadata: Record<string, unknown>
+  accumulated_content: string
+  ui_status: 'thinking' | 'streaming' | 'done' | 'syncing_interrupted'
+  is_ephemeral: boolean
   created_at: string
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
+  payload: { text: string }
+  metadata: Record<string, unknown>
 }
 
-export interface CreateSessionPayload {
-  owner_id?: string | null
-  title?: string | null
-  mode: 'single' | 'group'
-  workspace_id: string
+export interface PendingChange {
+  change_id: string
+  session_id: string
+  message_id?: string
+  stream_id?: string
+  // M4: Task-aware fields for orchestration
+  run_id?: string | null
+  task_id?: string | null
   agent_id?: string | null
-  participant_agent_ids?: string[] | null
+  batch_id?: string | null
+  operation: 'create' | 'update' | 'delete'
+  path: string
+  unified_diff: string
+  status: PendingChangeStatus
+  original_content?: string
+  proposed_content?: string
+  created_at?: string | null
+  applied_at?: string | null
 }
 
-export interface UpdateSessionPayload {
-  title?: string | null
-  is_pinned?: boolean
-  is_archived?: boolean
-  workspace_id?: string | null
+// M4: Extended pending change statuses
+export type PendingChangeStatus =
+  | 'pending_confirmation'
+  | 'applied'
+  | 'rejected'
+  | 'failed'
+
+// M4: Apply/Reject response from API
+export interface ApplyChangeResponse {
+  success: boolean
+  change_id: string
+  message: string
+  status: PendingChangeStatus
+  ws_pushed: boolean
+  run_id?: string | null
+  task_id?: string | null
   agent_id?: string | null
 }
 
-export interface PaginatedResponse<T> {
-  items: T[]
-  total: number
-  page: number
-  page_size: number
-  has_more: boolean
+// M4: Change preview event from WebSocket
+export interface ChangePreviewEvent {
+  type: 'change_preview'
+  change_id: string
+  stream_id?: string
+  message_id?: string
+  operation: 'create' | 'update' | 'delete'
+  path: string
+  unified_diff: string
+  status: PendingChangeStatus
+  timestamp?: string
+  // M4: Task-aware fields
+  run_id?: string | null
+  task_id?: string | null
+  agent_id?: string | null
+  batch_id?: string | null
 }
+
+export type RuntimeStateValue = 'thinking' | 'calling_tool' | 'observing' | 'responding' | 'finished' | 'error'

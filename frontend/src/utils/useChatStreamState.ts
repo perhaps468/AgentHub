@@ -24,12 +24,29 @@ interface InFlightStream {
   runtime_state?: RuntimeStateValue
 }
 
+interface RestoreTaskStreamSnapshot {
+  run_id?: string
+  tasks: Array<{
+    id: string
+    assigned_agent_id?: string
+    latest_stream?: {
+      stream_id: string
+      message_id?: string
+      status?: string
+    } | null
+  }>
+}
+
 interface ApplyResultEvent {
   type: 'apply_result'
   change_id: string
   success: boolean
   status: string
   message: string
+  // M4: Task-aware fields
+  run_id?: string | null
+  task_id?: string | null
+  agent_id?: string | null
 }
 
 interface RepairStateEventData {
@@ -102,17 +119,20 @@ export function useChatStreamState() {
       runtime_state: undefined,
     }
 
-    clearOtherSessionStreams(sessionId, streamId)
+    // Do NOT clear other streams - we support multiple streams per session
+    // Previously this was: clearOtherSessionStreams(sessionId, streamId)
     replaceStream(streamId, stream)
     console.log('[StreamState] ensured placeholder stream:', streamId, 'session:', sessionId)
     return stream
   }
 
   function clearOtherSessionStreams(sessionId: string, keepStreamId?: string) {
+    // Only clear streams from OTHER sessions, NOT the specified sessionId
+    // This preserves sibling task streams in the same session
     const toDelete: string[] = []
     streams.value.forEach((stream, streamId) => {
-      if (stream.session_id !== sessionId) return
-      if (keepStreamId && streamId === keepStreamId) return
+      if (stream.session_id === sessionId) return  // Keep streams in this session
+      if (keepStreamId && streamId === keepStreamId) return  // Keep the specified stream
       toDelete.push(streamId)
     })
 
@@ -155,7 +175,8 @@ export function useChatStreamState() {
 
     if (!stream_id || !message) return
 
-    clearOtherSessionStreams(sessionId, stream_id)
+    // Do NOT clear other session streams - we support multiple streams per session
+    // This was the old behavior: clearOtherSessionStreams(sessionId, stream_id)
     if (streams.value.has(stream_id)) return
 
     const stream: InFlightStream = {
@@ -167,7 +188,12 @@ export function useChatStreamState() {
       accumulated_content: '',
       type: message.type || 'text',
       payload: { text: '' },
-      metadata: message.metadata || {},
+      metadata: {
+        ...(message.metadata || {}),
+        ...(event.run_id ? { run_id: event.run_id } : {}),
+        ...(event.task_id ? { task_id: event.task_id } : {}),
+        ...(event.agent_id ? { agent_id: event.agent_id } : {}),
+      },
       ui_status: 'thinking',
       created_at: timestamp || message.created_at || new Date().toISOString(),
       runtime_nodes: [],
@@ -245,8 +271,8 @@ export function useChatStreamState() {
       stream.accumulated_content.length,
     )
 
-    clearOtherSessionStreams(sessionId, stream_id)
-    finalizeStream(stream_id)
+    // Do NOT finalize - keep stream in map so it can be queried
+    // Callers should use finalizeStream() explicitly when ready to remove
     return stream
   }
 
@@ -262,13 +288,15 @@ export function useChatStreamState() {
       console.error('[StreamState] message_error:', stream_id, error_code, error_message)
     }
 
-    clearOtherSessionStreams(sessionId, stream_id)
+    // Do NOT clear sibling streams - they may still be running
     finalizeStream(stream_id)
 
     return { stream, error_code, error_message }
   }
 
   function finalizeStream(streamId: string) {
+    // Only finalize if stream exists
+    if (!streams.value.has(streamId)) return
     const newMap = new Map(streams.value)
     newMap.delete(streamId)
     streams.value = newMap
@@ -305,6 +333,15 @@ export function useChatStreamState() {
 
   function getSessionIdForStream(streamId: string): string | undefined {
     return streams.value.get(streamId)?.session_id
+  }
+
+  function getStreamIdForTask(taskId: string): string | undefined {
+    for (const [streamId, stream] of streams.value.entries()) {
+      if (stream.metadata?.task_id === taskId) {
+        return streamId
+      }
+    }
+    return undefined
   }
 
   function handleToolEvent(event: any, sessionId: string): any {
@@ -364,6 +401,36 @@ export function useChatStreamState() {
     return { stream_id, state, message_id: message_id || stream?.message_id, timestamp }
   }
 
+  function restoreTaskStreams(sessionId: string, snapshot: RestoreTaskStreamSnapshot) {
+    snapshot.tasks.forEach((task) => {
+      const latestStream = task.latest_stream
+      if (!latestStream?.stream_id) return
+
+      const stream = ensureStream(latestStream.stream_id, sessionId, {
+        messageId: latestStream.message_id,
+        senderRole: 'PM',
+        timestamp: new Date().toISOString(),
+        uiStatus: latestStream.status === 'completed' ? 'done' : 'thinking',
+      })
+
+      stream.metadata = {
+        ...(stream.metadata || {}),
+        ...(snapshot.run_id ? { run_id: snapshot.run_id } : {}),
+        task_id: task.id,
+        ...(task.assigned_agent_id ? { agent_id: task.assigned_agent_id } : {}),
+      }
+
+      if (latestStream.message_id) {
+        stream.message_id = latestStream.message_id
+      }
+      if (latestStream.status === 'completed') {
+        stream.ui_status = 'done'
+      }
+
+      replaceStream(latestStream.stream_id, stream)
+    })
+  }
+
   function setCurrentSessionId(sessionId: string | null) {
     currentSessionId.value = sessionId
   }
@@ -399,6 +466,7 @@ export function useChatStreamState() {
       })
     }
 
+    // M4: Include task-aware fields from event
     const change: PendingChange = {
       change_id,
       operation,
@@ -408,6 +476,11 @@ export function useChatStreamState() {
       session_id: sessionId,
       stream_id,
       message_id,
+      // M4: Task-aware fields
+      run_id: event.run_id || null,
+      task_id: event.task_id || null,
+      agent_id: event.agent_id || null,
+      batch_id: event.batch_id || null,
     }
 
     const newMap = new Map(pendingChanges.value)
@@ -460,15 +533,33 @@ export function useChatStreamState() {
   }
 
   function handleApplyResult(event: ApplyResultEvent) {
-    const { change_id, success, status } = event
+    const { change_id, success, status, task_id } = event
 
     if (!change_id) return
 
-    console.log('[StreamState] apply_result:', change_id, 'success:', success, 'status:', status)
+    console.log('[StreamState] apply_result:', change_id, 'success:', success, 'status:', status, 'task_id:', task_id)
 
     // Always update the status so the frontend can display the result
     // instead of removing the change (which causes the status to revert to default).
     updatePendingChangeStatus(change_id, status as PendingChange['status'])
+
+    // M4: If this is a task-aware change, trigger task status update callback
+    if (task_id) {
+      const change = pendingChanges.value.get(change_id)
+      if (change?.task_id) {
+        const newStatus = status === 'applied' ? 'completed' : status === 'rejected' ? 'rejected' : null
+        if (newStatus) {
+          // Emit event for task status update (handled by caller/component)
+          window.dispatchEvent(new CustomEvent('orchestration:task-status-update', {
+            detail: {
+              task_id: change.task_id,
+              run_id: change.run_id,
+              status: newStatus,
+            }
+          }))
+        }
+      }
+    }
   }
 
   function handleRepairState(event: RepairStateEventData) {
@@ -494,6 +585,11 @@ export function useChatStreamState() {
       session_id: string
       message_id?: string
       stream_id?: string
+      // M4: Task-aware fields
+      run_id?: string | null
+      task_id?: string | null
+      agent_id?: string | null
+      batch_id?: string | null
       path: string
       operation: 'create' | 'update' | 'delete'
       unified_diff: string
@@ -513,19 +609,26 @@ export function useChatStreamState() {
         session_id: item.session_id || sessionId,
         message_id: item.message_id || '',
         stream_id: item.stream_id || '',
+        // M4: Task-aware fields
+        run_id: item.run_id || null,
+        task_id: item.task_id || null,
+        agent_id: item.agent_id || null,
+        batch_id: item.batch_id || null,
         operation: item.operation,
         path: item.path,
         unified_diff: item.unified_diff || '',
         status: item.status,
         original_content: item.original_content,
         proposed_content: item.proposed_content,
+        created_at: item.created_at || null,
+        applied_at: item.applied_at || null,
       }
 
       const newMap = new Map(pendingChanges.value)
       newMap.set(item.change_id, change)
       pendingChanges.value = newMap
 
-      console.log('[StreamState] Restored pending change:', item.change_id, item.path, item.status)
+      console.log('[StreamState] Restored pending change:', item.change_id, item.path, item.status, 'task_id:', item.task_id)
     })
   }
 
@@ -556,7 +659,9 @@ export function useChatStreamState() {
     clearSession,
     hasInFlightStream,
     getStream,
+    getStreamIdForTask,
     getSessionIdForStream,
+    ensureStream,
     handleToolEvent,
     handleRuntimeState,
     pendingChanges,
@@ -573,7 +678,10 @@ export function useChatStreamState() {
     handleRepairState,
     clearRepairState,
     restorePendingChanges,
+    restoreTaskStreams,
     clearInFlightStreams,
     clearOtherSessionStreams,
+    ensureStream,
+    getStreamIdForTask,
   }
 }

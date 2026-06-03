@@ -65,6 +65,11 @@ export type WsIncomingMessage = {
   // Task D-2: repair_state
   attempt?: number
   max_attempts?: number
+  // M4: Task-aware fields for orchestration
+  run_id?: string | null
+  task_id?: string | null
+  agent_id?: string | null
+  batch_id?: string | null
 }
 
 type StateChangeHandler = (state: ConnectionState) => void
