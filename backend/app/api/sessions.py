@@ -4,9 +4,12 @@
 Task B+C-1: Session creation requires workspace_id.
 Session responses include workspace details for frontend display.
 """
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.core.security import CurrentUser
@@ -247,4 +250,124 @@ def list_messages(
         page=page,
         page_size=page_size,
         has_more=page * page_size < total,
+    )
+
+
+# M6: Active Run Recovery Endpoint
+class ActiveRunRecoveryResponse(BaseModel):
+    """Response model for active run recovery endpoint."""
+    run: Optional[dict] = None
+    tasks: list[dict] = []
+    pending_changes: list[dict] = []
+
+
+from app.models.orchestration import OrchestrationRun as OrchRun
+from app.models.orchestration import OrchestrationTask as OrchTask
+from app.models.pending_change import PendingChangeModel
+
+
+@router.get("/{session_id}/active-run", response_model=ActiveRunRecoveryResponse)
+def get_active_run(
+    session_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+) -> ActiveRunRecoveryResponse:
+    """Get active run with tasks and pending changes for UI state recovery.
+
+    M6: This endpoint provides the minimum data needed for frontend to render
+    the orchestration execution view after page refresh or session re-entry.
+
+    Returns:
+        - run: Active run data (or None if no active run)
+        - tasks: List of tasks with all UI fields
+        - pending_changes: List of pending changes for this session
+
+    Raises:
+        HTTPException 404: If session not found.
+        HTTPException 403: If user doesn't own the session.
+    """
+    # Check session ownership
+    get_session_with_ownership_check(db, session_id, current_user)
+
+    # Get latest active run for this session
+    from sqlalchemy import desc
+    run = db.scalars(
+        select(OrchRun)
+        .options(selectinload(OrchRun.tasks))
+        .where(
+            OrchRun.session_id == session_id,
+            OrchRun.status.in_(['planned', 'running', 'waiting_confirmation'])
+        )
+        .order_by(desc(OrchRun.created_at))
+        .limit(1)
+    ).first()
+
+    if run is None:
+        return ActiveRunRecoveryResponse(run=None, tasks=[], pending_changes=[])
+
+    # Build run response
+    run_data = {
+        'id': run.id,
+        'session_id': run.session_id,
+        'trigger_message_id': run.trigger_message_id,
+        'planner_agent_id': run.planner_agent_id,
+        'status': run.status,
+        'summary': run.summary,
+        'created_at': run.created_at.isoformat() if run.created_at else None,
+        'updated_at': run.updated_at.isoformat() if run.updated_at else None,
+    }
+
+    # Build tasks response
+    tasks_data = []
+    for task in run.tasks:
+        tasks_data.append({
+            'id': task.id,
+            'run_id': task.run_id,
+            'parent_task_id': task.parent_task_id,
+            'sequence': task.sequence,
+            'assigned_agent_id': task.assigned_agent_id,
+            'kind': task.kind,
+            'title': task.title,
+            'goal': task.goal,
+            'input_payload': task.input_payload,
+            'result_payload': task.result_payload,
+            'error_payload': task.error_payload,
+            'status': task.status,
+        })
+
+    # Get pending changes for this session/run
+    pending_changes = (
+        db.query(PendingChangeModel)
+        .filter(
+            PendingChangeModel.session_id == session_id,
+            PendingChangeModel.status == 'pending_confirmation'
+        )
+        .all()
+    )
+
+    pending_changes_data = []
+    for pc in pending_changes:
+        pending_changes_data.append({
+            'change_id': pc.change_id,
+            'session_id': pc.session_id,
+            'message_id': pc.message_id,
+            'stream_id': pc.stream_id,
+            'run_id': pc.run_id,
+            'task_id': pc.task_id,
+            'agent_id': pc.agent_id,
+            'batch_id': pc.batch_id,
+            'operation': pc.operation,
+            'path': pc.path,
+            'unified_diff': pc.unified_diff,
+            'original_content': pc.original_content,
+            'proposed_content': pc.proposed_content,
+            'status': pc.status,
+            'created_at': pc.created_at.isoformat() if pc.created_at else None,
+            'applied_at': pc.applied_at.isoformat() if pc.applied_at else None,
+        })
+
+    return ActiveRunRecoveryResponse(
+        run=run_data,
+        tasks=tasks_data,
+        pending_changes=pending_changes_data,
     )

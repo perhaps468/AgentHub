@@ -163,6 +163,9 @@ class RuntimeAgentService:
         stream_id: str | None = None,
         workspace_root: str | None = None,
         session_history: list[RuntimeMessage] | None = None,
+        run_id: str | None = None,
+        task_id: str | None = None,
+        task_agent_id: str | None = None,
     ) -> None:
         self.session_id = session_id
         self.user_message = user_message
@@ -170,6 +173,9 @@ class RuntimeAgentService:
         self.llm_adapter = llm_adapter
         self.db = db
         self.stream_id = stream_id or str(uuid.uuid4())
+        self.run_id = run_id
+        self.task_id = task_id
+        self.task_agent_id = task_agent_id
         # T1: pre-loaded session history to inject into agent memory
         self._session_history: list[RuntimeMessage] = session_history or []
 
@@ -863,6 +869,10 @@ class RuntimeAgentService:
 
         model.message_id = data.get("message_id") or self._message_id or model.message_id
         model.stream_id = data.get("stream_id") or self.stream_id or model.stream_id
+        model.run_id = data.get("run_id") or self.run_id or model.run_id
+        model.task_id = data.get("task_id") or self.task_id or model.task_id
+        model.agent_id = data.get("agent_id") or self.task_agent_id or model.agent_id
+        model.batch_id = data.get("batch_id") or model.batch_id
         model.path = data.get("path", model.path or "")
         model.operation = data.get("operation", model.operation or "create")
         model.unified_diff = data.get("unified_diff", model.unified_diff or "")
@@ -870,6 +880,28 @@ class RuntimeAgentService:
         model.proposed_content = data.get("proposed_content", model.proposed_content)
         model.status = data.get("status", model.status or "pending_confirmation")
         self.db.add(model)
+
+        if model.task_id:
+            from app.models.orchestration import OrchestrationRun, OrchestrationTask
+
+            task = self.db.get(OrchestrationTask, model.task_id)
+            if task is not None and task.status == "running":
+                task.status = "waiting_confirmation"
+                task.result_payload = {
+                    **(task.result_payload or {}),
+                    "stream_id": model.stream_id or self.stream_id,
+                    "message_id": model.message_id or self._message_id,
+                    "change_id": change_id,
+                    "path": model.path,
+                }
+                self.db.add(task)
+
+            if model.run_id:
+                run = self.db.get(OrchestrationRun, model.run_id)
+                if run is not None and run.status in {"planned", "running"}:
+                    run.status = "waiting_confirmation"
+                    self.db.add(run)
+
         self.db.commit()
 
         self._pending_change_ids.add(change_id)
