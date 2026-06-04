@@ -1,50 +1,48 @@
 <template>
   <header class="chat-header">
     <div class="chat-header-main">
-      <button class="header-icon mobile-only" type="button" @click="$emit('open-left')">☰</button>
-      <div>
-        <p class="chat-header-kicker">
-          {{ currentSession?.mode === 'group' ? '群聊协作' : '单聊会话' }}
-        </p>
+      <div class="chat-header-left">
+        <avatar :info="{ name: currentSession?.title, avatar: currentAgentAvatar }" :size="38" />
+      </div>
+      <div class="chat-header-right">
         <h2>{{ currentSession?.title || '选择或新建会话' }}</h2>
-        <p class="chat-header-subtitle">
-          {{ currentSession ? `创建于 ${formatTime(currentSession.created_at)}` : '点击左侧新建会话开始聊天' }}
-        </p>
+        <div >
+        <!-- P6-9: Group member status display -->
+        <div v-if="currentSession?.mode === 'group' && currentSession.members?.length" class="group-members">
+          <div
+            v-for="member in currentSession.members"
+            :key="member.id"
+            class="member-chip"
+            :class="{ 'is-primary': member.is_primary }"
+          >
+            <span class="member-status-dot"></span>
+            <span class="member-name">{{ member.is_primary ? '主Agent' : `Agent` }}</span>
+            <span class="member-health">{{ member.health_status === 'connected' ? '在线' : member.health_status }}</span>
+          </div>
+        </div>
+        <ConnectionStatus
+          v-if="currentSessionId"
+          :state="connectionState"
+          :reconnectAttempt="reconnectAttempt"
+          @retry="$emit('retry')"
+        />
+      </div>
         <div v-if="workspace" class="workspace-badge" :title="workspace.root_path">
           <span class="workspace-icon">&#128193;</span>
           <span class="workspace-name">{{ workspace.name || workspaceRootName }}</span>
         </div>
       </div>
     </div>
-    <div class="chat-header-right">
-      <!-- P6-9: Group member status display -->
-      <div v-if="currentSession?.mode === 'group' && currentSession.members?.length" class="group-members">
-        <div
-          v-for="member in currentSession.members"
-          :key="member.id"
-          class="member-chip"
-          :class="{ 'is-primary': member.is_primary }"
-        >
-          <span class="member-status-dot"></span>
-          <span class="member-name">{{ member.is_primary ? '主Agent' : `Agent` }}</span>
-          <span class="member-health">{{ member.health_status === 'connected' ? '已连接' : member.health_status }}</span>
-        </div>
-      </div>
-      <ConnectionStatus
-        v-if="currentSessionId"
-        :state="connectionState"
-        :reconnectAttempt="reconnectAttempt"
-        @retry="$emit('retry')"
-      />
-    </div>
   </header>
 </template>
 
 <script lang="ts" setup>
 import { computed } from 'vue'
+import { useAgentStore } from '../../store'
 import ConnectionStatus from '../ConnectionStatus.vue'
 import type { ConversationItem, Workspace } from '../../types/agenthub'
 import type { ConnectionState } from '../../utils/ws-client'
+import { log } from 'console'
 
 const props = defineProps<{
   currentSession: ConversationItem | null | undefined
@@ -64,6 +62,16 @@ const workspaceRootName = computed(() => {
   if (!props.workspace) return ''
   const parts = props.workspace.root_path.split(/[/\\]/)
   return parts[parts.length - 1] || props.workspace.root_path
+})
+
+const agentStore = useAgentStore()
+
+const currentAgentAvatar = computed(() => {
+  if (!props.currentSession?.title) return ''
+  const agent = agentStore.agents.find((a) =>{ 
+    return props.currentSession?.title?.includes(a.name) 
+  }) 
+  return agent?.avatar || '无头像'
 })
 </script>
 
@@ -87,27 +95,12 @@ const workspaceRootName = computed(() => {
   min-width: 0;
 }
 
-.chat-header-kicker {
-  margin: 0 0 4px;
-  color: #94a3b8;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-weight: 600;
-}
-
 .chat-header h2 {
   margin: 0 0 4px;
   font-size: 18px;
   font-weight: 600;
   color: #1e293b;
   line-height: 1.2;
-}
-
-.chat-header-subtitle {
-  margin: 0;
-  color: #94a3b8;
-  font-size: 12px;
 }
 
 .workspace-badge {
@@ -136,9 +129,8 @@ const workspaceRootName = computed(() => {
 
 /* P6-9: Group member chips */
 .chat-header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 5px;
 }
 
 .group-members {

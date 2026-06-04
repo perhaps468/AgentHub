@@ -30,11 +30,11 @@ const currentStatus = computed(() => props.status || props.state || 'disconnecte
 const label = computed(() => {
   switch (currentStatus.value) {
     case 'connected':
-      return '已连接'
+      return '在线'
     case 'connecting':
       return '连接中'
     case 'disconnected':
-      return '已断开'
+      return '离线'
     case 'reconnecting':
       return `重连中 (${props.reconnectAttempt})`
     case 'failed':

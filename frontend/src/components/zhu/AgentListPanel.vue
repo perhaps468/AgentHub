@@ -26,6 +26,7 @@
 
     <div class="agent-list">
       <div
+      <div
         v-for="agent in agents"
         :key="agent.id"
         class="agent-item-wrapper"
@@ -36,7 +37,7 @@
           type="button"
           @click="$emit('select-agent', agent)"
         >
-          <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="42px" :style="getAgentAvatarStyle(agent)" />
+          <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="42px" @click.stop="showAgentInfo(agent)" />
           <div class="agent-info">
             <div class="agent-title-row">
               <span class="agent-name">{{ agent.name }}</span>
@@ -65,13 +66,21 @@
       </div>
     </div>
   </template>
+
+  <!-- Agent 信息弹窗 -->
+  <AgentInfoDialog
+    v-model="showInfoDialog"
+    :agent="selectedAgentForInfo"
+  />
 </template>
 
 <script lang="ts" setup>
 import { Fold, Expand, Edit, Delete } from '@element-plus/icons-vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import type { SidebarAgent, SidebarPanel } from '../../types/agenthub'
 import Search from '../../veiws/Serach.vue'
 import avatar from '../../veiws/img/avatar.vue'
+import AgentInfoDialog from './AgentInfoDialog.vue'
 
 const props = defineProps<{
   activePanel: SidebarPanel
@@ -81,7 +90,7 @@ const props = defineProps<{
   isCollapsed: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'update:searchValue', value: string): void
   (e: 'add-agent'): void
   (e: 'select-agent', agent: SidebarAgent): void
@@ -90,18 +99,19 @@ defineEmits<{
   (e: 'toggle-collapse'): void
 }>()
 
-const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
+// Agent 信息弹窗
+const showInfoDialog = ref(false)
+const selectedAgentForInfo = ref<SidebarAgent | null>(null)
 
-const getAgentAvatarStyle = (agent: SidebarAgent) => {
-  const colors: Record<string, string> = {
-    'claude-code': '#e65100',
-    codex: '#e65100',
-    opencode: '#7b1fa2',
-    custom: '#ff7043',
-  }
-  const bg = colors[agent.platform || 'custom'] || '#9e9e9e'
-  return { '--avatar-bg': bg }
+const showAgentInfo = (agent: SidebarAgent) => {
+  selectedAgentForInfo.value = agent
+  showInfoDialog.value = true
 }
+
+
+
+
+const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
 
 const getAgentPlatformLabel = (agent: SidebarAgent) => {
   const labels: Record<string, string> = {
@@ -114,7 +124,7 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
 }
 </script>
 
-<style scoped>
+<style scoped lang="less">
 /* ==================== 侧边栏头部 ==================== */
 .sidebar-header {
   display: flex;
@@ -345,5 +355,74 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
   background: rgba(100, 116, 139, 0.1);
   color: #64748b;
   border-color: rgba(100, 116, 139, 0.15);
+}
+
+/* ==================== 右键菜单 ==================== */
+.context-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 140px;
+  padding: 6px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.15),
+    0 2px 10px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: rgba(59, 130, 246, 0.08);
+    color: #3b82f6;
+  }
+
+  &.danger {
+    color: #ef4444;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.1);
+      color: #dc2626;
+    }
+  }
+}
+
+/* 右键菜单动画 */
+.context-menu-enter-active {
+  transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.context-menu-leave-active {
+  transition: all 0.1s ease-out;
+}
+
+.context-menu-enter-from {
+  opacity: 0;
+  transform: scale(0.9) translateY(-8px);
+}
+
+.context-menu-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
 }
 </style>

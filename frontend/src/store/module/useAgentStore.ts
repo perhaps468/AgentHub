@@ -82,6 +82,6 @@ export const useAgentStore = defineStore('agent', () => {
     fetchAgents: fetchAgentsAction,
     createAgent: createAgentAction,
     updateAgent: updateAgentAction,
-    deleteAgent: deleteAgentAction,
+    deleteAgent: deleteAgentAction
   }
 })

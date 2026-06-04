@@ -439,11 +439,10 @@ document.addEventListener('click', () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 85%;
   overflow-y: auto;
   padding-right: 4px;
+  height: 90%;
 }
-
 .conversation-list::-webkit-scrollbar {
   width: 4px;
 }
