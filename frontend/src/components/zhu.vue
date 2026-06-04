@@ -618,8 +618,9 @@ onMounted(async () => {
     } else if (msg.type === 'message_end') {
       const stream = sessionStore.streamState.handleMessageEnd(msg, resolvedSessionId)
       if (stream) {
+        const persistedMessageId = stream.message_id || msg.message_id || msg.stream_id || stream.stream_id
         sessionStore.mergeOrUpdateMessage(resolvedSessionId, {
-          id: stream.message_id || msg.message_id || '',
+          id: persistedMessageId,
           session_id: resolvedSessionId,
           sender_type: 'agent',
           sender_role: stream.sender_role,

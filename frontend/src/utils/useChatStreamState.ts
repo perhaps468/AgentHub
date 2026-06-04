@@ -198,15 +198,21 @@ export function useChatStreamState() {
     // This was the old behavior: clearOtherSessionStreams(sessionId, stream_id)
     if (streams.value.has(stream_id)) return
 
+    const initialContent = typeof message.content === 'string' && message.content.length > 0
+      ? message.content
+      : typeof message.payload?.text === 'string'
+        ? message.payload.text
+        : ''
+
     const stream: InFlightStream = {
       stream_id,
       message_id: message.id,
       session_id: sessionId,
       sender_role: agent_role || message.sender_role,
-      content: '',
-      accumulated_content: '',
+      content: initialContent,
+      accumulated_content: initialContent,
       type: message.type || 'text',
-      payload: { text: '' },
+      payload: { text: initialContent },
       metadata: {
         ...(message.metadata || {}),
         ...(event.run_id ? { run_id: event.run_id } : {}),

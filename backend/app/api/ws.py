@@ -636,6 +636,53 @@ async def _send_group_plain_response(
     )
 
 
+async def _send_orchestration_summary_message(
+    websocket: WebSocket,
+    db,
+    session_id: str,
+    run_id: str,
+    agent_role: str,
+) -> bool:
+    summary_message = next(
+        (
+            message
+            for message in (
+                db.query(Message)
+                .filter(
+                    Message.session_id == session_id,
+                    Message.sender_type == "agent",
+                )
+                .order_by(Message.created_at.desc())
+                .all()
+            )
+            if (message.msg_metadata or {}).get("run_id") == run_id
+            and (message.msg_metadata or {}).get("is_orchestration_summary") is True
+        ),
+        None,
+    )
+    if summary_message is None:
+        return False
+
+    summary_stream_id = str(uuid.uuid4())
+    await ws_send_message_start(
+        websocket,
+        agent_role=agent_role,
+        stream_id=summary_stream_id,
+        message=summary_message,
+        run_id=run_id,
+    )
+    await ws_send_message_end(
+        websocket,
+        agent_role=agent_role,
+        stream_id=summary_stream_id,
+        message_id=summary_message.id,
+        status="completed",
+        final_content=summary_message.content,
+        run_id=run_id,
+    )
+    return True
+
+
 async def _respond_pings(websocket: WebSocket) -> None:
     try:
         msg = await asyncio.wait_for(websocket.receive_json(), timeout=0)
@@ -1274,7 +1321,7 @@ def _create_orchestration_plan_with_fallback(
         user_request=content,
         planned_tasks=[
             {
-                "task_id": task.id,
+                "task_id": f"planned_{index + 1}",
                 "sequence": index + 1,
                 "title": task.title,
                 "assigned_agent_id": task.assigned_agent_id,
@@ -1352,12 +1399,54 @@ async def _execute_orchestration_tasks(
             final_result: dict | None = None
             async for event in executor.stream_task_events(task_id, stream_id):
                 if event.type == "message_start":
-                    continue
+                    await ws_send_message_start(
+                        websocket,
+                        agent_role=event.agent_role,
+                        stream_id=event.stream_id,
+                        message=event.message,
+                        run_id=event.run_id,
+                        task_id=event.task_id,
+                        agent_id=event.agent_id,
+                    )
                 elif event.type == "message_delta":
-                    continue
+                    await ws_send_message_delta(
+                        websocket,
+                        agent_role=event.agent_role,
+                        stream_id=event.stream_id,
+                        message_id=event.message_id,
+                        delta=event.delta,
+                        run_id=event.run_id,
+                        task_id=event.task_id,
+                        agent_id=event.agent_id,
+                    )
                 elif event.type == "message_end":
-                    final_result = {"message_id": event.message_id, "final_content": getattr(event, "final_content", None)}
+                    final_result = {
+                        "message_id": event.message_id,
+                        "final_content": getattr(event, "final_content", None),
+                    }
+                    await ws_send_message_end(
+                        websocket,
+                        agent_role=event.agent_role,
+                        stream_id=event.stream_id,
+                        message_id=event.message_id,
+                        status=event.status,
+                        final_content=getattr(event, "final_content", None),
+                        run_id=event.run_id,
+                        task_id=event.task_id,
+                        agent_id=event.agent_id,
+                    )
                 elif event.type == "message_error":
+                    await ws_send_message_error(
+                        websocket,
+                        agent_role=event.agent_role,
+                        stream_id=event.stream_id,
+                        message_id=event.message_id,
+                        error_code=event.error_code,
+                        error_message=event.error_message,
+                        run_id=event.run_id,
+                        task_id=event.task_id,
+                        agent_id=event.agent_id,
+                    )
                     await ws_send_task_error(
                         websocket,
                         run_id=event.run_id,
@@ -1688,6 +1777,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                                 "cancelled",
                                 "failed",
                             }:
+                                await _send_orchestration_summary_message(
+                                    websocket=websocket,
+                                    db=db,
+                                    session_id=session_id,
+                                    run_id=finalized_run.id,
+                                    agent_role=agent_name,
+                                )
                                 await ws_send_run_finished(
                                     websocket,
                                     run_id=finalized_run.id,
