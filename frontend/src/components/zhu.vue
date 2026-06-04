@@ -108,7 +108,7 @@
  * 高级玻璃态设计，白色为主，带动态效果
  * 结合 V1 完整功能 + V3 清晰结构
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { fetchWorkspace } from '../api/modules/workspace'
@@ -527,7 +527,28 @@ async function restoreCurrentSession() {
 /** 关闭预览区 */
 const closePreview = () => {
   previewState.value = { type: 'empty', title: '' }
+  sessionStore.streamState?.clearPreviewDiff()
 }
+
+// M6: 监听预览 diff 状态变化，更新右侧预览面板
+watch(
+  () => sessionStore.streamState?.previewDiff,
+  (previewDiff) => {
+    if (previewDiff) {
+      previewState.value = {
+        type: 'diff',
+        title: previewDiff.path.split(/[/\\]/).pop() || '文件预览',
+        change_id: previewDiff.change_id,
+        operation: previewDiff.operation,
+        path: previewDiff.path,
+        unified_diff: previewDiff.unified_diff,
+      }
+    } else {
+      previewState.value = { type: 'empty', title: '' }
+    }
+  },
+  { immediate: true, deep: true },
+)
 
 // ==================== 生命周期 ====================
 
