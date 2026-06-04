@@ -128,6 +128,11 @@ def build_planner_prompt(
     parts.append(f"- 不允许分配给不存在的agent\n")
     parts.append(f"- 不允许循环依赖\n")
 
+    parts.append("\n## 额外拆分规则\n")
+    parts.append("- 如果请求包含多个独立交付物，优先拆成多个 task\n")
+    parts.append("- 如果请求包含多个目标文件、多个输出路径或多种语言实现，默认按独立产物拆分\n")
+    parts.append("- 只有多个动作必须共享同一上下文且不能独立交付时，才允许合并成一个 task\n")
+
     return "".join(parts)
 
 
