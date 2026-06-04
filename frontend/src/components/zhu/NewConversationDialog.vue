@@ -206,6 +206,7 @@ const isElectron = typeof window !== 'undefined' && window.navigator.userAgent.i
 const props = defineProps<{
   modelValue: boolean
   agents: SidebarAgent[]
+  primaryAgent?: SidebarAgent | null
   initialAgentId?: string
 }>()
 
@@ -244,11 +245,13 @@ const workspacesLoading = ref(false)
 const PRIMARY_AGENT_ID = 'primary_pm_agent'
 
 const primaryAgent = computed(() => {
-  return props.agents.find((a) => a.id === PRIMARY_AGENT_ID) || null
+  return props.primaryAgent || null
 })
 
 const agentsWithoutPrimary = computed(() => {
-  return props.agents.filter((a) => a.id !== PRIMARY_AGENT_ID)
+  const primaryAgentId = primaryAgent.value?.id
+  if (!primaryAgentId) return props.agents
+  return props.agents.filter((a) => a.id !== primaryAgentId)
 })
 
 function openFolderPicker() {

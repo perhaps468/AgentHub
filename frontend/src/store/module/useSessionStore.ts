@@ -220,6 +220,27 @@ export const useSessionStore = defineStore(
       }
     }
 
+    // M6: Add a new task from websocket event
+    function addTask(task: OrchestrationTask) {
+      const existingIndex = activeTasks.value.findIndex((t) => t.id === task.id)
+      if (existingIndex === -1) {
+        activeTasks.value.push(task)
+      } else {
+        activeTasks.value[existingIndex] = task
+      }
+    }
+
+    // M6: Update run status from websocket event
+    function updateRun(runId: string, status: string, summary?: string) {
+      if (activeRun.value?.id === runId) {
+        activeRun.value = {
+          ...activeRun.value,
+          status: status as any,
+          ...(summary !== undefined ? { summary } : {}),
+        }
+      }
+    }
+
     // M4: Get task by ID
     function getTaskById(taskId: string) {
       return activeTasks.value.find((t) => t.id === taskId)
@@ -439,6 +460,8 @@ export const useSessionStore = defineStore(
       getPendingChangesByTask,
       getPendingChangesByRun,
       updateTaskStatus,
+      addTask,
+      updateRun,
       getTaskById,
       areAllTasksTerminal,
       // M6: Active run recovery methods

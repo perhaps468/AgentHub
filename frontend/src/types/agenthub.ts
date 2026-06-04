@@ -11,6 +11,10 @@ export interface OrchestrationTask {
   result_payload?: Record<string, unknown> | null
   error_payload?: Record<string, unknown> | null
   status: TaskStatus
+  // P8: Planner integration fields
+  client_task_id?: string | null
+  assignment_reason?: string | null
+  depends_on?: string[] | null
 }
 
 // M4: Extended task statuses for confirmation flow
@@ -30,8 +34,13 @@ export interface OrchestrationRun {
   planner_agent_id: string
   status: RunStatus
   summary?: string | null
+  // P8: Planning source field
+  planning_source?: PlanningSource | null
   tasks: OrchestrationTask[]
 }
+
+// P8: Planning source enum
+export type PlanningSource = 'planner' | 'planner_repaired' | 'fallback_splitter'
 
 // M5: Extended run statuses for aggregation
 export type RunStatus =

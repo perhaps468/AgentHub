@@ -56,6 +56,23 @@ const isFirstLoad = ref(true)
 
 const pendingChangesForSession = computed(() => sessionStore.streamState.getPendingChanges(props.targetId))
 
+function resolveAgentName(metadata: Record<string, unknown> | undefined, senderRole: string | null | undefined) {
+  const currentSession = sessionStore.currentSession
+  const metadataAgentId = typeof metadata?.agent_id === 'string' ? metadata.agent_id : null
+
+  let resolvedAgentId: string | null = metadataAgentId
+  if (!resolvedAgentId && currentSession?.mode === 'single' && currentSession.agent_id) {
+    resolvedAgentId = currentSession.agent_id
+  }
+
+  if (resolvedAgentId) {
+    const matchedAgent = agentStore.agents.find((agent) => agent.id === resolvedAgentId)
+    if (matchedAgent?.name) return matchedAgent.name
+  }
+
+  return senderRole ?? 'AI助手'
+}
+
 function getPendingDiffsForMessage(messageId?: string, streamId?: string) {
   if (!messageId && !streamId) return []
   return pendingChangesForSession.value.filter((change) => {
@@ -79,7 +96,7 @@ const msgRecord = computed(() => {
       toId: props.targetId,
       fromInfo: {
         id: senderId,
-        name: isHuman ? userInfoStore.userName || '我' : agentStore.agent?.name ?? m.sender_role ?? 'AI助手',
+        name: isHuman ? userInfoStore.userName || '我' : resolveAgentName(m.metadata, m.sender_role),
         avatar: null,
         type: isHuman ? 'User' : 'Agent',
         badge: null,
@@ -112,7 +129,7 @@ const msgRecord = computed(() => {
         toId: props.targetId,
         fromInfo: {
           id: senderId,
-          name: agentStore.agent?.name ?? s.sender_role ?? 'AI助手',
+          name: resolveAgentName(s.metadata, s.sender_role),
           avatar: null,
           type: 'Agent',
           badge: null,

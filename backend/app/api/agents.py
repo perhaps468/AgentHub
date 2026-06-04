@@ -18,7 +18,7 @@ from app.schemas.agent import (
     AgentResponse,
     AgentUpdate,
 )
-from app.services.group_host_agent import get_user_group_host_agent
+from app.services.group_host_agent import get_user_group_host_agent, GROUP_HOST_AGENT_NAME
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
@@ -151,11 +151,13 @@ def _get_agent_or_404(db: Session, agent_id: str) -> Agent:
     return agent
 
 
-def resolve_default_agent(db: Session, owner_id: str | None = None) -> Agent | None:
+def resolve_default_agent(db: Session, owner_id: str | None = None, include_group_host: bool = True) -> Agent | None:
     if owner_id:
-        host_agent = get_user_group_host_agent(db, owner_id)
-        if host_agent is not None and host_agent.is_active:
-            return host_agent
+        # Only consider group host agent for group chat scenarios
+        if include_group_host:
+            host_agent = get_user_group_host_agent(db, owner_id)
+            if host_agent is not None and host_agent.is_active:
+                return host_agent
 
         owner_agent = (
             db.execute(
@@ -164,6 +166,7 @@ def resolve_default_agent(db: Session, owner_id: str | None = None) -> Agent | N
                     Agent.owner_id == owner_id,
                     Agent.is_builtin == False,  # noqa: E712
                     Agent.is_active == True,  # noqa: E712
+                    Agent.name != "群聊主Agent",  # Exclude group host agent for single chat
                 )
                 .order_by(Agent.updated_at.desc(), Agent.created_at.desc())
             )
@@ -179,6 +182,7 @@ def resolve_default_agent(db: Session, owner_id: str | None = None) -> Agent | N
             .where(
                 Agent.is_builtin == False,  # noqa: E712
                 Agent.is_active == True,  # noqa: E712
+                Agent.name != "群聊主Agent",  # Exclude group host agent for single chat
             )
             .order_by(Agent.updated_at.desc(), Agent.created_at.desc())
         )
@@ -188,7 +192,23 @@ def resolve_default_agent(db: Session, owner_id: str | None = None) -> Agent | N
     if non_builtin_agent is not None:
         return non_builtin_agent
 
-    return db.get(Agent, "pm_agent")
+    # Fallback: 查找任意群聊主 Agent (不以 pm_agent 为 fallback)
+    group_host = (
+        db.execute(
+            select(Agent)
+            .where(
+                Agent.name == GROUP_HOST_AGENT_NAME,
+                Agent.is_active == True,  # noqa: E712
+            )
+            .order_by(Agent.updated_at.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if group_host is not None:
+        return group_host
+
+    return None
 
 
 @router.get("/default", response_model=AgentResponse)

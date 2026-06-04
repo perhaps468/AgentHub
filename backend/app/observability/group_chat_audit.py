@@ -12,6 +12,26 @@ from loguru import logger
 from app.observability.audit_paths import get_group_chat_audit_log_path
 
 
+# 全局事件序列计数器，用于保证跨stream的事件按顺序排列
+_global_event_sequence: int = 0
+_sequence_lock = threading.Lock()
+
+
+def _get_next_sequence() -> int:
+    """获取下一个全局事件序列号（线程安全）"""
+    global _global_event_sequence
+    with _sequence_lock:
+        _global_event_sequence += 1
+        return _global_event_sequence
+
+
+def reset_event_sequence() -> None:
+    """重置全局事件序列计数器（用于新session开始时）"""
+    global _global_event_sequence
+    with _sequence_lock:
+        _global_event_sequence = 0
+
+
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -84,6 +104,7 @@ class GroupChatAuditRecorder:
         event = {
             "timestamp": _utcnow_iso(),
             "event_type": event_type,
+            "sequence": _get_next_sequence(),
             **{key: _compact_value(value) for key, value in data.items() if value is not None},
         }
         try:
@@ -279,6 +300,71 @@ class GroupChatAuditRecorder:
             status=status,
             summary=summary,
             tasks=tasks,
+        )
+
+    def record_fallback_decision(
+        self,
+        *,
+        session_id: str,
+        run_id: str | None,
+        planner_agent_id: str,
+        reason: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """记录fallback触发决策
+
+        Args:
+            session_id: session ID
+            run_id: run ID（如果有）
+            planner_agent_id: 主agent ID
+            reason: fallback原因（如 "planner_parse_failed", "planner_validation_failed", "planner_llm_failed"）
+            details: 额外详情
+        """
+        self.record(
+            "fallback_decision",
+            session_id=session_id,
+            run_id=run_id,
+            planner_agent_id=planner_agent_id,
+            reason=reason,
+            details=details,
+        )
+
+    def record_fallback_task_allocation(
+        self,
+        *,
+        session_id: str,
+        run_id: str,
+        planner_agent_id: str,
+        user_request: str,
+        planned_tasks: list[dict[str, Any]],
+        agent_ids: list[str],
+    ) -> None:
+        """记录fallback任务分配详情
+
+        Args:
+            session_id: session ID
+            run_id: run ID
+            planner_agent_id: 主agent ID
+            user_request: 用户原始请求
+            planned_tasks: 计划的任务列表
+            agent_ids: 可用的agent ID列表
+        """
+        self.record(
+            "fallback_task_allocation",
+            session_id=session_id,
+            run_id=run_id,
+            planner_agent_id=planner_agent_id,
+            user_request=user_request,
+            task_count=len(planned_tasks),
+            planned_tasks=[
+                {
+                    "sequence": task.get("sequence"),
+                    "title": task.get("title"),
+                    "assigned_agent_id": task.get("assigned_agent_id"),
+                }
+                for task in planned_tasks
+            ],
+            available_agents=agent_ids,
         )
 
 

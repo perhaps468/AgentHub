@@ -96,7 +96,8 @@
   <!-- 新建对话弹窗 -->
   <NewConversationDialog
     v-model="showNewConversationDialog"
-    :agents="filteredAgentList"
+    :agents="groupSelectableAgents"
+    :primary-agent="primaryGroupAgent"
     @confirm="handleCreateConversation"
     @go-agent-panel="activeSidebarPanel = 'agents'; showNewConversationDialog = false"
   />
@@ -194,6 +195,25 @@ const selectedAgentId = ref('')
 const currentWorkspace = ref<Workspace | null>(null)
 
 const sidebarAgents = computed(() => agentStore.agents)
+const primaryGroupAgent = computed(() => {
+  const groupHost = sidebarAgents.value.find((item) => item.id.startsWith('group_host_'))
+  if (groupHost) return groupHost
+
+  const current = agentStore.agent
+  if (!current) return null
+  return sidebarAgents.value.find((item) => item.id === current.id) || {
+    id: current.id,
+    name: current.name,
+    avatar: current.avatar_url || current.avatar || '',
+    capabilityTags: current.capabilityTags || current.capability_tags || [],
+    description: current.description,
+    platform: current.platform || 'custom',
+    isCustom: !current.is_builtin,
+    role: current.role,
+    model: current.model,
+    system_prompt: current.system_prompt,
+  }
+})
 
 // ==================== 计算属性 ====================
 
@@ -231,6 +251,12 @@ const filteredAgentList = computed(() => {
       a.description?.toLowerCase().includes(q) ||
       a.capabilityTags.some((t) => t.toLowerCase().includes(q)),
   )
+})
+
+const groupSelectableAgents = computed(() => {
+  const primaryId = primaryGroupAgent.value?.id
+  if (!primaryId) return filteredAgentList.value
+  return filteredAgentList.value.filter((agent) => agent.id !== primaryId)
 })
 
 // ==================== 工具函数 ====================
@@ -637,6 +663,58 @@ onMounted(async () => {
     } else if (msg.type === 'error') {
       console.error('[WsClient] Server error:', msg.error_code, msg.error_message)
       isSendLoading.value = false
+    } else if (msg.type === 'orchestration_run_started') {
+      // M6: Handle orchestration run started event - initialize run and tasks
+      const runId = msg.run_id
+      const taskCount = msg.task_count
+      if (runId && taskCount) {
+        sessionStore.updateRun(runId, 'running')
+      }
+    } else if (msg.type === 'orchestration_run_finished') {
+      // M6: Handle orchestration run finished event
+      const runId = msg.run_id
+      const status = msg.status
+      const summary = msg.summary
+      if (runId) {
+        sessionStore.updateRun(runId, status || 'completed', summary)
+      }
+    } else if (msg.type === 'orchestration_run_updated') {
+      // M6: Handle orchestration run updated event
+      const runId = msg.run_id
+      const status = msg.status
+      if (runId) {
+        sessionStore.updateRun(runId, status || 'running')
+      }
+    } else if (msg.type === 'task_start') {
+      // M6: Handle task start event - add task to active tasks
+      const { run_id, task_id, agent_id, stream_id, title, goal } = msg
+      if (task_id && run_id) {
+        sessionStore.addTask({
+          id: task_id,
+          run_id: run_id,
+          assigned_agent_id: agent_id || '',
+          kind: 'unknown',
+          title: title || '任务',
+          goal: goal || '',
+          input_payload: {},
+          status: 'running',
+        })
+        // Also ensure the run is set
+        sessionStore.updateRun(run_id, 'running')
+      }
+    } else if (msg.type === 'task_end') {
+      // M6: Handle task end event - update task status
+      const { task_id, status, run_id } = msg
+      if (task_id) {
+        sessionStore.updateTaskStatus(task_id, status || 'completed')
+      }
+    } else if (msg.type === 'task_error') {
+      // M6: Handle task error event
+      const { task_id, error_code, error_message } = msg
+      if (task_id) {
+        sessionStore.updateTaskStatus(task_id, 'failed')
+        console.error('[WsClient] Task error:', task_id, error_code, error_message)
+      }
     }
   })
 
