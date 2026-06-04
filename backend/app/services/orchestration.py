@@ -18,6 +18,7 @@ class OrchestrationService:
         planner_agent_id: str,
         summary: str | None = None,
         status: str = "planned",
+        planning_source: str | None = None,
     ) -> OrchestrationRun:
         run = OrchestrationRun(
             session_id=session_id,
@@ -25,6 +26,7 @@ class OrchestrationService:
             planner_agent_id=planner_agent_id,
             summary=summary,
             status=status,
+            planning_source=planning_source,
         )
         self.db.add(run)
         self.db.flush()

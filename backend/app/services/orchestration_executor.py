@@ -573,6 +573,18 @@ class OrchestrationExecutor:
             if metadata.get("is_orchestration_summary") is True:
                 return
 
+        primary_member = (
+            self.db.query(SessionMember)
+            .filter(
+                SessionMember.session_id == run.session_id,
+                SessionMember.member_type == "agent",
+                SessionMember.is_primary == True,
+            )
+            .first()
+        )
+        host_agent = self.get_agent(primary_member.member_id) if primary_member is not None else self.get_agent(run.planner_agent_id)
+        host_role = getattr(host_agent, "role", None) or "PM"
+
         status_text_map = {
             "completed": "全部任务完成",
             "partial": "部分任务完成",
@@ -589,7 +601,7 @@ class OrchestrationExecutor:
         summary_message = Message(
             session_id=run.session_id,
             sender_type="agent",
-            sender_role="system",
+            sender_role=host_role,
             content=summary_content,
             type="text",
             status="completed",
@@ -597,6 +609,7 @@ class OrchestrationExecutor:
             msg_metadata={
                 "run_id": run.id,
                 "is_orchestration_summary": True,
+                "agent_id": getattr(host_agent, "id", None) or run.planner_agent_id,
             },
         )
         self.db.add(summary_message)

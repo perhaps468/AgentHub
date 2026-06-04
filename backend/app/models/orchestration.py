@@ -20,6 +20,7 @@ class OrchestrationRun(Base):
     planner_agent_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="planned")
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    planning_source: Mapped[str | None] = mapped_column(String(50), nullable=True, default="fallback_splitter")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -53,6 +54,9 @@ class OrchestrationTask(Base):
     result_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="planned")
+    client_task_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    assignment_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    depends_on: Mapped[list | None] = mapped_column(JSON, nullable=True, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

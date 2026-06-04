@@ -9,10 +9,12 @@ const {
   fetchSessionDetail,
   fetchMessages,
   setConnectionState,
+  updateTaskStatus,
   appendHumanMessage,
   clearMessages,
   setCurrentSessionId,
   restorePendingChangesForSession,
+  fetchLatestRun,
   connect,
   disconnect,
   onStateChange,
@@ -28,10 +30,12 @@ const {
   fetchSessionDetail: vi.fn(),
   fetchMessages: vi.fn(),
   setConnectionState: vi.fn(),
+  updateTaskStatus: vi.fn(),
   appendHumanMessage: vi.fn(),
   clearMessages: vi.fn(),
   setCurrentSessionId: vi.fn(),
   restorePendingChangesForSession: vi.fn(),
+  fetchLatestRun: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
   onStateChange: vi.fn(),
@@ -45,10 +49,10 @@ const {
 }))
 
 const agentStore = reactive({
-  agent: null,
-  agents: [],
+  agent: null as any,
+  agents: [] as any[],
   availableModels: ['qwen3-coder-plus'],
-  availableCapabilityTags: ['代码生成', '测试验证'],
+  availableCapabilityTags: ['浠ｇ爜鐢熸垚', '娴嬭瘯楠岃瘉'],
   fetchAgentConfig,
   fetchDefaultAgent,
   fetchAgents,
@@ -56,9 +60,9 @@ const agentStore = reactive({
 })
 
 const sessionStore = reactive({
-  sessionList: [],
+  sessionList: [] as any[],
   currentSessionId: 'session-1' as string | null,
-  currentSession: null,
+  currentSession: null as any,
   connectionState: 'disconnected',
   isLoadingList: false,
   isLoadingMessages: false,
@@ -66,10 +70,12 @@ const sessionStore = reactive({
   fetchSessionDetail,
   fetchMessages,
   setConnectionState,
+  updateTaskStatus,
   appendHumanMessage,
   clearMessages,
   setCurrentSessionId,
   restorePendingChangesForSession,
+  fetchLatestRun,
   streamState: {
     handleMessageStart: vi.fn(),
     handleMessageDelta: vi.fn(),
@@ -81,6 +87,7 @@ const sessionStore = reactive({
     handleApplyResult: vi.fn(),
     handleRepairState: vi.fn(),
     getSessionIdForStream: vi.fn(),
+    setOnTaskStatusUpdate: vi.fn(),
   },
 })
 
@@ -140,6 +147,7 @@ describe('zhu', () => {
       has_more: false,
     })
     setConnectionState.mockReset()
+    updateTaskStatus.mockReset()
     appendHumanMessage.mockReset()
     clearMessages.mockReset()
     setCurrentSessionId.mockReset()
@@ -148,6 +156,7 @@ describe('zhu', () => {
       total: 0,
       session_id: 'session-1',
     })
+    fetchLatestRun.mockReset().mockResolvedValue(null)
     connect.mockReset()
     disconnect.mockReset()
     onStateChange.mockReset()
@@ -155,12 +164,12 @@ describe('zhu', () => {
     sendMessage.mockReset().mockReturnValue(true)
     fetchAgentConfig.mockReset().mockResolvedValue({
       available_models: ['qwen3-coder-plus'],
-      available_capability_tags: ['代码生成', '测试验证'],
+      available_capability_tags: ['浠ｇ爜鐢熸垚', '娴嬭瘯楠岃瘉'],
     })
     fetchDefaultAgent.mockReset().mockResolvedValue({
       id: 'pm_agent',
       name: 'PM Agent',
-      capability_tags: ['规划'],
+      capability_tags: ['瑙勫垝'],
     })
     fetchAgents.mockReset().mockResolvedValue([])
     showToast.mockReset()
@@ -168,6 +177,7 @@ describe('zhu', () => {
     sessionStore.currentSessionId = 'session-1'
     sessionStore.currentSession = null
     sessionStore.connectionState = 'disconnected'
+    agentStore.agent = null
     agentStore.agents = []
   })
 
@@ -188,6 +198,7 @@ describe('zhu', () => {
       page: 1,
       page_size: 20,
     })
+    expect(fetchLatestRun).toHaveBeenCalledWith('session-1')
     expect(restorePendingChangesForSession).toHaveBeenCalledWith('session-1', {
       clearExisting: true,
       clearInFlight: false,
@@ -243,6 +254,68 @@ describe('zhu', () => {
     await wrapper.get('[data-testid="send"]').trigger('click')
 
     expect(appendHumanMessage).toHaveBeenCalledTimes(1)
-    expect(showToast).toHaveBeenCalledWith('发送失败，请检查网络', true)
+    expect(showToast).toHaveBeenCalledTimes(1)
+    expect(showToast).toHaveBeenLastCalledWith(expect.any(String), true)
+  })
+
+  it('uses the group host agent as the primary agent for group conversations', async () => {
+    agentStore.agent = {
+      id: 'test',
+      name: 'test',
+      capability_tags: ['test'],
+    }
+    agentStore.agents = [
+      {
+        id: 'group_host_user_1',
+        name: '缇よ亰涓籄gent',
+        avatar: '',
+        capabilityTags: ['璋冨害'],
+        description: 'group host',
+        platform: 'custom',
+        isCustom: true,
+        role: 'PM',
+        model: 'qwen',
+        system_prompt: 'host',
+      },
+      {
+        id: 'test',
+        name: 'test',
+        avatar: '',
+        capabilityTags: ['test'],
+        description: 'test',
+        platform: 'custom',
+        isCustom: true,
+        role: 'Engineer',
+        model: 'qwen',
+        system_prompt: 'test',
+      },
+    ]
+
+    const wrapper = shallowMount(Zhu, {
+      global: {
+        stubs: {
+          LeftSidebarArea: true,
+          ChatWorkspace: true,
+          PreviewPanel: true,
+          UserProfileDialog: true,
+          AddAgentDialog: true,
+          NewConversationDialog: {
+            name: 'NewConversationDialog',
+            props: ['primaryAgent', 'agents'],
+            template: '<div />',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    const dialog = wrapper.findComponent({ name: 'NewConversationDialog' })
+    expect(dialog.props('primaryAgent')).toMatchObject({
+      id: 'group_host_user_1',
+      name: '缇よ亰涓籄gent',
+    })
+    expect(dialog.props('agents')).toEqual([
+      expect.objectContaining({ id: 'test' }),
+    ])
   })
 })

@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.agent import Agent
 
 GROUP_HOST_AGENT_NAME = "群聊主Agent"
@@ -76,7 +77,7 @@ def ensure_user_group_host_agent(db: Session, owner_id: str) -> Agent:
         name=GROUP_HOST_AGENT_NAME,
         role=GROUP_HOST_AGENT_ROLE,
         provider="qwen_openai_compatible",
-        model="qwen-plus",
+        model=get_settings().qwen_model,
         system_prompt=GROUP_HOST_AGENT_SYSTEM_PROMPT,
         platform="custom",
         description=GROUP_HOST_AGENT_DESCRIPTION,
