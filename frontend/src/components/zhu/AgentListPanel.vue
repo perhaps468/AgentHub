@@ -74,6 +74,7 @@
 </template>
 
 <script lang="ts" setup>
+import { ref } from 'vue'
 import { Fold, Expand, Edit, Delete } from '@element-plus/icons-vue'
 import type { SidebarAgent, SidebarPanel } from '../../types/agenthub'
 import Search from '../../veiws/Serach.vue'
@@ -119,6 +120,17 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
     custom: '自建',
   }
   return labels[agent.platform || 'custom'] || agent.platform || ''
+}
+
+const getAgentAvatarStyle = (agent: SidebarAgent) => {
+  if (agent.avatar) {
+    return undefined
+  }
+
+  return {
+    background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
+    color: '#fff',
+  }
 }
 </script>
 

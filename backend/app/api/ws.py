@@ -1345,7 +1345,6 @@ def _create_orchestration_plan_with_fallback(
 async def _execute_orchestration_tasks(
     db,
     websocket: WebSocket,
-    db,
     session_id: str,
     run: OrchestrationRun,
 ) -> None:
