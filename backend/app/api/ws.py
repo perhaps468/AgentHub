@@ -510,7 +510,6 @@ async def ws_send_task_end(
         payload["result"] = result
     await websocket.send_json(payload)
 
-
 async def ws_send_task_error(
     websocket: WebSocket,
     run_id: str,
@@ -1346,6 +1345,7 @@ def _create_orchestration_plan_with_fallback(
 async def _execute_orchestration_tasks(
     db,
     websocket: WebSocket,
+    db,
     session_id: str,
     run: OrchestrationRun,
 ) -> None:
