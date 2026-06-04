@@ -26,7 +26,6 @@
 
     <div class="agent-list">
       <div
-      <div
         v-for="agent in agents"
         :key="agent.id"
         class="agent-item-wrapper"
@@ -37,7 +36,7 @@
           type="button"
           @click="$emit('select-agent', agent)"
         >
-          <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="42px" @click.stop="showAgentInfo(agent)" />
+          <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="42px" :style="getAgentAvatarStyle(agent)" />
           <div class="agent-info">
             <div class="agent-title-row">
               <span class="agent-name">{{ agent.name }}</span>
@@ -76,7 +75,6 @@
 
 <script lang="ts" setup>
 import { Fold, Expand, Edit, Delete } from '@element-plus/icons-vue'
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import type { SidebarAgent, SidebarPanel } from '../../types/agenthub'
 import Search from '../../veiws/Serach.vue'
 import avatar from '../../veiws/img/avatar.vue'

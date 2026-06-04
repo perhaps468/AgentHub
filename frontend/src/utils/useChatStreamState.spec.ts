@@ -235,6 +235,27 @@ describe('message_start creates a stream', () => {
     expect(stream).toBeDefined()
     expect(stream!.stream_id).toBe('s-return')
   })
+
+  it('preserves initial message.content for non-delta websocket replies', () => {
+    const { handleMessageStart, getStream } = useChatStreamState()
+
+    handleMessageStart(
+      makeMessageStart({
+        stream_id: 's-initial-content',
+        message: {
+          id: 'm-initial-content',
+          content: '全部任务完成。请查看以下执行结果：\ncreate hello.java: 已完成',
+          payload: { text: '全部任务完成。请查看以下执行结果：\ncreate hello.java: 已完成' },
+        },
+      }),
+      'session-001'
+    )
+
+    const stream = getStream('s-initial-content')!
+    expect(stream.accumulated_content).toBe('全部任务完成。请查看以下执行结果：\ncreate hello.java: 已完成')
+    expect(stream.content).toBe('全部任务完成。请查看以下执行结果：\ncreate hello.java: 已完成')
+    expect(stream.payload.text).toBe('全部任务完成。请查看以下执行结果：\ncreate hello.java: 已完成')
+  })
 })
 
 // ---------------------------------------------------------------------------

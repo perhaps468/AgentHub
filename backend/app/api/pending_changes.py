@@ -139,7 +139,7 @@ async def _push_apply_result(
         return False
 
 
-async def _push_host_completion_message(
+async def _push_orchestration_summary_message(
     session_id: str,
     run_id: str | None,
     db: DBSession,
@@ -156,42 +156,42 @@ async def _push_host_completion_message(
     if conn is None:
         return False
 
-    host_message = (
+    run_messages = (
         db.query(Message)
         .filter(Message.session_id == session_id)
         .order_by(Message.created_at.desc())
         .all()
     )
-    completion_message = next(
+    summary_message = next(
         (
-            item for item in host_message
+            item for item in run_messages
             if (item.msg_metadata or {}).get("run_id") == run_id
-            and (item.msg_metadata or {}).get("is_host_completion") is True
+            and (item.msg_metadata or {}).get("is_orchestration_summary") is True
         ),
         None,
     )
-    if completion_message is None:
+    if summary_message is None:
         return False
 
     websocket, _ = conn
-    stream_id = f"host-complete-{run_id}"
+    stream_id = f"run-summary-{run_id}"
     await ws_send_message_start(
         websocket,
-        agent_role=completion_message.sender_role or "PM",
+        agent_role=summary_message.sender_role or "PM",
         stream_id=stream_id,
-        message=completion_message,
+        message=summary_message,
         run_id=run_id,
-        agent_id=(completion_message.msg_metadata or {}).get("agent_id"),
+        agent_id=(summary_message.msg_metadata or {}).get("agent_id"),
     )
     await ws_send_message_end(
         websocket,
-        agent_role=completion_message.sender_role or "PM",
+        agent_role=summary_message.sender_role or "PM",
         stream_id=stream_id,
-        message_id=completion_message.id,
+        message_id=summary_message.id,
         status="completed",
-        final_content=completion_message.content,
+        final_content=summary_message.content,
         run_id=run_id,
-        agent_id=(completion_message.msg_metadata or {}).get("agent_id"),
+        agent_id=(summary_message.msg_metadata or {}).get("agent_id"),
     )
     return True
 
@@ -458,7 +458,7 @@ async def apply_pending_change(
                 agent_id=db_change.agent_id,
             )
             if db_change.run_id:
-                result.ws_pushed = await _push_host_completion_message(session_id, db_change.run_id, db) or result.ws_pushed
+                result.ws_pushed = await _push_orchestration_summary_message(session_id, db_change.run_id, db) or result.ws_pushed
         return result
     else:
         # Transition to REJECTED status
@@ -611,5 +611,5 @@ async def reject_pending_change(
             agent_id=db_change.agent_id,
         )
         if db_change.run_id:
-            result.ws_pushed = await _push_host_completion_message(session_id, db_change.run_id, db) or result.ws_pushed
+            result.ws_pushed = await _push_orchestration_summary_message(session_id, db_change.run_id, db) or result.ws_pushed
     return result
