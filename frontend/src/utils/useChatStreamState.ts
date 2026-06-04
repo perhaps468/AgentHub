@@ -799,6 +799,19 @@ ${formatDiffForDisplay(unified_diff)}
     }
   }
 
+  // M6: Preview diff state for side panel
+  const previewDiff = ref<PendingChange | null>(null)
+
+  // M6: Set preview diff to show in side panel
+  function setPreviewDiff(change: PendingChange | null) {
+    previewDiff.value = change
+  }
+
+  // M6: Clear preview diff
+  function clearPreviewDiff() {
+    previewDiff.value = null
+  }
+
   return {
     streams,
     getStreamingMessages,
@@ -836,5 +849,9 @@ ${formatDiffForDisplay(unified_diff)}
     clearOtherSessionStreams,
     // M6: Task status update callback for store integration
     setOnTaskStatusUpdate,
+    // M6: Preview diff state
+    previewDiff,
+    setPreviewDiff,
+    clearPreviewDiff,
   }
 }

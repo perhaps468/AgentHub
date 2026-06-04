@@ -17,6 +17,7 @@
       :change="diff"
       @confirm="handleConfirmDiff"
       @cancel="handleCancelDiff"
+      @preview="handlePreviewDiff"
     />
     <div v-if="nonDiffContent" v-html="parseMarkdown(nonDiffContent)"></div>
   </div>
@@ -331,6 +332,11 @@ const handleCancelDiff = async (changeId: string) => {
     // Fallback: mark as rejected locally
   }
   sessionStore.streamState?.updatePendingChangeStatus(changeId, 'rejected')
+}
+
+// M6: Handle preview button click - set preview diff state
+const handlePreviewDiff = (change: PendingChange) => {
+  sessionStore.streamState?.setPreviewDiff(change)
 }
 
 const handleConfirmPendingReview = async () => {

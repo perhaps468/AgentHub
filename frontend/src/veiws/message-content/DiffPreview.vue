@@ -16,6 +16,7 @@
         {{ isLoading ? '应用中...' : '确认写入' }}
       </button>
       <button class="btn-cancel" type="button" @click="handleCancel">取消</button>
+      <button class="btn-preview" type="button" @click="handlePreview">预览</button>
     </div>
 
     <div v-else-if="status === 'applied'" class="diff-result success">
@@ -47,6 +48,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'confirm', changeId: string): void
   (e: 'cancel', changeId: string): void
+  (e: 'preview', change: PendingChange): void
 }>()
 
 const isLoading = ref(false)
@@ -84,6 +86,10 @@ const handleConfirm = async () => {
 const handleCancel = () => {
   if (isConfirmed.value || isRejected.value) return
   emit('cancel', props.change.change_id)
+}
+
+const handlePreview = () => {
+  emit('preview', props.change)
 }
 </script>
 
@@ -208,6 +214,23 @@ const handleCancel = () => {
 .btn-cancel:hover {
   border-color: rgb(var(--text-muted));
   color: rgb(var(--text-color));
+}
+
+.btn-preview {
+  padding: 8px 16px;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.08);
+  color: rgb(59, 130, 246);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-preview:hover {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.5);
 }
 
 .diff-result {
