@@ -129,3 +129,26 @@ export interface ChangePreviewEvent {
 }
 
 export type RuntimeStateValue = 'thinking' | 'calling_tool' | 'observing' | 'responding' | 'finished' | 'error'
+
+// Task B: Workspace interface
+export interface Workspace {
+  id: string
+  owner_id: string
+  root_path: string
+  name: string
+  created_at: string
+}
+
+// ==================== 预览区状态 ====================
+export type PreviewState =
+  | { type: 'empty'; title?: string }
+  | { type: 'code'; title?: string; code: string }
+  | { type: 'web'; title?: string; url: string; description?: string }
+  | {
+      type: 'diff'
+      title?: string
+      change_id: string
+      operation: 'create' | 'update' | 'delete'
+      path: string
+      unified_diff: string
+    }
