@@ -10,7 +10,11 @@
     <div class="grid-pattern"></div>
 
     <!-- 玻璃态主容器 -->
-    <div class="glass-container" :class="{ 'sidebar-collapsed': isCollapsed }">
+    <div
+      class="glass-container"
+      :class="{ 'sidebar-collapsed': isCollapsed, 'is-preview-resizing': isResizingPreview }"
+      :style="glassContainerStyle"
+    >
       <!-- 左侧列表区 -->
       <LeftSidebarArea
         :show-left="showLeft"
@@ -59,6 +63,17 @@
         @retry="handleRetry"
         @send="handleSend"
       />
+
+      <div
+        class="preview-resize-handle"
+        :class="{ 'is-dragging': isResizingPreview }"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整预览区宽度"
+        @mousedown="startPreviewResize"
+      >
+        <span class="preview-resize-grip"></span>
+      </div>
 
       <!-- 右侧预览区 -->
       <PreviewPanel
@@ -146,8 +161,19 @@ const showToast = useToast()
 /** 左侧栏显示开关（移动端控制） */
 const showLeft = ref(true)
 
+const DEFAULT_PREVIEW_WIDTH = 340
+const MIN_PREVIEW_WIDTH = 280
+const MAX_PREVIEW_WIDTH = 720
+const PREVIEW_RESIZE_HANDLE_WIDTH = 8
+
 /** 左侧栏收起状态 */
 const isCollapsed = ref(false)
+
+/** 右侧预览区宽度 */
+const previewWidth = ref(DEFAULT_PREVIEW_WIDTH)
+
+/** 是否正在拖拽调整预览区 */
+const isResizingPreview = ref(false)
 
 /** 左侧栏当前面板：消息列表 / Agent 列表 */
 const activeSidebarPanel = ref<SidebarPanel>('messages')
@@ -258,6 +284,48 @@ const groupSelectableAgents = computed(() => {
   if (!primaryId) return filteredAgentList.value
   return filteredAgentList.value.filter((agent) => agent.id !== primaryId)
 })
+
+const glassContainerStyle = computed(() => {
+  const sidebarWidth = isCollapsed.value ? 72 : 400
+  const previewTrackWidth = PREVIEW_RESIZE_HANDLE_WIDTH + previewWidth.value
+  return {
+    gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr) ${previewTrackWidth}px`,
+    '--preview-width': `${previewWidth.value}px`,
+    '--preview-track-width': `${previewTrackWidth}px`,
+    '--preview-handle-width': `${PREVIEW_RESIZE_HANDLE_WIDTH}px`,
+  }
+})
+
+// ==================== 工具函数 ====================
+
+function clampPreviewWidth(nextWidth: number) {
+  return Math.min(MAX_PREVIEW_WIDTH, Math.max(MIN_PREVIEW_WIDTH, nextWidth))
+}
+
+function stopPreviewResize() {
+  isResizingPreview.value = false
+  document.body.classList.remove('preview-resizing')
+  document.removeEventListener('mousemove', handlePreviewResize)
+  document.removeEventListener('mouseup', stopPreviewResize)
+}
+
+function handlePreviewResize(event: MouseEvent) {
+  const viewportWidth = window.innerWidth
+  if (viewportWidth <= 1200) return
+
+  const nextWidth = clampPreviewWidth(viewportWidth - event.clientX - 16)
+  previewWidth.value = nextWidth
+}
+
+function startPreviewResize(event: MouseEvent) {
+  if (window.innerWidth <= 1200) return
+
+  event.preventDefault()
+  isResizingPreview.value = true
+  document.body.classList.add('preview-resizing')
+  document.addEventListener('mousemove', handlePreviewResize)
+  document.addEventListener('mouseup', stopPreviewResize)
+}
 
 // ==================== 工具函数 ====================
 
@@ -732,6 +800,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  stopPreviewResize()
   sessionStore.streamState.setOnTaskStatusUpdate(() => {})
   wsClient.disconnect()
 })
@@ -800,11 +869,14 @@ onUnmounted(() => {
 
 /* ==================== 玻璃态主容器 ==================== */
 .glass-container {
+  --preview-width: 340px;
+  --preview-track-width: 348px;
+  --preview-handle-width: 8px;
   position: relative;
   z-index: 10;
   height: 100%;
   display: grid;
-  grid-template-columns: 400px minmax(0, 1fr) 340px;
+  grid-template-columns: 400px minmax(0, 1fr) var(--preview-track-width);
   gap: 0;
   padding: 16px;
   box-sizing: border-box;
@@ -822,6 +894,14 @@ onUnmounted(() => {
   transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
+.glass-container > .preview-resize-handle {
+  background: transparent;
+  backdrop-filter: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .glass-container > :deep(*):hover {
   box-shadow:
     0 12px 40px rgba(59, 130, 246, 0.12),
@@ -829,19 +909,53 @@ onUnmounted(() => {
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
-/* ==================== 侧边栏收起状态 ==================== */
+.glass-container > .preview-resize-handle:hover {
+  box-shadow: none;
+}
+
+.preview-resize-handle {
+  position: absolute;
+  top: 16px;
+  right: calc(var(--preview-width) + 16px);
+  width: var(--preview-handle-width);
+  height: calc(100% - 32px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  z-index: 20;
+}
+
+.preview-resize-grip {
+  width: 4px;
+  height: 72px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.5);
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.preview-resize-handle:hover .preview-resize-grip,
+.glass-container.is-preview-resizing .preview-resize-grip {
+  background: rgba(59, 130, 246, 0.75);
+  transform: scaleX(1.15);
+}
+
 .glass-container.sidebar-collapsed {
-  grid-template-columns: 72px minmax(0, 1fr) 340px;
+  grid-template-columns: 72px minmax(0, 1fr) var(--preview-track-width);
 }
 
 /* ==================== 响应式断点 ==================== */
 @media (max-width: 1400px) {
   .glass-container {
-    grid-template-columns: 72px 300px minmax(0, 1fr) 300px;
     padding: 12px;
   }
-  .glass-container.sidebar-collapsed {
-    grid-template-columns: 72px minmax(0, 1fr) 300px;
+
+  .preview-resize-handle {
+    top: 12px;
+    right: calc(var(--preview-width) + 12px);
+    height: calc(100% - 24px);
   }
 }
 
@@ -853,6 +967,10 @@ onUnmounted(() => {
   .glass-container.sidebar-collapsed {
     grid-template-columns: 72px minmax(0, 1fr);
   }
+
+  .preview-resize-handle {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
@@ -862,6 +980,10 @@ onUnmounted(() => {
   }
   .glass-container > :deep(*) {
     border-radius: 16px;
+  }
+
+  .preview-resize-handle {
+    display: none;
   }
 }
 
