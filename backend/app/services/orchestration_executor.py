@@ -65,6 +65,12 @@ class OrchestrationExecutor:
         if task is None:
             return None
         previous_status = task.status
+        run_id = task.run_id
+        session_id = ""
+        if run_id:
+            run = self.get_run(run_id)
+            if run is not None:
+                session_id = run.session_id
 
         task.status = status
         if result_payload is not None:
@@ -76,7 +82,7 @@ class OrchestrationExecutor:
         self.db.commit()
         self.db.refresh(task)
         self._group_chat_audit.record_task_status_changed(
-            session_id=task.run.session_id if task.run is not None else "",
+            session_id=session_id,
             run_id=task.run_id,
             task_id=task.id,
             agent_id=task.assigned_agent_id,
@@ -494,7 +500,6 @@ class OrchestrationExecutor:
             self.db.refresh(run)
 
         self._generate_run_summary(run)
-        self._generate_host_completion_message(run)
         refreshed_run = self.get_run(run_id)
         if refreshed_run is not None:
             self._group_chat_audit.record_run_finished(
@@ -584,6 +589,35 @@ class OrchestrationExecutor:
         )
         host_agent = self.get_agent(primary_member.member_id) if primary_member is not None else self.get_agent(run.planner_agent_id)
         host_role = getattr(host_agent, "role", None) or "PM"
+
+        if run.status == "completed":
+            task_summaries = [
+                f"{task.title}: 已完成"
+                for task in sorted(run.tasks, key=lambda t: t.sequence)
+            ]
+            summary_content = (
+                "全部任务完成。请查看以下执行结果：\n"
+                + "\n".join(task_summaries)
+                + "\n\n如需继续修改，或还有其他问题，请继续告诉我。"
+            )
+
+            summary_message = Message(
+                session_id=run.session_id,
+                sender_type="agent",
+                sender_role=host_role,
+                content=summary_content,
+                type="text",
+                status="completed",
+                payload={"run_status": run.status, "task_count": len(run.tasks)},
+                msg_metadata={
+                    "run_id": run.id,
+                    "is_orchestration_summary": True,
+                    "agent_id": getattr(host_agent, "id", None) or run.planner_agent_id,
+                },
+            )
+            self.db.add(summary_message)
+            self.db.commit()
+            return
 
         status_text_map = {
             "completed": "全部任务完成",

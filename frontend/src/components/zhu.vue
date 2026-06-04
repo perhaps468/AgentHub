@@ -126,6 +126,7 @@
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 
 import { fetchWorkspace } from '../api/modules/workspace'
 import { useAgentStore } from '../store/index'
@@ -259,7 +260,7 @@ const filteredSessions = computed(() => {
 const currentUser = computed<SidebarUser>(() => ({
   id: userInfoStore.userId || 'user-1',
   name: userInfoStore.userName || '管理员',
-  avatar: userInfoStore.avatar || '',
+  avatar: userInfoStore.avatar || '/msg10.jpg',
   email: (userInfoStore as unknown as { email?: string }).email || 'admin@example.com',
   bio: (userInfoStore as unknown as { bio?: string }).bio || 'AgentHub 用户',
 }))
@@ -686,8 +687,9 @@ onMounted(async () => {
     } else if (msg.type === 'message_end') {
       const stream = sessionStore.streamState.handleMessageEnd(msg, resolvedSessionId)
       if (stream) {
+        const persistedMessageId = stream.message_id || msg.message_id || msg.stream_id || stream.stream_id
         sessionStore.mergeOrUpdateMessage(resolvedSessionId, {
-          id: stream.message_id || msg.message_id || '',
+          id: persistedMessageId,
           session_id: resolvedSessionId,
           sender_type: 'agent',
           sender_role: stream.sender_role,

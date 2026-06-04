@@ -2,14 +2,14 @@
   <!-- 左侧菜单栏：头像 + 消息列表按钮 + Agent 列表按钮 -->
   <div class="sidebar-rail">
     <!-- 头像 + 用户信息弹框 -->
-    <div class="rail-avatar-wrapper">
+    <div class="rail-avatar-wrapper" @mouseleave="$emit('update:showUserPopover', false)">
       <button class="rail-avatar" type="button" @click="$emit('update:showUserPopover', !showUserPopover)">
-        <avatar :info="{ name: currentUser.name || '管理员', avatar: currentUser.avatar }" size="44px" />
+        <avatar :info="{ name: currentUser.name , avatar: currentUser.avatar }" size="44px" />
       </button>
 
       <!-- 用户信息弹框 -->
-      <Transition name="popover-fade">
-        <div v-if="showUserPopover" class="user-popover">
+      <Transition name="popover-fade" @mouseleave="$emit('update:showUserPopover', false)">
+        <div v-if="showUserPopover" class="user-popover" >
           <div class="user-popover-header">
             <avatar :info="{ name: currentUser.name, avatar: currentUser.avatar }" size="56px" />
             <div class="user-popover-info">
@@ -109,9 +109,8 @@ const handleToggleCollapse = () => {
   gap: 10px;
 }
 
-/* ==================== 头像与按钮基础样式 ==================== */
-.rail-avatar,
-.rail-button {
+/* ==================== 按钮基础样式 ==================== */
+.rail-button,.rail-avatar {
   width: 46px;
   height: 46px;
   display: inline-flex;

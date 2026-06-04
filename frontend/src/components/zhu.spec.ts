@@ -11,6 +11,7 @@ const {
   setConnectionState,
   updateTaskStatus,
   appendHumanMessage,
+  mergeOrUpdateMessage,
   clearMessages,
   setCurrentSessionId,
   restorePendingChangesForSession,
@@ -32,6 +33,7 @@ const {
   setConnectionState: vi.fn(),
   updateTaskStatus: vi.fn(),
   appendHumanMessage: vi.fn(),
+  mergeOrUpdateMessage: vi.fn(),
   clearMessages: vi.fn(),
   setCurrentSessionId: vi.fn(),
   restorePendingChangesForSession: vi.fn(),
@@ -72,6 +74,7 @@ const sessionStore = reactive({
   setConnectionState,
   updateTaskStatus,
   appendHumanMessage,
+  mergeOrUpdateMessage,
   clearMessages,
   setCurrentSessionId,
   restorePendingChangesForSession,
@@ -149,6 +152,7 @@ describe('zhu', () => {
     setConnectionState.mockReset()
     updateTaskStatus.mockReset()
     appendHumanMessage.mockReset()
+    mergeOrUpdateMessage.mockReset()
     clearMessages.mockReset()
     setCurrentSessionId.mockReset()
     restorePendingChangesForSession.mockReset().mockResolvedValue({
@@ -317,5 +321,108 @@ describe('zhu', () => {
     expect(dialog.props('agents')).toEqual([
       expect.objectContaining({ id: 'test' }),
     ])
+  })
+
+  it('keeps parallel task completions as separate messages when message_id is missing', async () => {
+    let receiveHandler: ((msg: any) => void) | undefined
+    onReceiveMessage.mockImplementation((cb) => {
+      receiveHandler = cb
+      return vi.fn()
+    })
+
+    sessionStore.streamState.handleMessageEnd = vi.fn()
+      .mockReturnValueOnce({
+        stream_id: 'stream-java',
+        message_id: '',
+        sender_role: 'coder',
+        accumulated_content: 'java done',
+        type: 'text',
+        payload: { text: 'java done' },
+        metadata: { task_id: 'task-java' },
+        created_at: '2026-06-04T10:00:00Z',
+      })
+      .mockReturnValueOnce({
+        stream_id: 'stream-python',
+        message_id: '',
+        sender_role: 'coder',
+        accumulated_content: 'python done',
+        type: 'text',
+        payload: { text: 'python done' },
+        metadata: { task_id: 'task-python' },
+        created_at: '2026-06-04T10:00:01Z',
+      })
+
+    shallowMount(Zhu)
+    await flushPromises()
+
+    receiveHandler?.({
+      type: 'message_end',
+      stream_id: 'stream-java',
+      status: 'completed',
+    })
+    receiveHandler?.({
+      type: 'message_end',
+      stream_id: 'stream-python',
+      status: 'completed',
+    })
+
+    expect(mergeOrUpdateMessage).toHaveBeenCalledTimes(2)
+    expect(mergeOrUpdateMessage).toHaveBeenNthCalledWith(
+      1,
+      'session-1',
+      expect.objectContaining({ id: 'stream-java', content: 'java done' }),
+    )
+    expect(mergeOrUpdateMessage).toHaveBeenNthCalledWith(
+      2,
+      'session-1',
+      expect.objectContaining({ id: 'stream-python', content: 'python done' }),
+    )
+  })
+
+  it('does not refetch messages when the group host final summary stream ends', async () => {
+    let receiveHandler: ((msg: any) => void) | undefined
+    onReceiveMessage.mockImplementation((cb) => {
+      receiveHandler = cb
+      return vi.fn()
+    })
+
+    sessionStore.currentSession = {
+      id: 'session-1',
+      mode: 'group',
+    }
+    sessionStore.streamState.handleMessageEnd = vi.fn().mockReturnValue({
+      stream_id: 'stream-summary',
+      message_id: 'msg-summary',
+      sender_role: 'PM',
+      accumulated_content:
+        '全部任务完成。请查看以下执行结果：\n创建heleo.java文件: 已完成\n\n如需继续修改，或还有其他问题，请继续告诉我。',
+      type: 'text',
+      payload: {
+        text: '全部任务完成。请查看以下执行结果：\n创建heleo.java文件: 已完成\n\n如需继续修改，或还有其他问题，请继续告诉我。',
+      },
+      metadata: { is_orchestration_summary: true },
+      created_at: '2026-06-04T10:00:02Z',
+    })
+
+    shallowMount(Zhu)
+    await flushPromises()
+    fetchMessages.mockClear()
+
+    receiveHandler?.({
+      type: 'message_end',
+      stream_id: 'stream-summary',
+      status: 'completed',
+    })
+    await flushPromises()
+
+    expect(mergeOrUpdateMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({
+        id: 'msg-summary',
+        content:
+          '全部任务完成。请查看以下执行结果：\n创建heleo.java文件: 已完成\n\n如需继续修改，或还有其他问题，请继续告诉我。',
+      }),
+    )
+    expect(fetchMessages).not.toHaveBeenCalled()
   })
 })
