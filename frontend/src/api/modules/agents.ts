@@ -39,3 +39,7 @@ export const updateAgent = async (agentId: string, payload: Partial<AgentPayload
   const { data } = await agenthubRequest.patch<AgentProfile>(`/agents/${agentId}`, payload)
   return data
 }
+
+export const deleteAgent = async (agentId: string) => {
+  await agenthubRequest.delete(`/agents/${agentId}`)
+}

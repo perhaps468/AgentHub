@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { createAgent, fetchAgentConfig, fetchAgents, fetchDefaultAgent, updateAgent } from '@/api/modules/agents'
+import { createAgent, deleteAgent, fetchAgentConfig, fetchAgents, fetchDefaultAgent, updateAgent } from '@/api/modules/agents'
 import type { AgentProfile } from '@/types/agenthub'
 
 function toSidebarAgent(agent: AgentProfile) {
@@ -65,6 +65,11 @@ export const useAgentStore = defineStore('agent', () => {
     return updated
   }
 
+  async function deleteAgentAction(agentId: string) {
+    await deleteAgent(agentId)
+    agents.value = agents.value.filter((a) => a.id !== agentId)
+  }
+
   return {
     agent,
     agents,
@@ -77,5 +82,6 @@ export const useAgentStore = defineStore('agent', () => {
     fetchAgents: fetchAgentsAction,
     createAgent: createAgentAction,
     updateAgent: updateAgentAction,
+    deleteAgent: deleteAgentAction,
   }
 })

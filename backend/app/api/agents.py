@@ -329,3 +329,23 @@ def update_agent(
     db.commit()
     db.refresh(agent)
     return _agent_to_response(agent)
+
+
+@router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_agent(
+    agent_id: str,
+    db: _Db,
+    current_user: CurrentUser,
+) -> None:
+    """删除自建 Agent。内置 Agent 不允许删除。"""
+    agent = _get_agent_or_404(db, agent_id)
+    user_id = str(current_user.id)
+
+    if agent.is_builtin:
+        raise HTTPException(status_code=403, detail="Builtin agents cannot be deleted")
+
+    if agent.owner_id != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    db.delete(agent)
+    db.commit()

@@ -39,6 +39,8 @@
         @update:search-value="$emit('update:agentSearchValue', $event)"
         @add-agent="$emit('add-agent')"
         @select-agent="$emit('select-agent', $event)"
+        @edit-agent="$emit('edit-agent', $event)"
+        @delete-agent="$emit('delete-agent', $event)"
         @toggle-collapse="$emit('toggle-collapse')"
       />
     </div>
@@ -79,6 +81,8 @@ defineEmits<{
   (e: 'toggle-archive', item: ConversationItem): void
   (e: 'add-agent'): void
   (e: 'select-agent', agent: SidebarAgent): void
+  (e: 'edit-agent', agent: SidebarAgent): void
+  (e: 'delete-agent', agent: SidebarAgent): void
   (e: 'delete-session', item: ConversationItem): void
   (e: 'edit-profile'): void
   (e: 'logout'): void

@@ -1,5 +1,5 @@
 <template>
-  <BaseDialog v-model="visible" title="添加自建 Agent" @confirm="confirmAdd">
+  <BaseDialog v-model="visible" :title="isEdit ? '编辑 Agent' : '添加自建 Agent'" @confirm="confirmAdd">
     <el-form label-position="top" class="edit-profile-form">
       <el-form-item label="名称">
         <el-input v-model="form.name" maxlength="32" placeholder="例如：我的代码助手" />
@@ -49,7 +49,7 @@
 <script lang="ts" setup>
 import { computed, reactive, watch } from 'vue'
 
-import type { AgentDraft } from '@/types/agenthub'
+import type { AgentDraft, SidebarAgent } from '@/types/agenthub'
 
 import BaseDialog from './BaseDialog.vue'
 
@@ -57,14 +57,19 @@ const props = withDefaults(defineProps<{
   modelValue: boolean
   availableModels: string[]
   availableCapabilityTags: string[]
+  isEdit?: boolean
+  editingAgent?: SidebarAgent | null
 }>(), {
   availableModels: () => [],
   availableCapabilityTags: () => [],
+  isEdit: false,
+  editingAgent: null,
 })
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   confirm: [agent: AgentDraft]
+  'confirm-edit': [agent: AgentDraft & { id: string }]
 }>()
 
 const visible = computed({
@@ -80,10 +85,17 @@ const form = reactive({
 })
 
 function resetForm() {
-  form.name = ''
-  form.model = props.availableModels[0] || ''
-  form.capabilityTags = []
-  form.description = ''
+  if (props.isEdit && props.editingAgent) {
+    form.name = props.editingAgent.name
+    form.model = props.editingAgent.model || ''
+    form.capabilityTags = [...props.editingAgent.capabilityTags]
+    form.description = props.editingAgent.description || ''
+  } else {
+    form.name = ''
+    form.model = props.availableModels[0] || ''
+    form.capabilityTags = []
+    form.description = ''
+  }
 }
 
 watch(
@@ -104,6 +116,15 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => props.editingAgent,
+  () => {
+    if (visible.value) {
+      resetForm()
+    }
+  },
+)
+
 const confirmAdd = () => {
   const name = form.name.trim()
   const description = form.description.trim()
@@ -112,14 +133,26 @@ const confirmAdd = () => {
     return
   }
 
-  emit('confirm', {
-    name,
-    model: form.model,
-    capabilityTags: [...form.capabilityTags],
-    description: description || undefined,
-    avatar: '',
-    platform: 'custom',
-  })
+  if (props.isEdit && props.editingAgent) {
+    emit('confirm-edit', {
+      id: props.editingAgent.id,
+      name,
+      model: form.model,
+      capabilityTags: [...form.capabilityTags],
+      description: description || undefined,
+      avatar: '',
+      platform: 'custom',
+    })
+  } else {
+    emit('confirm', {
+      name,
+      model: form.model,
+      capabilityTags: [...form.capabilityTags],
+      description: description || undefined,
+      avatar: '',
+      platform: 'custom',
+    })
+  }
   visible.value = false
 }
 </script>

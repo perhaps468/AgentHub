@@ -25,29 +25,41 @@
     </button>
 
     <div class="agent-list">
-      <button
+      <div
         v-for="agent in agents"
         :key="agent.id"
-        class="agent-item"
+        class="agent-item-wrapper"
         :class="{ 'is-selected': selectedAgentId === agent.id }"
-        type="button"
-        @click="$emit('select-agent', agent)"
       >
-        <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="42px" :style="getAgentAvatarStyle(agent)" />
-        <div class="agent-info">
-          <div class="agent-title-row">
-            <span class="agent-name">{{ agent.name }}</span>
-            <span class="agent-badge" :class="agent.isCustom ? 'custom' : 'builtin'">
-              {{ agent.isCustom ? '自建' : '内置' }}
-            </span>
+        <button
+          class="agent-item"
+          type="button"
+          @click="$emit('select-agent', agent)"
+        >
+          <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="42px" :style="getAgentAvatarStyle(agent)" />
+          <div class="agent-info">
+            <div class="agent-title-row">
+              <span class="agent-name">{{ agent.name }}</span>
+              <span class="agent-badge" :class="agent.isCustom ? 'custom' : 'builtin'">
+                {{ agent.isCustom ? '自建' : '内置' }}
+              </span>
+            </div>
+            <span class="agent-desc">{{ agent.description || getAgentPlatformLabel(agent) }}</span>
+            <div class="capability-tags">
+              <span v-for="tag in getVisibleCapabilityTags(agent.capabilityTags)" :key="tag" class="capability-tag">{{ tag }}</span>
+              <span v-if="agent.capabilityTags.length > 3" class="capability-tag more">+{{ agent.capabilityTags.length - 3 }}</span>
+            </div>
           </div>
-          <span class="agent-desc">{{ agent.description || getAgentPlatformLabel(agent) }}</span>
-          <div class="capability-tags">
-            <span v-for="tag in getVisibleCapabilityTags(agent.capabilityTags)" :key="tag" class="capability-tag">{{ tag }}</span>
-            <span v-if="agent.capabilityTags.length > 3" class="capability-tag more">+{{ agent.capabilityTags.length - 3 }}</span>
-          </div>
+        </button>
+        <div v-if="agent.isCustom" class="agent-actions">
+          <el-button size="small" circle @click.stop="$emit('edit-agent', agent)">
+            <el-icon><Edit /></el-icon>
+          </el-button>
+          <el-button size="small" circle type="danger" @click.stop="$emit('delete-agent', agent)">
+            <el-icon><Delete /></el-icon>
+          </el-button>
         </div>
-      </button>
+      </div>
       <div v-if="agents.length === 0" class="empty-hint">
         暂无 Agent
       </div>
@@ -56,7 +68,7 @@
 </template>
 
 <script lang="ts" setup>
-import { Fold, Expand } from '@element-plus/icons-vue'
+import { Fold, Expand, Edit, Delete } from '@element-plus/icons-vue'
 import type { SidebarAgent, SidebarPanel } from '../../types/agenthub'
 import Search from '../../veiws/Serach.vue'
 import avatar from '../../veiws/img/avatar.vue'
@@ -73,6 +85,8 @@ defineEmits<{
   (e: 'update:searchValue', value: string): void
   (e: 'add-agent'): void
   (e: 'select-agent', agent: SidebarAgent): void
+  (e: 'edit-agent', agent: SidebarAgent): void
+  (e: 'delete-agent', agent: SidebarAgent): void
   (e: 'toggle-collapse'): void
 }>()
 
@@ -206,6 +220,28 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
   font-weight: 500;
 }
 
+/* ==================== Agent 项容器 ==================== */
+.agent-item-wrapper {
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.4);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.agent-item-wrapper:hover {
+  background: rgba(59, 130, 246, 0.06);
+  border-color: rgba(59, 130, 246, 0.12);
+}
+
+.agent-item-wrapper.is-selected {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08));
+  border-color: rgba(59, 130, 246, 0.25);
+  box-shadow:
+    0 4px 12px rgba(59, 130, 246, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
 /* ==================== Agent 项 ==================== */
 .agent-item {
   display: flex;
@@ -214,25 +250,34 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
   width: 100%;
   padding: 16px;
   border-radius: 14px;
-  border: 1px solid transparent;
+  border: none;
   text-align: left;
-  background: rgba(255, 255, 255, 0.4);
+  background: transparent;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.agent-item:hover {
-  background: rgba(59, 130, 246, 0.06);
-  border-color: rgba(59, 130, 246, 0.12);
-  transform: translateX(4px);
+/* ==================== 操作按钮 ==================== */
+.agent-actions {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
-.agent-item.is-selected {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08));
-  border-color: rgba(59, 130, 246, 0.25);
-  box-shadow:
-    0 4px 12px rgba(59, 130, 246, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+.agent-item-wrapper:hover .agent-actions {
+  opacity: 1;
+}
+
+.agent-actions .el-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
 }
 
 /* ==================== Agent 信息 ==================== */

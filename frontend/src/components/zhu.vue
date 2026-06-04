@@ -37,6 +37,8 @@
         @toggle-archive="toggleArchive"
         @add-agent="showAddAgentDialog = true"
         @select-agent="handleSelectAgent"
+        @edit-agent="handleEditAgent"
+        @delete-agent="handleDeleteAgent"
         @delete-session="handleDeleteSession"
         @edit-profile="handleEditProfile"
         @logout="handlerLogout"
@@ -79,6 +81,16 @@
     :available-models="agentStore.availableModels"
     :available-capability-tags="agentStore.availableCapabilityTags"
     @confirm="handleAddAgent"
+  />
+
+  <!-- 编辑 Agent 弹窗 -->
+  <AddAgentDialog
+    v-model="showEditAgentDialog"
+    :available-models="agentStore.availableModels"
+    :available-capability-tags="agentStore.availableCapabilityTags"
+    :is-edit="true"
+    :editing-agent="editingAgent"
+    @confirm-edit="handleUpdateAgent"
   />
 
   <!-- 新建对话弹窗 -->
@@ -158,6 +170,12 @@ const showNewConversationDialog = ref(false)
 // ==================== 添加自建 Agent ====================
 /** 添加 Agent 弹框显隐 */
 const showAddAgentDialog = ref(false)
+
+// ==================== 编辑自建 Agent ====================
+/** 编辑 Agent 弹框显隐 */
+const showEditAgentDialog = ref(false)
+/** 当前编辑的 Agent */
+const editingAgent = ref<SidebarAgent | null>(null)
 
 // ==================== 发送状态 ====================
 /** 正在发送消息（显示 AI 回复 loading） */
@@ -357,21 +375,28 @@ const handleCreateConversation = async (payload: {
   }
 }
 
-/** 选择 Agent */
+/** 选择 Agent（高亮选中状态） */
 const handleSelectAgent = (agent: SidebarAgent) => {
   selectedAgentId.value = agent.id
-  if (agentStore.agents.some((item) => item.id === agent.id)) {
-    showNewConversationDialog.value = true
-    return
+}
+
+/** 编辑 Agent */
+const handleEditAgent = (agent: SidebarAgent) => {
+  editingAgent.value = agent
+  showEditAgentDialog.value = true
+}
+
+/** 删除 Agent */
+const handleDeleteAgent = async (agent: SidebarAgent) => {
+  try {
+    await agentStore.deleteAgent(agent.id)
+    showToast('Agent 已删除')
+    if (selectedAgentId.value === agent.id) {
+      selectedAgentId.value = ''
+    }
+  } catch {
+    showToast('删除失败', true)
   }
-  const existing = sessionStore.sessionList.find(
-    (s) => s.title?.includes(agent.name) && s.mode === 'single',
-  )
-  if (existing) {
-    void selectSession(existing)
-    return
-  }
-  showNewConversationDialog.value = true
 }
 
 // ==================== 发送消息 ====================
@@ -447,6 +472,26 @@ const handleAddAgent = async (newAgent: AgentDraft) => {
   } catch (error) {
     console.error('添加 Agent 失败', error)
     showToast('添加 Agent 失败', true)
+  }
+}
+
+/** 更新 Agent */
+const handleUpdateAgent = async (agentData: AgentDraft & { id: string }) => {
+  try {
+    await agentStore.updateAgent(agentData.id, {
+      name: agentData.name,
+      model: agentData.model,
+      platform: agentData.platform || 'custom',
+      description: agentData.description || null,
+      avatar_url: agentData.avatar || null,
+      capability_tags: agentData.capabilityTags,
+    })
+    showEditAgentDialog.value = false
+    showToast('Agent 已更新')
+    await agentStore.fetchAgents()
+  } catch (error) {
+    console.error('更新 Agent 失败', error)
+    showToast('更新 Agent 失败', true)
   }
 }
 
