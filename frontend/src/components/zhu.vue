@@ -413,18 +413,6 @@ const handleEditAgent = (agent: SidebarAgent) => {
   showEditAgentDialog.value = true
 }
 
-/** 删除 Agent */
-const handleDeleteAgent = async (agent: SidebarAgent) => {
-  try {
-    await agentStore.deleteAgent(agent.id)
-    showToast('Agent 已删除')
-    if (selectedAgentId.value === agent.id) {
-      selectedAgentId.value = ''
-    }
-  } catch {
-    showToast('删除失败', true)
-  }
-}
 
 // ==================== 发送消息 ====================
 
@@ -519,6 +507,34 @@ const handleUpdateAgent = async (agentData: AgentDraft & { id: string }) => {
   } catch (error) {
     console.error('更新 Agent 失败', error)
     showToast('更新 Agent 失败', true)
+  }
+}
+
+// ==================== 删除 Agent ====================
+
+const handleDeleteAgent = async (agent: SidebarAgent) => {
+  if (!agent.isCustom) {
+    showToast('内置 Agent 不能删除', true)
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除 Agent「${agent.name}」吗？删除后不可恢复。`,
+      '删除确认',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        customClass: 'delete-confirm-dialog',
+      },
+    )
+    await agentStore.deleteAgent(agent.id)
+    showToast('Agent 已删除')
+    if (selectedAgentId.value === agent.id) {
+      selectedAgentId.value = ''
+    }
+  } catch {
+    // 用户取消
   }
 }
 
