@@ -5,7 +5,7 @@
         <avatar :info="{ name: agent?.name, avatar: agent?.avatar }" size="72px" />
         <div class="agent-title">
           <h2>{{ agent?.name }}</h2>
-          <span class="agent-badge" :class="agent?.isCustom ? 'custom' : 'builtin'">
+          <span class="agent-badge" >
             {{ agent?.isCustom ? '自建' : '内置' }}
           </span>
         </div>
@@ -113,16 +113,8 @@ const getPlatformLabel = (platform?: string) => {
   padding: 4px 12px;
   font-size: 12px;
   font-weight: 600;
-
-  &.builtin {
-    background: rgba(37, 99, 235, 0.12);
-    color: #1d4ed8;
-  }
-
-  &.custom {
-    background: rgba(249, 115, 22, 0.12);
-    color: #c2410c;
-  }
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
 }
 
 .info-section {

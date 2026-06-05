@@ -12,7 +12,7 @@ export const useUserInfoStore = defineStore('user-info', {
       this.userId = String(userInfo.userId)
       this.userName = userInfo.userName
       this.email = userInfo.email
-      this.avatar = userInfo.avatar ?? ''
+      this.avatar = userInfo.avatar || 'msg10.jpg';
     },
     async clearUserInfo() {
       this.userId = ''

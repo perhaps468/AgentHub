@@ -122,6 +122,7 @@ function resetForm() {
     form.model = props.editingAgent.model || ''
     form.capabilityTags = [...props.editingAgent.capabilityTags]
     form.description = props.editingAgent.description || ''
+    form.avatar = props.editingAgent.avatar || ''
   } else {
     form.name = ''
     form.model = props.availableModels[0] || ''
@@ -173,7 +174,7 @@ const confirmAdd = () => {
       model: form.model,
       capabilityTags: [...form.capabilityTags],
       description: description || undefined,
-      avatar: '',
+      avatar: form.avatar,
       platform: 'custom',
     })
   } else {
@@ -182,7 +183,7 @@ const confirmAdd = () => {
       model: form.model,
       capabilityTags: [...form.capabilityTags],
       description: description || undefined,
-      avatar:  'form.avatar',
+      avatar: form.avatar,
       platform: 'custom',
     })
   }

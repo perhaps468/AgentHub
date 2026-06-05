@@ -83,7 +83,7 @@ const handleConfirm = () => {
 /* 弹窗容器 */
 .dialog-container {
   position: relative;
-  width: 520px;
+  width: 700px;
   max-width: 95vw;
   max-height: 85vh;
   background: #fff;

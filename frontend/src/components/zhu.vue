@@ -40,6 +40,7 @@
         @edit-agent="handleEditAgent"
         @delete-agent="handleDeleteAgent"
         @delete-session="handleDeleteSession"
+        @rename-session="handleRenameSession"
         @edit-profile="handleEditProfile"
         @logout="handlerLogout"
         @toggle-collapse="isCollapsed = !isCollapsed"
@@ -194,6 +195,7 @@ const selectedAgentId = ref('')
 // ==================== 工作空间 ====================
 /** 当前会话的工作空间 */
 const currentWorkspace = ref<Workspace | null>(null)
+
 
 const sidebarAgents = computed(() => agentStore.agents)
 const primaryGroupAgent = computed(() => {
@@ -360,6 +362,16 @@ const handleDeleteSession = async (item: ConversationItem) => {
   }
 }
 
+/** 重命名会话 */
+const handleRenameSession = async (item: ConversationItem, newTitle: string) => {
+  try {
+    await sessionStore.updateSession(item.id, { title: newTitle })
+    showToast('会话已重命名')
+  } catch {
+    showToast('重命名失败', true)
+  }
+}
+
 /** 创建新会话 */
 const handleCreateConversation = async (payload: {
   mode: ConversationMode
@@ -493,13 +505,28 @@ const handleAddAgent = async (newAgent: AgentDraft) => {
 /** 更新 Agent */
 const handleUpdateAgent = async (agentData: AgentDraft & { id: string }) => {
   try {
-    await agentStore.updateAgent(agentData.id, {
+    const { previousAgentName, updatedAgentName } = await agentStore.updateAgent(agentData.id, {
       name: agentData.name,
       model: agentData.model,
       platform: agentData.platform || 'custom',
       description: agentData.description || null,
       avatar_url: agentData.avatar || null,
       capability_tags: agentData.capabilityTags,
+    })
+    const syncedSessions = await agentStore.syncSessionTitlesForAgentRename(
+      sessionStore.sessionList,
+      agentData.id,
+      previousAgentName,
+      updatedAgentName,
+    )
+    syncedSessions.forEach((session) => {
+      const sessionIndex = sessionStore.sessionList.findIndex((item) => item.id === session.id)
+      if (sessionIndex !== -1) {
+        sessionStore.sessionList[sessionIndex] = session
+      }
+      if (sessionStore.currentSession?.id === session.id) {
+        sessionStore.currentSession = session
+      }
     })
     showEditAgentDialog.value = false
     showToast('Agent 已更新')

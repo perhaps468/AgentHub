@@ -148,6 +148,22 @@ export interface Workspace {
   created_at: string
 }
 
+// ==================== 会话操作负载 ====================
+export interface CreateSessionPayload {
+  owner_id: string
+  title: string
+  mode: 'single' | 'group'
+  workspace_id: string
+  agent_id?: string
+  participant_agent_ids?: string[]
+}
+
+export interface UpdateSessionPayload {
+  title?: string
+  is_pinned?: boolean
+  is_archived?: boolean
+}
+
 // ==================== 预览区状态 ====================
 export type PreviewState =
   | { type: 'empty'; title?: string }

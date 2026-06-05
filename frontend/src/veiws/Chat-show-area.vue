@@ -73,8 +73,24 @@ function resolveAgentName(metadata: Record<string, unknown> | undefined, senderR
   return senderRole ?? 'AI助手'
 }
 
-function getPendingDiffsForMessage(messageId?: string, streamId?: string) {
-  if (!messageId && !streamId) return []
+function resolveAgentAvatar(metadata: Record<string, unknown> | undefined) {
+  const currentSession = sessionStore.currentSession
+  const metadataAgentId = typeof metadata?.agent_id === 'string' ? metadata.agent_id : null
+
+  let resolvedAgentId: string | null = metadataAgentId
+  if (!resolvedAgentId && currentSession?.mode === 'single' && currentSession.agent_id) {
+    resolvedAgentId = currentSession.agent_id
+  }
+
+  if (resolvedAgentId) {
+    const matchedAgent = agentStore.agents.find((agent) => agent.id === resolvedAgentId)
+    if (matchedAgent?.avatar) return matchedAgent.avatar
+  }
+
+  return null
+}
+
+function getPendingDiffsForMessage(messageId?: string, streamId?: string) {  if (!messageId && !streamId) return []
   return pendingChangesForSession.value.filter((change) => {
     if (messageId && change.message_id === messageId) return true
     if (streamId && change.stream_id === streamId) return true
@@ -97,7 +113,7 @@ const msgRecord = computed(() => {
       fromInfo: {
         id: senderId,
         name: isHuman ? userInfoStore.userName || '我' : resolveAgentName(m.metadata, m.sender_role),
-        avatar: null,
+        avatar: isHuman ? (userInfoStore.avatar || null) : resolveAgentAvatar(m.metadata),
         type: isHuman ? 'User' : 'Agent',
         badge: null,
       },
@@ -130,7 +146,7 @@ const msgRecord = computed(() => {
         fromInfo: {
           id: senderId,
           name: resolveAgentName(s.metadata, s.sender_role),
-          avatar: null,
+          avatar: resolveAgentAvatar(s.metadata),
           type: 'Agent',
           badge: null,
         },

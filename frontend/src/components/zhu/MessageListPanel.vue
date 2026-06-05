@@ -275,13 +275,25 @@ const sortedActiveSessions = computed(() =>
 // ==================== 辅助函数 ====================
 
 const getAgentAvatar = (item: ConversationItem, agents: SidebarAgent[]) => {
-  const agent = agents.find((a) => item.title?.includes(a.name))
-  return agent?.avatar || ''
+  const sessionAgentId = (item as ConversationItem & { agent_id?: string | null }).agent_id
+  const agentById = sessionAgentId
+    ? agents.find((a) => a.id === sessionAgentId)
+    : undefined
+  if (agentById?.avatar) return agentById.avatar
+
+  const agentByTitle = agents.find((a) => item.title?.includes(a.name))
+  return agentByTitle?.avatar || ''
 }
 
 const getAgentTags = (item: ConversationItem, agents: SidebarAgent[]) => {
-  const agent = agents.find((a) => item.title?.includes(a.name))
-  return agent?.capabilityTags || []
+  const sessionAgentId = (item as ConversationItem & { agent_id?: string | null }).agent_id
+  const agentById = sessionAgentId
+    ? agents.find((a) => a.id === sessionAgentId)
+    : undefined
+  if (agentById?.capabilityTags?.length) return agentById.capabilityTags
+
+  const agentByTitle = agents.find((a) => item.title?.includes(a.name))
+  return agentByTitle?.capabilityTags || []
 }
 
 // ==================== ... 操作菜单 ====================

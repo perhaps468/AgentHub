@@ -46,7 +46,7 @@
           <div class="agent-info">
             <div class="agent-title-row">
               <span class="agent-name">{{ agent.name }}</span>
-              <span class="agent-badge" :class="agent.isCustom ? 'custom' : 'builtin'">
+              <span class="agent-badge" >
                 {{ agent.isCustom ? '自建' : '内置' }}
               </span>
             </div>
@@ -57,36 +57,14 @@
             </div>
           </div>
         </button>
-      </div>
-        class="agent-item-wrapper"
-        @contextmenu.prevent="showContextMenu($event, agent)"
-      >
-        <button
-          class="agent-item"
-          :class="{ 'is-selected': selectedAgentId === agent.id }"
-          type="button"
-          @click="$emit('select-agent', agent)"
-        >
-          <div class="avatar-wrapper" @click.stop="showAgentInfo(agent)" >
-            <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="42px" />
-            <div class="avatar-overlay">
-              <el-icon ></el-icon>
-            </div>
-          </div>
-          <div class="agent-info">
-            <div class="agent-title-row">
-              <span class="agent-name">{{ agent.name }}</span>
-              <span class="agent-badge" :class="agent.isCustom ? 'custom' : 'builtin'">
-                {{ agent.isCustom ? '自建' : '内置' }}
-              </span>
-            </div>
-            <span class="agent-desc">{{ agent.description  }}</span>
-            <div class="capability-tags">
-              <span v-for="tag in getVisibleCapabilityTags(agent.capabilityTags)" :key="tag" class="capability-tag">{{ tag }}</span>
-              <span v-if="agent.capabilityTags.length > 3" class="capability-tag more">+{{ agent.capabilityTags.length - 3 }}</span>
-            </div>
-          </div>
-        </button>
+        <div v-if="agent.isCustom" class="agent-actions">
+          <el-button size="small" circle @click.stop="$emit('edit-agent', agent)">
+            <el-icon><Edit /></el-icon>
+          </el-button>
+          <el-button size="small" circle type="danger" @click.stop="$emit('delete-agent', agent)">
+            <el-icon><Delete /></el-icon>
+          </el-button>
+        </div>
       </div>
       <div v-if="agents.length === 0" class="empty-hint">
         暂无 Agent
@@ -172,13 +150,6 @@ const hideContextMenu = () => {
   contextMenu.agent = null
 }
 
-const handleDeleteAgent = () => {
-  if (contextMenu.agent) {
-    emit('delete-agent', contextMenu.agent)
-  }
-  hideContextMenu()
-}
-
 // 点击其他地方关闭右键菜单
 const handleGlobalClick = () => {
   if (contextMenu.visible) {
@@ -196,15 +167,6 @@ onUnmounted(() => {
 
 const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
 
-const getAgentPlatformLabel = (agent: SidebarAgent) => {
-  const labels: Record<string, string> = {
-    'claude-code': 'Claude',
-    codex: 'Codex',
-    opencode: 'OpenCode',
-    custom: '自建',
-  }
-  return labels[agent.platform || 'custom'] || agent.platform || ''
-}
 </script>
 
 <style scoped lang="less">
@@ -398,17 +360,11 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
   padding: 2px 8px;
   font-size: 10px;
   font-weight: 600;
-}
-
-.agent-badge.builtin {
   background: rgba(37, 99, 235, 0.12);
   color: #1d4ed8;
 }
 
-.agent-badge.custom {
-  background: rgba(249, 115, 22, 0.12);
-  color: #c2410c;
-}
+
 
 .agent-desc {
   font-size: 12px;
@@ -437,6 +393,28 @@ const getAgentPlatformLabel = (agent: SidebarAgent) => {
   background: rgba(100, 116, 139, 0.1);
   color: #64748b;
   border-color: rgba(100, 116, 139, 0.15);
+}
+
+.agent-actions {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.agent-item-wrapper:hover .agent-actions {
+  opacity: 1;
+}
+
+.agent-actions .el-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
 }
 
 /* ==================== 右键菜单 ==================== */

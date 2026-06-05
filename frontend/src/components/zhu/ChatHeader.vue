@@ -2,24 +2,11 @@
   <header class="chat-header">
     <div class="chat-header-main">
       <div class="chat-header-left">
-        <avatar :info="{ name: currentSession?.title, avatar: currentAgentAvatar }" :size="38" />
+        <avatar :info="{ name: currentSession?.title, avatar: '' }" :size="38" />
       </div>
       <div class="chat-header-right">
         <h2>{{ currentSession?.title || '选择或新建会话' }}</h2>
         <div >
-        <!-- P6-9: Group member status display -->
-        <div v-if="currentSession?.mode === 'group' && currentSession.members?.length" class="group-members">
-          <div
-            v-for="member in currentSession.members"
-            :key="member.id"
-            class="member-chip"
-            :class="{ 'is-primary': member.is_primary }"
-          >
-            <span class="member-status-dot"></span>
-            <span class="member-name">{{ member.is_primary ? '主Agent' : `Agent` }}</span>
-            <span class="member-health">{{ member.health_status === 'connected' ? '在线' : member.health_status }}</span>
-          </div>
-        </div>
         <ConnectionStatus
           v-if="currentSessionId"
           :state="connectionState"
@@ -38,11 +25,9 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
-import { useAgentStore } from '../../store'
 import ConnectionStatus from '../ConnectionStatus.vue'
 import type { ConversationItem, Workspace } from '../../types/agenthub'
 import type { ConnectionState } from '../../utils/ws-client'
-import { log } from 'console'
 
 const props = defineProps<{
   currentSession: ConversationItem | null | undefined
@@ -62,16 +47,6 @@ const workspaceRootName = computed(() => {
   if (!props.workspace) return ''
   const parts = props.workspace.root_path.split(/[/\\]/)
   return parts[parts.length - 1] || props.workspace.root_path
-})
-
-const agentStore = useAgentStore()
-
-const currentAgentAvatar = computed(() => {
-  if (!props.currentSession?.title) return ''
-  const agent = agentStore.agents.find((a) =>{ 
-    return props.currentSession?.title?.includes(a.name) 
-  }) 
-  return agent?.avatar || '无头像'
 })
 </script>
 
@@ -133,53 +108,6 @@ const currentAgentAvatar = computed(() => {
   gap: 5px;
 }
 
-.group-members {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.member-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.06);
-  border: 1px solid rgba(59, 130, 246, 0.12);
-  font-size: 11px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-
-  &.is-primary {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08));
-    border-color: rgba(59, 130, 246, 0.25);
-  }
-}
-
-.member-status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
-  flex-shrink: 0;
-}
-
-.member-name {
-  color: #64748b;
-  font-weight: 600;
-
-  .is-primary & {
-    color: #3b82f6;
-  }
-}
-
-.member-health {
-  color: #94a3b8;
-  font-size: 10px;
-}
 
 .header-icon {
   width: 38px;

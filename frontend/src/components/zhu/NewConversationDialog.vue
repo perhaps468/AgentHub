@@ -36,7 +36,7 @@
           <!-- P6-7: Fixed primary agent card (always selected, disabled) -->
           <div v-if="primaryAgent" class="agent-picker-item primary-agent-card selected">
             <input type="checkbox" checked disabled />
-            <avatar :info="{ name: primaryAgent.name, avatar: primaryAgent.avatar }" size="32px" />
+            <avatar :info="{ name: primaryAgent.name, avatar: primaryAgent.avatar }" size="32px"  title="primaryAgent.name" />
             <div class="agent-picker-meta">
               <span class="agent-picker-name">{{ primaryAgent.name }}</span>
               <span class="primary-agent-badge">主 Agent</span>
@@ -179,16 +179,6 @@
           <p v-if="workspaceCreateError" class="workspace-error-tip">{{ workspaceCreateError }}</p>
         </div>
       </el-form-item>
-
-      <button class="link-to-agent-panel" type="button" @click="$emit('go-agent-panel')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span>去 Agent 列表添加或浏览更多</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-          <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
     </el-form>
   </BaseDialog>
 </template>
@@ -369,15 +359,7 @@ const canCreateConversation = computed(() => {
   return true
 })
 
-const formatPlatformLabel = (platform?: AgentPlatform) => {
-  const labels: Record<string, string> = {
-    'claude-code': 'Claude',
-    codex: 'Codex',
-    opencode: 'OpenCode',
-    custom: '自建',
-  }
-  return platform ? labels[platform] || platform : ''
-}
+
 
 const getDefaultConvTitle = () => {
   if (newConvType.value === 'single') {
@@ -521,7 +503,7 @@ const confirmCreate = () => {
 
 .agent-picker-list {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   max-height: 220px;
   width: 100%;
@@ -637,62 +619,6 @@ const confirmCreate = () => {
   transition: all 0.2s ease;
 }
 
-.link-to-agent-panel {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  align-self: flex-start;
-  padding: 12px 20px;
-  margin-top: 8px;
-  border: 1px dashed rgba(59, 130, 246, 0.3);
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.04), rgba(99, 102, 241, 0.02));
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    background: radial-gradient(circle, rgba(59, 130, 246, 0.2), transparent);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    transition: all 0.4s ease;
-  }
-
-  svg {
-    transition: transform 0.3s ease;
-  }
-
-  &:hover {
-    color: #3b82f6;
-    border-color: #3b82f6;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.06));
-    transform: translateX(6px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-
-    &::before {
-      width: 200px;
-      height: 200px;
-    }
-
-    svg {
-      transform: translateX(4px);
-    }
-  }
-
-  &:active {
-    transform: translateX(6px) scale(0.98);
-  }
-}
 
 .workspace-select {
   width: 100%;
