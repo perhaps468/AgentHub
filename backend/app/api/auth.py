@@ -1,10 +1,11 @@
+from pydantic import BaseModel
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import create_access_token
+from app.core.security import create_access_token, CurrentUser
 from app.models.user import User
 from app.schemas.user import LoginRequest, LoginResponse
 from app.services.group_host_agent import ensure_user_group_host_agent
@@ -52,3 +53,18 @@ def register(body: LoginRequest, db: _db):
 
     ensure_user_group_host_agent(db, str(new_user.id))
     return {"code": 0, "msg": "注册成功", "data": None}
+
+
+class UserUpdateRequest(BaseModel):
+    avatar: str | None = None
+
+
+@router.post("/update")
+def update_user(body: UserUpdateRequest, current_user: CurrentUser, db: _db):
+    user = db.get(User, current_user.id)
+    if user is None:
+        return {"code": 404, "msg": "用户不存在", "data": None}
+    if body.avatar is not None:
+        user.avatar = body.avatar
+    db.commit()
+    return {"code": 0, "msg": "更新成功", "data": None}

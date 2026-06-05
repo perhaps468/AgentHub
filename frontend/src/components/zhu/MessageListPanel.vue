@@ -275,12 +275,14 @@ const sortedActiveSessions = computed(() =>
 // ==================== 辅助函数 ====================
 
 const getAgentAvatar = (item: ConversationItem, agents: SidebarAgent[]) => {
-  const agent = agents.find((a) => item.title?.includes(a.name))
+  if (!item.agent_id) return ''
+  const agent = agents.find((a) => a.id === item.agent_id)
   return agent?.avatar || ''
 }
 
 const getAgentTags = (item: ConversationItem, agents: SidebarAgent[]) => {
-  const agent = agents.find((a) => item.title?.includes(a.name))
+  if (!item.agent_id) return []
+  const agent = agents.find((a) => a.id === item.agent_id)
   return agent?.capabilityTags || []
 }
 

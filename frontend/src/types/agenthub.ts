@@ -148,6 +148,20 @@ export interface Workspace {
   created_at: string
 }
 
+// Session / Conversation item — mirrors backend SessionResponse
+export interface ConversationItem {
+  id: string
+  owner_id: string
+  workspace_id: string | null
+  agent_id: string | null
+  title: string | null
+  mode: 'single' | 'group'
+  is_pinned: boolean
+  is_archived: boolean
+  created_at: string
+  updated_at: string
+}
+
 // ==================== 预览区状态 ====================
 export type PreviewState =
   | { type: 'empty'; title?: string }

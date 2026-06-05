@@ -1,29 +1,29 @@
 <template>
   <!-- 左侧菜单栏：头像 + 消息列表按钮 + Agent 列表按钮 -->
   <div class="sidebar-rail">
-    <!-- 头像 + 用户信息弹框 -->
-    <div class="rail-avatar-wrapper" @mouseleave="$emit('update:showUserPopover', false)">
+    <!-- 头像按钮 -->
+    <div class="rail-avatar-wrapper">
       <button class="rail-avatar" type="button" @click="$emit('update:showUserPopover', !showUserPopover)">
         <avatar :info="{ name: currentUser.name , avatar: currentUser.avatar }" size="44px" />
       </button>
+    </div>
 
-      <!-- 用户信息弹框 -->
-      <Transition name="popover-fade" @mouseleave="$emit('update:showUserPopover', false)">
-        <div v-if="showUserPopover" class="user-popover" >
-          <div class="user-popover-header">
-            <avatar :info="{ name: currentUser.name, avatar: currentUser.avatar }" size="56px" />
-            <div class="user-popover-info">
-              <span class="user-popover-name">{{ currentUser.name }}</span>
-              <span class="user-popover-email">{{ currentUser.email || 'AgentHub 用户' }}</span>
-            </div>
-          </div>
-          <div class="user-popover-actions">
-            <button class="user-popover-btn" type="button" @click="$emit('edit-profile')">编辑资料</button>
-            <button class="user-popover-btn logout" type="button" @click="$emit('logout')">退出登录</button>
+    <!-- 用户信息弹框 -->
+    <Transition name="popover-fade" @mouseleave="$emit('update:showUserPopover', false)">
+      <div v-if="showUserPopover" class="user-popover" >
+        <div class="user-popover-header">
+          <avatar :info="{ name: currentUser.name, avatar: currentUser.avatar }" size="56px" />
+          <div class="user-popover-info">
+            <span class="user-popover-name">{{ currentUser.name }}</span>
+            <span class="user-popover-email">{{ currentUser.email || 'AgentHub 用户' }}</span>
           </div>
         </div>
-      </Transition>
-    </div>
+        <div class="user-popover-actions">
+          <button class="user-popover-btn" type="button" @click="$emit('edit-profile')">编辑资料</button>
+          <button class="user-popover-btn logout" type="button" @click="$emit('logout')">退出登录</button>
+        </div>
+      </div>
+    </Transition>
 
     <button
       class="rail-button"
@@ -88,6 +88,7 @@ const handleToggleCollapse = () => {
 <style scoped>
 /* ==================== 侧边栏图标栏容器 ==================== */
 .sidebar-rail {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -99,7 +100,6 @@ const handleToggleCollapse = () => {
 
 /* ==================== 头像容器 ==================== */
 .rail-avatar-wrapper {
-  position: relative;
 }
 
 /* 按钮组容器 */

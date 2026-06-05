@@ -129,6 +129,7 @@ import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 
 import { fetchWorkspace } from '../api/modules/workspace'
+import userApi from '../api/user'
 import { useAgentStore } from '../store/index'
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
@@ -164,7 +165,7 @@ const showLeft = ref(true)
 
 const DEFAULT_PREVIEW_WIDTH = 340
 const MIN_PREVIEW_WIDTH = 280
-const MAX_PREVIEW_WIDTH = 720
+const MAX_PREVIEW_WIDTH = 1400
 const PREVIEW_RESIZE_HANDLE_WIDTH = 8
 
 /** 左侧栏收起状态 */
@@ -540,12 +541,26 @@ const handleEditProfile = () => {
 }
 
 /** 提交资料更新 */
-const handleProfileUpdate = (data: Partial<SidebarUser>) => {
+const handleProfileUpdate = async (data: Partial<SidebarUser>) => {
   if (data.name) userInfoStore.setUserName(data.name)
   if (data.email) {
     ;(userInfoStore as unknown as { setEmail: (value: string) => void }).setEmail(data.email)
   }
   if (data.avatar !== undefined) userInfoStore.setUserAvatar(data.avatar)
+
+  const saved = localStorage.getItem('user')
+  const userData = saved ? JSON.parse(saved) : {}
+  if (data.name) userData.userName = data.name
+  if (data.email) userData.email = data.email
+  if (data.avatar !== undefined) userData.avatar = data.avatar
+  localStorage.setItem('user', JSON.stringify(userData))
+
+  try {
+    await userApi.update({ userName: data.name, avatar: data.avatar, email: data.email })
+  } catch (e) {
+    // silent fail
+  }
+
   showToast('资料已更新')
 }
 
