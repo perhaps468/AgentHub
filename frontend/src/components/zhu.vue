@@ -124,7 +124,7 @@
  * 高级玻璃态设计，白色为主，带动态效果
  * 结合 V1 完整功能 + V3 清晰结构
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 
@@ -143,7 +143,7 @@ import type {
   SidebarUser,
   Workspace,
 } from '../types/agenthub'
-import { getWsClientReconnectAttempt, wsClient } from '../utils/ws-client'
+import { getWsClientReconnectAttempt, ws } from '../utils/ws-client'
 import { useToast } from '../veiws/useToast'
 import AddAgentDialog from './zhu/AddAgentDialog.vue'
 import ChatWorkspace from './zhu/ChatWorkspace.vue'
@@ -207,8 +207,8 @@ const showEditAgentDialog = ref(false)
 const editingAgent = ref<SidebarAgent | null>(null)
 
 // ==================== 发送状态 ====================
-/** 正在发送消息（显示 AI 回复 loading） */
-const isSendLoading = ref(false)
+/** 每个会话独立的发送加载状态 */
+const isSendLoadingMap = new Map<string, boolean>()
 
 // ==================== 预览状态 ====================
 /** 右侧预览区状态 */
@@ -268,6 +268,9 @@ const currentUser = computed<SidebarUser>(() => ({
 
 /** WebSocket 重连次数 */
 const reconnectAttempt = computed(() => getWsClientReconnectAttempt())
+
+/** 当前会话的发送中状态 */
+const isSendLoading = computed(() => !!sessionStore.currentSessionId && (isSendLoadingMap.get(sessionStore.currentSessionId) ?? false))
 
 /** Agent 列表过滤 */
 const filteredAgentList = computed(() => {
@@ -381,23 +384,24 @@ async function restorePendingChangesForCurrentSession(
 
 // ==================== 会话操作 ====================
 
-/** 选中会话 */
+/** 选中会话（多会话：不断开旧连接，所有会话保持 WebSocket 连接） */
 const selectSession = async (item: ConversationItem) => {
   if (sessionStore.currentSessionId === item.id) {
     showLeft.value = false
     return
   }
-  const previousSessionId = sessionStore.currentSessionId
-  wsClient.disconnect()
-  if (previousSessionId) {
-    sessionStore.clearMessages(previousSessionId)
-  }
   sessionStore.setCurrentSessionId(item.id)
+  ws.setActive(item.id)
+  if (!ws.getConnectedSessions().includes(item.id)) {
+    ws.connect(item.id)
+    sessionStore.setConnectionState('connecting')
+  }
   await sessionStore.fetchSessionDetail(item.id)
   await sessionStore.fetchMessages(item.id, { page: 1, page_size: 20 })
   await sessionStore.fetchLatestRun(item.id)
   await restorePendingChangesForCurrentSession(item.id)
-  wsClient.connect(item.id)
+  // 订阅该 session 的 WebSocket 状态
+  subscribeSessionState(item.id)
   showLeft.value = false
 }
 
@@ -463,7 +467,7 @@ const handleCreateConversation = async (payload: {
     await sessionStore.fetchMessages(session.id, { page: 1, page_size: 20 })
     await sessionStore.fetchLatestRun(session.id)
     await restorePendingChangesForCurrentSession(session.id)
-    wsClient.connect(session.id)
+    ws.connect(session.id)
     showNewConversationDialog.value = false
   } catch (error) {
     console.error('创建会话失败', error)
@@ -505,7 +509,7 @@ const handleSend = async (content: string) => {
     return
   }
 
-  isSendLoading.value = true
+  isSendLoadingMap.set(sessionId, true)
   const tempId = `temp_${Date.now()}`
   sessionStore.appendHumanMessage(sessionId, {
     id: tempId,
@@ -520,16 +524,19 @@ const handleSend = async (content: string) => {
     created_at: new Date().toISOString(),
   })
 
-  const ok = wsClient.sendMessage(content)
+  const ok = ws.send(sessionId, content)
   if (!ok) {
     showToast('发送失败，请检查网络', true)
-    isSendLoading.value = false
+    isSendLoadingMap.delete(sessionId)
   }
 }
 
 /** 重试连接 */
 const handleRetry = () => {
-  wsClient.manualRetry()
+  const sessionId = sessionStore.currentSessionId
+  if (sessionId) {
+    ws.manualRetry(sessionId)
+  }
 }
 
 // ==================== 用户资料 ====================
@@ -610,7 +617,7 @@ const handleUpdateAgent = async (agentData: AgentDraft & { id: string }) => {
 /** 退出登录 */
 const handlerLogout = () => {
   showUserPopover.value = false
-  wsClient.disconnect()
+  ws.disconnect()  // 断开所有 WebSocket 连接
   localStorage.removeItem('x-token')
   localStorage.removeItem('user')
   localStorage.removeItem('session-store')
@@ -618,6 +625,39 @@ const handlerLogout = () => {
   sessionStore.clearMessages('')
   userInfoStore.clearUserInfo()
   router.push('/login')
+}
+
+// ==================== WebSocket 状态订阅管理 ====================
+
+/** 每个 session 的状态取消订阅函数 Map */
+const _wsStateUnsubscribers = new Map<string, () => void>()
+
+/**
+ * 订阅指定 session 的 WebSocket 状态变化。
+ * 如果该 session 已有订阅，先取消旧的。
+ */
+function subscribeSessionState(sessionId: string) {
+  if (!sessionId) return
+  const unsubscribe = _wsStateUnsubscribers.get(sessionId)
+  if (unsubscribe) return
+  const unsub = ws.onStateChange(sessionId, (state) => {
+    if (sessionStore.currentSessionId === sessionId) {
+      sessionStore.setConnectionState(state)
+      if (state === 'connected') {
+        void restorePendingChangesForCurrentSession(sessionId, { clearInFlight: true })
+      }
+    }
+  })
+  _wsStateUnsubscribers.set(sessionId, unsub)
+}
+
+/** 取消订阅指定 session 的 WebSocket 状态 */
+function unsubscribeSessionState(sessionId: string) {
+  const unsub = _wsStateUnsubscribers.get(sessionId)
+  if (unsub) {
+    unsub()
+    _wsStateUnsubscribers.delete(sessionId)
+  }
 }
 
 // ==================== 恢复当前会话 ====================
@@ -629,7 +669,15 @@ async function restoreCurrentSession() {
   await sessionStore.fetchMessages(sessionId, { page: 1, page_size: 20 })
   await sessionStore.fetchLatestRun(sessionId)
   await restorePendingChangesForCurrentSession(sessionId)
-  wsClient.connect(sessionId)
+  // 订阅该 session 的 WebSocket 状态（connect 之后订阅，确保能收到 connecting → connected）
+  if (!ws.getConnectedSessions().includes(sessionId)) {
+    ws.connect(sessionId)
+    sessionStore.setConnectionState('connecting')
+  } else {
+    ws.setActive(sessionId)
+    sessionStore.setConnectionState(ws.getState(sessionId))
+  }
+  subscribeSessionState(sessionId)
 }
 
 // ==================== 预览区 ====================
@@ -674,24 +722,11 @@ onMounted(async () => {
     agentStore.fetchAgents(),
   ])
 
-  // 监听 WebSocket 状态变化
-  wsClient.onStateChange((state) => {
-    sessionStore.setConnectionState(state)
-    if (state === 'connected') {
-      const sessionId = sessionStore.currentSessionId
-      if (sessionId) {
-        void restorePendingChangesForCurrentSession(sessionId, { clearInFlight: true })
-      }
-    }
-  })
-
-  // 监听 WebSocket 消息
-  wsClient.onReceiveMessage((msg) => {
+  // 监听 WebSocket 状态变化（多会话：订阅当前 session 的状态，连接后立即订阅）
+  ws.onReceiveMessage((msg, sessionId) => {
     const currentSessionId = sessionStore.currentSessionId
-    const resolvedSessionId =
-      msg.message?.session_id
-      || (msg.stream_id ? sessionStore.streamState.getSessionIdForStream(msg.stream_id) : undefined)
-      || currentSessionId
+    // 优先用 WebSocket 连接所属的 sessionId，其次用消息中的 session_id，最后用当前活跃 session
+    const resolvedSessionId = sessionId || msg.message?.session_id || msg.session_id || currentSessionId
 
     if (!resolvedSessionId) return
 
@@ -716,10 +751,10 @@ onMounted(async () => {
           created_at: stream.created_at,
         })
       }
-      isSendLoading.value = false
+      isSendLoadingMap.delete(resolvedSessionId)
     } else if (msg.type === 'message_error') {
       sessionStore.streamState.handleMessageError(msg, resolvedSessionId)
-      isSendLoading.value = false
+      isSendLoadingMap.delete(resolvedSessionId)
     } else if (msg.type === 'tool_event') {
       sessionStore.streamState.handleToolEvent(msg, resolvedSessionId)
     } else if (msg.type === 'runtime_state') {
@@ -747,7 +782,7 @@ onMounted(async () => {
       sessionStore.streamState.handleRepairState(msg)
     } else if (msg.type === 'error') {
       console.error('[WsClient] Server error:', msg.error_code, msg.error_message)
-      isSendLoading.value = false
+      isSendLoadingMap.delete(resolvedSessionId)
     } else if (msg.type === 'orchestration_run_started') {
       // M6: Handle orchestration run started event - initialize run and tasks
       const runId = msg.run_id
@@ -819,7 +854,12 @@ onMounted(async () => {
 onUnmounted(() => {
   stopPreviewResize()
   sessionStore.streamState.setOnTaskStatusUpdate(() => {})
-  wsClient.disconnect()
+  // 清理所有 WebSocket 状态订阅
+  for (const [sid, unsub] of _wsStateUnsubscribers) {
+    unsub()
+  }
+  _wsStateUnsubscribers.clear()
+  ws.disconnect()  // 断开所有 WebSocket 连接
 })
 </script>
 

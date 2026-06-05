@@ -1,5 +1,4 @@
 import { WS_BASE_URL } from '@/api/client'
-import type { ChatMessage } from '@/types/agenthub'
 
 export type ConnectionState =
   | 'connecting'
@@ -10,7 +9,6 @@ export type ConnectionState =
 
 export type WsIncomingMessage = {
   type: string
-  // Common fields
   message_id?: string
   session_id?: string
   sender_type?: string
@@ -18,7 +16,6 @@ export type WsIncomingMessage = {
   stream_id?: string
   agent_role?: string
   timestamp?: string
-  // message_start
   message?: {
     id: string
     session_id: string
@@ -31,41 +28,29 @@ export type WsIncomingMessage = {
     status: string
     created_at: string
   }
-  // message_delta
   delta?: string
-  // message_end / message_error
   status?: string
   error_code?: string
   error_message?: string
-  // final_content: extracted answer from task_complete (avoids leaking ReAct/XML)
   final_content?: string
-  // Legacy / generic
   content?: string
   content_type?: string
   created_at?: string
-  // Task A: tool_event
   tool_name?: string
   arguments?: Record<string, unknown>
   response?: string | null
-  // Task A: runtime_state
   state?: string
-  // Task A: runtime process replay nodes (collected in stream state)
   _runtime_nodes?: unknown[]
-  // Task C-2: change_preview
   change_id?: string
   operation?: 'create' | 'update' | 'delete'
   path?: string
   unified_diff?: string
-  // Task C-4: apply_result
   success?: boolean
-  // Task D-1: preview_result
   preview_id?: string
   preview_url?: string
   workspace_id?: string
-  // Task D-2: repair_state
   attempt?: number
   max_attempts?: number
-  // M4: Task-aware fields for orchestration
   run_id?: string | null
   task_id?: string | null
   agent_id?: string | null
@@ -73,12 +58,12 @@ export type WsIncomingMessage = {
 }
 
 type StateChangeHandler = (state: ConnectionState) => void
-type MessageHandler = (msg: WsIncomingMessage) => void
+type MessageHandler = (msg: WsIncomingMessage, sessionId: string) => void
 
-export class WsClient {
+class WsClient {
   private ws: WebSocket | null = null
-  private sessionId = ''
-  private state: ConnectionState = 'disconnected'
+  private _sessionId = ''
+  private _state: ConnectionState = 'disconnected'
   private reconnectAttempt = 0
   private readonly MAX_RECONNECT = 5
   private readonly BACKOFF = [1000, 2000, 4000, 8000, 16000]
@@ -92,18 +77,25 @@ export class WsClient {
   private stateListeners = new Set<StateChangeHandler>()
   private messageListeners = new Set<MessageHandler>()
 
+  get sessionId(): string {
+    return this._sessionId
+  }
+
+  get state(): ConnectionState {
+    return this._state
+  }
+
   connect(sessionId: string): void {
     if (this.ws) {
       this.disconnect()
     }
 
-    this.sessionId = sessionId
+    this._sessionId = sessionId
     this.setState('connecting')
 
     const token = localStorage.getItem('x-token')
     const url = `${WS_BASE_URL}/${sessionId}${token ? `?x-token=${encodeURIComponent(token)}` : ''}`
     console.log(`[WsClient] Connecting to ${url}`)
-    console.log(`[WsClient] WS_BASE_URL=${WS_BASE_URL}, sessionId=${sessionId}, token=${token}`)
 
     try {
       this.ws = new WebSocket(url)
@@ -137,7 +129,7 @@ export class WsClient {
 
     const payload = {
       action: 'send_message',
-      session_id: this.sessionId,
+      session_id: this._sessionId,
       content,
     }
 
@@ -153,17 +145,17 @@ export class WsClient {
   }
 
   manualRetry(): void {
-    if (this.state === 'failed') {
+    if (this._state === 'failed') {
       this.reconnectAttempt = 0
-      if (this.sessionId) {
-        this.connect(this.sessionId)
+      if (this._sessionId) {
+        this.connect(this._sessionId)
       }
     }
   }
 
   onStateChange(cb: StateChangeHandler): () => void {
     this.stateListeners.add(cb)
-    cb(this.state)
+    cb(this._state)
     return () => this.stateListeners.delete(cb)
   }
 
@@ -172,16 +164,8 @@ export class WsClient {
     return () => this.messageListeners.delete(cb)
   }
 
-  getState(): ConnectionState {
-    return this.state
-  }
-
-  getReconnectAttempt(): number {
-    return this.reconnectAttempt
-  }
-
   private setState(s: ConnectionState): void {
-    this.state = s
+    this._state = s
     this.stateListeners.forEach((cb) => cb(s))
   }
 
@@ -212,7 +196,7 @@ export class WsClient {
     }
 
     console.log('[WsClient] Message:', msg)
-    this.messageListeners.forEach((cb) => cb(msg))
+    this.messageListeners.forEach((cb) => cb(msg, this._sessionId))
   }
 
   private onClose(event: CloseEvent): void {
@@ -230,8 +214,6 @@ export class WsClient {
   private onError(event: Event): void {
     console.error('[WsClient] Error:', event)
     this.clearTimers()
-
-
     this.handleReconnect()
   }
 
@@ -250,8 +232,8 @@ export class WsClient {
 
     this.reconnectTimer = setTimeout(() => {
       this.reconnectAttempt++
-      if (this.sessionId) {
-        this.connect(this.sessionId)
+      if (this._sessionId) {
+        this.connect(this._sessionId)
       }
     }, delay)
   }
@@ -303,20 +285,127 @@ export class WsClient {
   }
 }
 
-export const wsClient = new WsClient()
-export const ws = {
-  connect: (sessionId: string) => wsClient.connect(sessionId),
-  disConnect: () => wsClient.disconnect(),
-  send: (content: string) => wsClient.sendMessage(content),
-  getState: () => wsClient.getState(),
-  getStatus: () => ({
-    isConnect: wsClient.getState() === 'connected',
-    readyState: wsClient.getState(),
-    reconnectCount: wsClient.getReconnectAttempt(),
-  }),
-  onStateChange: (cb: (state: ConnectionState) => void) => wsClient.onStateChange(cb),
-  onReceiveMessage: (cb: (msg: WsIncomingMessage) => void) => wsClient.onReceiveMessage(cb),
-  manualRetry: () => wsClient.manualRetry(),
+class MultiWsManager {
+  /** Per-session WebSocket connections */
+  private clients = new Map<string, WsClient>()
+
+  /** Currently active session (the one whose state/reconnect info is shown in UI) */
+  private _activeSessionId: string | null = null
+
+  /** Subscribe to all messages across all sessions */
+  private globalMessageListeners = new Set<(msg: WsIncomingMessage, sessionId: string) => void>()
+
+  getClient(sessionId: string): WsClient | undefined {
+    return this.clients.get(sessionId)
+  }
+
+  connect(sessionId: string): void {
+    let client = this.clients.get(sessionId)
+    if (!client) {
+      client = new WsClient()
+      client.onReceiveMessage((msg, sid) => {
+        this.globalMessageListeners.forEach((cb) => cb(msg, sid))
+      })
+      this.clients.set(sessionId, client)
+    }
+    this._activeSessionId = sessionId
+    client.connect(sessionId)
+  }
+
+  disconnect(sessionId?: string): void {
+    if (sessionId) {
+      const client = this.clients.get(sessionId)
+      if (client) {
+        client.disconnect()
+        this.clients.delete(sessionId)
+      }
+      if (this._activeSessionId === sessionId) {
+        this._activeSessionId = null
+      }
+    } else {
+      this.clients.forEach((client) => client.disconnect())
+      this.clients.clear()
+      this._activeSessionId = null
+    }
+  }
+
+  send(sessionId: string, content: string): boolean {
+    const client = this.clients.get(sessionId)
+    if (!client) {
+      console.warn('[MultiWsManager] Not connected to session:', sessionId)
+      return false
+    }
+    return client.sendMessage(content)
+  }
+
+  getState(sessionId: string): ConnectionState {
+    return this.clients.get(sessionId)?.state ?? 'disconnected'
+  }
+
+  getStatus(sessionId: string): { isConnect: boolean; readyState: ConnectionState; reconnectCount: number } {
+    const client = this.clients.get(sessionId)
+    return {
+      isConnect: client?.state === 'connected',
+      readyState: client?.state ?? 'disconnected',
+      reconnectCount: client ? 0 : 0,
+    }
+  }
+
+  /** State of the currently active session */
+  get activeState(): ConnectionState {
+    if (!this._activeSessionId) return 'disconnected'
+    return this.clients.get(this._activeSessionId)?.state ?? 'disconnected'
+  }
+
+  get activeSessionId(): string | null {
+    return this._activeSessionId
+  }
+
+  setActive(sessionId: string): void {
+    this._activeSessionId = sessionId
+  }
+
+  manualRetry(sessionId: string): void {
+    this.clients.get(sessionId)?.manualRetry()
+  }
+
+  onReceiveMessage(cb: (msg: WsIncomingMessage, sessionId: string) => void): () => void {
+    this.globalMessageListeners.add(cb)
+    return () => this.globalMessageListeners.delete(cb)
+  }
+
+  onStateChange(sessionId: string, cb: (state: ConnectionState) => void): () => void {
+    const client = this.clients.get(sessionId)
+    if (!client) {
+      cb('disconnected')
+      return () => {}
+    }
+    return client.onStateChange(cb)
+  }
+
+  getConnectedSessionIds(): string[] {
+    return Array.from(this.clients.keys())
+  }
 }
-export const getWsClientState = () => wsClient.getState()
-export const getWsClientReconnectAttempt = () => wsClient.getReconnectAttempt()
+
+const _manager = new MultiWsManager()
+
+export const ws = {
+  connect: (sessionId: string) => _manager.connect(sessionId),
+  disconnect: (sessionId?: string) => _manager.disconnect(sessionId),
+  send: (sessionId: string, content: string) => _manager.send(sessionId, content),
+  getState: (sessionId: string) => _manager.getState(sessionId),
+  getStatus: (sessionId: string) => _manager.getStatus(sessionId),
+  onStateChange: (sessionId: string, cb: (state: ConnectionState) => void) => _manager.onStateChange(sessionId, cb),
+  onReceiveMessage: (cb: (msg: WsIncomingMessage, sessionId: string) => void) =>
+    _manager.onReceiveMessage(cb),
+  manualRetry: (sessionId: string) => _manager.manualRetry(sessionId),
+  getActiveSessionId: () => _manager.activeSessionId,
+  setActive: (sessionId: string) => _manager.setActive(sessionId),
+  getConnectedSessions: () => _manager.getConnectedSessionIds(),
+}
+
+export const getWsClientState = () => _manager.activeState
+export const getWsClientReconnectAttempt = () => 0
+
+export { MultiWsManager, WsClient }

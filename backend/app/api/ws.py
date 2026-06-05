@@ -153,6 +153,14 @@ def get_primary_agent_for_group(db, session: ChatSession) -> Agent | None:
 
 
 class _InFlightGuard:
+    """Per-session concurrency guard.
+
+    Now allows concurrent streaming responses for the same session — multiple
+    requests with different stream_ids are routed independently by the frontend
+    via the stream_id. This class is kept for future use (e.g. rate-limiting
+    or interrupting a specific stream).
+    """
+
     def __init__(self) -> None:
         self._sessions: set[str] = set()
 
@@ -160,9 +168,7 @@ class _InFlightGuard:
         return session_id in self._sessions
 
     def try_enter(self, session_id: str) -> bool:
-        if session_id in self._sessions:
-            return False
-        self._sessions.add(session_id)
+        """Always allow — concurrent streaming per session is now supported."""
         return True
 
     def leave(self, session_id: str) -> None:
@@ -1626,14 +1632,17 @@ async def _handle_streaming_response(
                 agent_message.status = "failed"
                 db.add(agent_message)
                 db.commit()
-        await ws_send_message_error(
-            websocket,
-            agent_role=active_agent_role,
-            stream_id=active_stream_id,
-            message_id=active_message_id or "",
-            error_code=active_error_code,
-            error_message=str(exc),
-        )
+        try:
+            await ws_send_message_error(
+                websocket,
+                agent_role=active_agent_role,
+                stream_id=active_stream_id,
+                message_id=active_message_id or "",
+                error_code=active_error_code,
+                error_message=str(exc),
+            )
+        except Exception:
+            pass
 
 
 @router.websocket("/{session_id}")
