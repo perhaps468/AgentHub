@@ -629,7 +629,11 @@ const handleUpdateAgent = async (agentData: AgentDraft & { id: string }) => {
         sessionStore.sessionList[sessionIndex] = session
       }
       if (sessionStore.currentSession?.id === session.id) {
-        sessionStore.currentSession = session
+        sessionStore.currentSession = {
+          ...sessionStore.currentSession,
+          ...session,
+          members: session.members ?? sessionStore.currentSession.members,
+        }
       }
     })
     showEditAgentDialog.value = false

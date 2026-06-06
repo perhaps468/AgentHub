@@ -209,6 +209,7 @@ uploads/
 *.log
 logs/
 .cursor/*.log
+backend/backend/.audit/
 
 # Alembic ini (auto-generated)
 alembic.ini

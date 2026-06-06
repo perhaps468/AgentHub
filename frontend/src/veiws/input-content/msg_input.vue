@@ -355,20 +355,21 @@ function updateMentionPanelPosition() {
   if (!showMentionPanel.value || !inputRef.value) return
   const rootRect = inputRef.value.getBoundingClientRect()
   const selection = window.getSelection()
-  let left = 0
-  let top = -8
+  let left = rootRect.right
+  let top = rootRect.top - 8
 
   if (selection && selection.rangeCount > 0) {
     const range = selection.getRangeAt(0).cloneRange()
     range.collapse(true)
     const rect = range.getBoundingClientRect()
     if (rect.width || rect.height) {
-      left = Math.max(rect.left - rootRect.left, 0)
-      top = rect.top - rootRect.top - 8
+      left = rect.right
+      top = rect.top - 8
     }
   }
 
   mentionPanelStyle.value = {
+    position: 'fixed',
     left: `${left}px`,
     top: `${top}px`,
     transform: 'translateY(-100%)',

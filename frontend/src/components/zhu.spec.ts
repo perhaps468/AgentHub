@@ -24,6 +24,8 @@ const {
   fetchAgentConfig,
   fetchDefaultAgent,
   fetchAgents,
+  updateAgent,
+  syncSessionTitlesForAgentRename,
   showToast,
   push,
 } = vi.hoisted(() => ({
@@ -46,6 +48,8 @@ const {
   fetchAgentConfig: vi.fn(),
   fetchDefaultAgent: vi.fn(),
   fetchAgents: vi.fn(),
+  updateAgent: vi.fn(),
+  syncSessionTitlesForAgentRename: vi.fn(),
   showToast: vi.fn(),
   push: vi.fn(),
 }))
@@ -58,6 +62,8 @@ const agentStore = reactive({
   fetchAgentConfig,
   fetchDefaultAgent,
   fetchAgents,
+  updateAgent,
+  syncSessionTitlesForAgentRename,
   createAgent: vi.fn(),
 })
 
@@ -110,13 +116,14 @@ vi.mock('../store/module/useUserStore', () => ({
 }))
 
 vi.mock('../utils/ws-client', () => ({
-  wsClient: {
+  ws: {
     connect,
     disconnect,
     onStateChange,
     onReceiveMessage,
+    getConnectedSessions: vi.fn(() => []),
     manualRetry: vi.fn(),
-    sendMessage,
+    send: sendMessage,
   },
   getWsClientReconnectAttempt: () => 0,
 }))
@@ -176,6 +183,11 @@ describe('zhu', () => {
       capability_tags: ['瑙勫垝'],
     })
     fetchAgents.mockReset().mockResolvedValue([])
+    updateAgent.mockReset().mockResolvedValue({
+      previousAgentName: 'Old Agent',
+      updatedAgentName: 'New Agent',
+    })
+    syncSessionTitlesForAgentRename.mockReset().mockResolvedValue([])
     showToast.mockReset()
     push.mockReset()
     sessionStore.currentSessionId = 'session-1'
@@ -424,5 +436,72 @@ describe('zhu', () => {
       }),
     )
     expect(fetchMessages).not.toHaveBeenCalled()
+  })
+
+  it('preserves current session members when syncing renamed agent session titles', async () => {
+    sessionStore.sessionList = [
+      {
+        id: 'session-1',
+        title: 'Old Agent',
+        mode: 'group',
+      },
+    ]
+    sessionStore.currentSession = {
+      id: 'session-1',
+      title: 'Old Agent',
+      mode: 'group',
+      members: [
+        {
+          id: 'member-1',
+          session_id: 'session-1',
+          member_type: 'agent',
+          member_id: 'agent-1',
+          is_primary: true,
+          status: 'online',
+          agent_name: 'Old Agent',
+          agent_avatar: null,
+          agent_role: 'PM',
+          created_at: '2026-06-06T00:00:00Z',
+        },
+      ],
+    }
+    syncSessionTitlesForAgentRename.mockResolvedValue([
+      {
+        id: 'session-1',
+        title: 'New Agent',
+        mode: 'group',
+      },
+    ])
+
+    const wrapper = shallowMount(Zhu, {
+      global: {
+        stubs: {
+          LeftSidebarArea: true,
+          ChatWorkspace: true,
+          PreviewPanel: true,
+          UserProfileDialog: true,
+          AddAgentDialog: {
+            emits: ['confirm-edit', 'update:modelValue'],
+            template: '<button data-testid="confirm-edit" @click="$emit(\'confirm-edit\', { id: \'agent-1\', name: \'New Agent\', model: \'qwen\', platform: \'custom\', description: \'\', avatar: \'\', capabilityTags: [] })">edit</button>',
+          },
+          NewConversationDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('[data-testid="confirm-edit"]')[1].trigger('click')
+    await flushPromises()
+
+    expect(sessionStore.currentSession).toMatchObject({
+      id: 'session-1',
+      title: 'New Agent',
+    })
+    expect(sessionStore.currentSession.members).toEqual([
+      expect.objectContaining({
+        member_id: 'agent-1',
+        agent_name: 'Old Agent',
+      }),
+    ])
   })
 })
