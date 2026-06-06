@@ -10,10 +10,7 @@
       :selected-agents="selectedAgents"
       @open-left="$emit('open-left')"
       @retry="$emit('retry')"
-<<<<<<< Updated upstream
-=======
       @pick-agent="handlePickAgent"
->>>>>>> Stashed changes
     />
 
     <section class="chat-stream-panel">
@@ -31,6 +28,7 @@
         ref="chatRef"
         :sessionId="props.currentSessionId || ''"
         :disabled="!props.currentSessionId"
+        :session-agent-options="props.currentSession?.members ?? []"
         @selection-change="handleSelectionChange"
         @send="$emit('send', $event)"
       />
@@ -39,12 +37,11 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { ref } from 'vue'
 
 import ChatInputArea from '../../veiws/Chat-input-area.vue'
 import ChatShowArea from '../../veiws/Chat-show-area.vue'
-import { useSessionStore } from '../../store/module/useSessionStore'
-import type { ConversationItem, Workspace } from '../../types/agenthub'
+import type { ComposerAgent, ComposerSubmitPayload, ConversationItem, Workspace } from '../../types/agenthub'
 import type { ConnectionState } from '../../utils/ws-client'
 import ChatHeader from './ChatHeader.vue'
 
@@ -62,12 +59,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'open-left'): void
   (e: 'retry'): void
-  (e: 'send', content: string): void
+  (e: 'send', payload: ComposerSubmitPayload): void
 }>()
 
-<<<<<<< Updated upstream
-const sessionStore = useSessionStore()
-=======
 const chatRef = ref<{
   insertAgentChip?: (agent: ComposerAgent) => void
   getStructuredValue?: () => ComposerSubmitPayload
@@ -81,7 +75,6 @@ function handlePickAgent(agent: ComposerAgent) {
 function handleSelectionChange(agents: ComposerAgent[]) {
   selectedAgents.value = agents
 }
->>>>>>> Stashed changes
 </script>
 
 <style scoped>
@@ -94,7 +87,6 @@ function handleSelectionChange(agents: ComposerAgent[]) {
   background: transparent;
 }
 
-/* Original Chat Panels */
 .chat-stream-panel {
   min-height: 0;
   flex: 1;

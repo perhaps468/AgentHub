@@ -27,6 +27,7 @@
           ref="msgInputRef"
           v-model:value="msgContent"
           :handlerSubmitMsg="handlerSubmitMsg"
+          :session-agent-options="props.sessionAgentOptions"
           placeholder="输入消息..."
           @send="handlerSubmitMsg"
           @structured-change="handleComposerPayload"
@@ -67,27 +68,26 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
+import type { ComposerAgent, ComposerSubmitPayload, SessionAgentOption } from '../types/agenthub'
 import emojis from '../utils/emoji/emoji'
 import Input from './input-content/input.vue'
 
 const props = defineProps<{
   sessionId: string
   disabled?: boolean
+  sessionAgentOptions?: SessionAgentOption[]
 }>()
 
 const emit = defineEmits<{
-<<<<<<< Updated upstream
-  send: [content: string]
-=======
   send: [payload: ComposerSubmitPayload]
   'selection-change': [agents: ComposerAgent[]]
->>>>>>> Stashed changes
 }>()
 
 const msgContent = ref('')
 const showEmoji = ref(false)
 const referenceMsg = ref<{ from: string; text: string } | null>(null)
 const msgInputRef = ref<any>(null)
+const selectedAgents = ref<ComposerAgent[]>([])
 
 const canSend = computed(() => msgContent.value.toString().trim().length > 0)
 
@@ -95,13 +95,6 @@ const clearRef = () => {
   referenceMsg.value = null
 }
 
-<<<<<<< Updated upstream
-const handlerSubmitMsg = () => {
-  if (!canSend.value || props.disabled) return
-  const text = msgContent.value.trim()
-  emit('send', text)
-  msgContent.value = ''
-=======
 const handleComposerPayload = (payload: ComposerSubmitPayload) => {
   msgContent.value = payload.text
   selectedAgents.value = payload.selectedAgents
@@ -122,7 +115,6 @@ const handlerSubmitMsg = (payload?: ComposerSubmitPayload) => {
   msgContent.value = ''
   clearComposerSelection()
   msgInputRef.value?.clear?.()
->>>>>>> Stashed changes
   referenceMsg.value = null
 }
 
@@ -130,6 +122,16 @@ const insertEmoji = (emoji: string) => {
   msgInputRef.value?.insertEmoji?.(emoji)
   showEmoji.value = false
 }
+
+defineExpose({
+  getStructuredValue: () => msgInputRef.value?.getStructuredValue?.(),
+  insertAgentChip: (agent: ComposerAgent) => msgInputRef.value?.insertAgentChip?.(agent),
+  clear: () => {
+    msgContent.value = ''
+    clearComposerSelection()
+    msgInputRef.value?.clear?.()
+  },
+})
 </script>
 
 <style scoped>
