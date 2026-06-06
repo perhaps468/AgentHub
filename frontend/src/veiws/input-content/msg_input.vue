@@ -797,7 +797,6 @@ const handleSendClick = () => {
       opacity: 0.6;
     }
   }
-}
 
 /* 隐藏的文件上传 input */
 .file-input-hidden {

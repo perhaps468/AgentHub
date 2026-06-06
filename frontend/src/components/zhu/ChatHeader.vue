@@ -190,46 +190,23 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
 </script>
 
 <style scoped>
+/* ==================== 聊天头部 ==================== */
 .chat-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 64px;
-  padding: 14px 24px;
+  min-height: 72px;
+  padding: 16px 24px;
   border-bottom: 1px solid rgba(59, 130, 246, 0.08);
   background: rgba(255, 255, 255, 0.5);
 }
 
 .chat-header-main {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  gap: 14px;
   min-width: 0;
-  width: 100%;
-}
-
-.chat-header-right {
-  position: relative;
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.chat-title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.chat-title-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
 }
 
 .chat-header h2 {
@@ -238,7 +215,6 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   font-weight: 600;
   color: #1e293b;
   line-height: 1.2;
-  letter-spacing: 3px
 }
 
 .chat-header-right {
@@ -275,61 +251,33 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   white-space: nowrap;
 }
 
-.agent-panel-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 10px;
-  border-radius: 14px;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
 
-.agent-panel-item.is-selected {
-  background: rgba(59, 130, 246, 0.08);
-}
-
-.agent-panel-avatar {
+.header-icon {
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  overflow: hidden;
-  border-radius: 12px;
-  background: rgba(59, 130, 246, 0.1);
-  color: #1e293b;
-  font-size: 14px;
-  font-weight: 700;
-  flex-shrink: 0;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.08);
+  color: #64748b;
+  font-size: 16px;
+  transition: all 0.25s ease;
 }
 
-.agent-panel-topline {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.header-icon:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.1));
+  color: #3b82f6;
+  transform: scale(1.05);
 }
 
-.agent-panel-name {
-  color: #0f172a;
-  font-size: 14px;
-  font-weight: 600;
+.mobile-only {
+  display: none;
 }
 
-.agent-panel-badge {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.12);
-  color: #2563eb;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.agent-panel-badge.selected {
-  background: rgba(34, 197, 94, 0.12);
-  color: #15803d;
+@media (max-width: 900px) {
+  .mobile-only {
+    display: inline-flex;
+  }
 }
 </style>
