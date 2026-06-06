@@ -92,7 +92,6 @@ function handleSelectionChange(agents: ComposerAgent[]) {
   flex: 1;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.5);
-  border-radius: 16px;
   margin: 0 4px;
   display: flex;
   flex-direction: column;
