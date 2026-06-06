@@ -241,7 +241,30 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: 20px 80px;
   background: transparent;
+
+  /* 滚动条整体样式（WebKit） */
+  &::-webkit-scrollbar {
+    width: 6px;                /* 纵向滚动条宽度 */
+    height: 6px;               /* 横向滚动条高度 */
+  }
+
+  /* 滚动条轨道（背景） */
+  &::-webkit-scrollbar-track {
+    background: #f0f0f0;      /* 浅灰色轨道 */
+    border-radius: 3px;
+  }
+
+  /* 滚动条滑块（蓝色） */
+  &::-webkit-scrollbar-thumb {
+    background:#7fabf0;       /* 明亮的蓝色 */
+    border-radius: 3px;
+  }
+
+  /* 滑块 hover 效果 */
+  &::-webkit-scrollbar-thumb:hover {
+    background: #2563eb;       /* 深一点的蓝 */
+  }
 }
 </style>

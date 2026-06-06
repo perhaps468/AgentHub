@@ -4,82 +4,20 @@
       <div class="chat-header-left">
         <avatar :info="{ name: currentSession?.title, avatar: currentAgentAvatar }" size="20px" />
       </div>
-
-      <div ref="summaryRootRef" class="chat-header-right">
-        <div class="chat-title-row">
-          <div class="chat-title-copy">
-            <h2>{{ currentSession?.title || '选择或新建会话' }}</h2>
-            <div v-if="workspace" class="workspace-badge" :title="workspace.root_path">
-              <span class="workspace-icon">📁</span>
-              <span class="workspace-name">{{ workspace.name || workspaceRootName }}</span>
-            </div>
+      <div class="chat-header-right">
+        <h2>{{ currentSession?.title || '选择或新建会话' }}</h2>
+        <div class="header-right-items">
+          <ConnectionStatus
+            v-if="currentSessionId"
+            :state="connectionState"
+            :reconnectAttempt="reconnectAttempt"
+            @retry="$emit('retry')"
+          />
+          <div v-if="workspace" class="workspace-badge" :title="workspace.root_path">
+            <span class="workspace-icon">&#128193;</span>
+            <span class="workspace-name">{{ workspace.name || workspaceRootName }}</span>
           </div>
-
-          <button
-            v-if="summaryAgents.length > 0"
-            type="button"
-            class="agent-summary-trigger"
-            data-testid="agent-summary-trigger"
-            @click="togglePanel"
-          >
-            <span class="agent-summary-avatars">
-              <span
-                v-for="agent in visibleAgents"
-                :key="agent.id"
-                class="agent-summary-avatar"
-                :data-agent-id="agent.id"
-                data-testid="agent-summary-avatar"
-              >
-                <img v-if="agent.avatar" :src="agent.avatar" :alt="agent.name" />
-                <span v-else>{{ agent.name.slice(0, 1) }}</span>
-                <span class="agent-summary-status" :class="`status-${agent.status}`"></span>
-              </span>
-            </span>
-            <span class="agent-summary-meta compact">
-              <span class="agent-summary-meta-dot" :class="`status-${summaryMetaTone}`"></span>
-              <span>{{ summaryStatusText }}</span>
-            </span>
-            <span class="agent-summary-tail">
-              <span v-if="hiddenCount > 0" class="agent-summary-extra">+{{ hiddenCount }}</span>
-              <span v-else class="agent-summary-extra chevron">{{ isPanelOpen ? '^' : 'v' }}</span>
-            </span>
-          </button>
         </div>
-
-        <div v-if="isPanelOpen" class="agent-panel" data-testid="agent-panel">
-          <button
-            v-for="agent in summaryAgents"
-            :key="agent.id"
-            type="button"
-            class="agent-panel-item"
-            :class="{ 'is-selected': selectedAgentIds.has(agent.id) }"
-            :data-testid="`agent-panel-item-${agent.id}`"
-            @click="handlePickAgent(agent)"
-          >
-            <span class="agent-panel-avatar">
-              <img v-if="agent.avatar" :src="agent.avatar" :alt="agent.name" />
-              <span v-else>{{ agent.name.slice(0, 1) }}</span>
-            </span>
-            <span class="agent-panel-copy">
-              <span class="agent-panel-topline">
-                <span class="agent-panel-name">{{ agent.name }}</span>
-                <span v-if="agent.isPrimary" class="agent-panel-badge">Primary</span>
-                <span v-if="selectedAgentIds.has(agent.id)" class="agent-panel-badge selected">Selected</span>
-              </span>
-              <span class="agent-panel-meta">
-                {{ agent.status }}
-                <span v-if="agent.role"> · {{ agent.role }}</span>
-              </span>
-            </span>
-          </button>
-        </div>
-
-        <ConnectionStatus
-          v-if="currentSessionId"
-          :state="connectionState"
-          :reconnectAttempt="reconnectAttempt"
-          @retry="$emit('retry')"
-        />
       </div>
     </div>
   </header>
@@ -295,22 +233,31 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
 }
 
 .chat-header h2 {
-  margin: 0 0 4px;
-  font-size: 18px;
+  margin: 0;
+  font-size: 20px;
   font-weight: 600;
   color: #1e293b;
   line-height: 1.2;
-  min-width: 0;
+  letter-spacing: 3px
+}
+
+.chat-header-right {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.header-right-items {
+  display: flex;
+  flex-direction: column;
 }
 
 .workspace-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
-  padding: 2px 8px;
+  padding-top:5px;
   border-radius: 999px;
-  background: rgba(59, 130, 246, 0.08);
   color: #3b82f6;
   font-size: 11px;
   font-weight: 500;
@@ -326,131 +273,6 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.agent-summary-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  max-width: min(320px, 100%);
-  margin-left: auto;
-  padding: 7px 10px;
-  border-radius: 16px;
-  border: 1px solid rgba(59, 130, 246, 0.12);
-  background: rgba(248, 250, 252, 0.92);
-  cursor: pointer;
-}
-
-.agent-summary-avatars {
-  display: inline-flex;
-  align-items: center;
-  padding-left: 10px;
-  flex-shrink: 0;
-}
-
-.agent-summary-avatar {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin-left: -10px;
-  overflow: hidden;
-  border: 2px solid #fff;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.12);
-  color: #1e293b;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.agent-summary-avatar img,
-.agent-panel-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.agent-summary-status {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 9px;
-  height: 9px;
-  border: 2px solid #fff;
-  border-radius: 999px;
-  background: #22c55e;
-}
-
-.status-busy {
-  background: #f59e0b;
-}
-
-.status-offline {
-  background: #94a3b8;
-}
-
-.agent-panel-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  text-align: left;
-}
-
-.agent-summary-meta,
-.agent-panel-meta {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.agent-summary-meta.compact {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  white-space: nowrap;
-}
-
-.agent-summary-meta-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #22c55e;
-  flex-shrink: 0;
-}
-
-.agent-summary-tail {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.agent-summary-extra {
-  color: #475569;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.chevron {
-  font-size: 12px;
-  line-height: 1;
-}
-
-.agent-panel {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: min(360px, 100%);
-  padding: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.14);
 }
 
 .agent-panel-item {

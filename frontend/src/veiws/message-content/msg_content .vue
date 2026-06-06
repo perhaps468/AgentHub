@@ -173,6 +173,7 @@ onBeforeUnmount(() => {
   padding: 12px 14px;
   border-radius: 18px;
   border: 1px solid rgb(var(--border-color));
+  border-color: rgba(var(--primary-color), 0.45);
   background: rgb(var(--surface-color));
   color: rgb(var(--text-color));
   font-size: 14px;
@@ -181,8 +182,8 @@ onBeforeUnmount(() => {
 }
 
 .msg-content.is-own {
-  border-color: rgba(var(--primary-color), 0.45);
-  background: rgb(var(--surface-color));
+  background: rgba(var(--primary-color), 0.1);
+  border-color: rgba(var(--primary-color), 0);
 }
 </style>
 
