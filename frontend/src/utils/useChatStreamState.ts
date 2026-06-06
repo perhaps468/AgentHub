@@ -369,6 +369,11 @@ export function useChatStreamState() {
     return undefined
   }
 
+  function getStreamForTask(taskId: string): InFlightStream | undefined {
+    const streamId = getStreamIdForTask(taskId)
+    return streamId ? streams.value.get(streamId) : undefined
+  }
+
   function handleToolEvent(event: any, sessionId: string): any {
     const { stream_id, tool_name, status, arguments: toolArgs, response } = event
 
@@ -538,8 +543,16 @@ export function useChatStreamState() {
       return null
     }
 
-    // Generate a unique stream_id for the change preview message if not provided
-    const previewStreamId = `change_preview_${change_id}`
+    const taskStream = task_id ? getStreamForTask(task_id) : undefined
+    const previewStreamId = streams.value.has(stream_id)
+      ? stream_id
+      : taskStream?.stream_id || `change_preview_${change_id}`
+    const senderRole = (
+      agent_role
+      || taskStream?.sender_role
+      || (taskStream?.metadata?.agent_role as AgentRole | undefined)
+      || 'Agent'
+    ) as AgentRole
 
     // Build the confirmation message content
     const operationText = operation === 'create' ? '创建' : operation === 'update' ? '更新' : '删除'
@@ -573,7 +586,7 @@ ${formatDiffForDisplay(unified_diff)}
     // Create a stream for this change preview
     const stream = ensureStream(previewStreamId, sessionId, {
       messageId: message_id,
-      senderRole: (agent_role as AgentRole) || 'PM',
+      senderRole,
       timestamp: timestamp || new Date().toISOString(),
       uiStatus: 'done',
       type: 'text',
@@ -599,6 +612,7 @@ ${formatDiffForDisplay(unified_diff)}
       ...(run_id ? { run_id } : {}),
       ...(task_id ? { task_id } : {}),
       ...(agent_id ? { agent_id } : {}),
+      ...(agent_role ? { agent_role } : {}),
       is_change_preview: true,
     }
 

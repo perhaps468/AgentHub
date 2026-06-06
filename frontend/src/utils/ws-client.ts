@@ -1,4 +1,8 @@
 import { WS_BASE_URL } from '@/api/client'
+<<<<<<< Updated upstream
+=======
+import type { ComposerMention } from '@/types/agenthub'
+>>>>>>> Stashed changes
 
 export type ConnectionState =
   | 'connecting'
@@ -121,22 +125,34 @@ class WsClient {
     this.setState('disconnected')
   }
 
-  sendMessage(content: string): boolean {
+  sendMessage(payload: { content: string; targetAgentIds?: string[]; mentions?: ComposerMention[] }): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.warn('[WsClient] Cannot send — not connected')
       return false
     }
 
-    const payload = {
+    const out: Record<string, unknown> = {
       action: 'send_message',
+<<<<<<< Updated upstream
       session_id: this._sessionId,
       content,
+=======
+      session_id: this.sessionId,
+      content: payload.content,
+    }
+
+    if (payload.targetAgentIds && payload.targetAgentIds.length > 0) {
+      out.target_agent_ids = payload.targetAgentIds
+    }
+    if (payload.mentions && payload.mentions.length > 0) {
+      out.mentions = payload.mentions
+>>>>>>> Stashed changes
     }
 
     try {
-      this.ws.send(JSON.stringify(payload))
+      this.ws.send(JSON.stringify(out))
       this.awaitingResponse = true
-      console.log('[WsClient] Sent:', payload)
+      console.log('[WsClient] Sent:', out)
       return true
     } catch (err) {
       console.error('[WsClient] Send error:', err)
@@ -285,6 +301,7 @@ class WsClient {
   }
 }
 
+<<<<<<< Updated upstream
 class MultiWsManager {
   /** Per-session WebSocket connections */
   private clients = new Map<string, WsClient>()
@@ -386,6 +403,22 @@ class MultiWsManager {
   getConnectedSessionIds(): string[] {
     return Array.from(this.clients.keys())
   }
+=======
+export const wsClient = new WsClient()
+export const ws = {
+  connect: (sessionId: string) => wsClient.connect(sessionId),
+  disConnect: () => wsClient.disconnect(),
+  send: (payload: { content: string; targetAgentIds?: string[] }) => wsClient.sendMessage(payload),
+  getState: () => wsClient.getState(),
+  getStatus: () => ({
+    isConnect: wsClient.getState() === 'connected',
+    readyState: wsClient.getState(),
+    reconnectCount: wsClient.getReconnectAttempt(),
+  }),
+  onStateChange: (cb: (state: ConnectionState) => void) => wsClient.onStateChange(cb),
+  onReceiveMessage: (cb: (msg: WsIncomingMessage) => void) => wsClient.onReceiveMessage(cb),
+  manualRetry: () => wsClient.manualRetry(),
+>>>>>>> Stashed changes
 }
 
 const _manager = new MultiWsManager()

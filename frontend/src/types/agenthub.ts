@@ -159,7 +159,57 @@ export interface ConversationItem {
   is_pinned: boolean
   is_archived: boolean
   created_at: string
+<<<<<<< Updated upstream
   updated_at: string
+=======
+}
+
+export interface SessionMemberStatusEvent {
+  type: 'session_member_status'
+  session_id: string
+  member_id: string
+  agent_id?: string | null
+  status: SessionMemberStatus
+  timestamp?: string
+}
+
+export type ComposerAgent = {
+  id: string
+  name: string
+  avatar?: string | null
+  status: SessionMemberStatus
+  role?: string | null
+}
+
+export interface ComposerMention {
+  agentId: string
+  agentName: string
+}
+
+export interface SessionAgentOption extends ComposerAgent {
+  isPrimary: boolean
+}
+
+export type ComposerNode =
+  | { type: 'text'; content: string }
+  | { type: 'agent-chip'; agent: ComposerAgent }
+
+export interface ComposerSubmitPayload {
+  text: string
+  targetAgentIds: string[]
+  selectedAgents: ComposerAgent[]
+  mentions: ComposerMention[]
+  nodes: ComposerNode[]
+}
+
+// ==================== 发送消息协议 ====================
+export interface SendMessagePayload {
+  action: 'send_message'
+  session_id: string
+  content: string
+  target_agent_ids?: string[]
+  mentions?: ComposerMention[]
+>>>>>>> Stashed changes
 }
 
 // ==================== 预览区状态 ====================

@@ -29,6 +29,7 @@
           :handlerSubmitMsg="handlerSubmitMsg"
           placeholder="输入消息..."
           @send="handlerSubmitMsg"
+          @structured-change="handleComposerPayload"
         />
       </div>
 
@@ -75,7 +76,12 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+<<<<<<< Updated upstream
   send: [content: string]
+=======
+  send: [payload: ComposerSubmitPayload]
+  'selection-change': [agents: ComposerAgent[]]
+>>>>>>> Stashed changes
 }>()
 
 const msgContent = ref('')
@@ -89,11 +95,34 @@ const clearRef = () => {
   referenceMsg.value = null
 }
 
+<<<<<<< Updated upstream
 const handlerSubmitMsg = () => {
   if (!canSend.value || props.disabled) return
   const text = msgContent.value.trim()
   emit('send', text)
   msgContent.value = ''
+=======
+const handleComposerPayload = (payload: ComposerSubmitPayload) => {
+  msgContent.value = payload.text
+  selectedAgents.value = payload.selectedAgents
+  emit('selection-change', payload.selectedAgents)
+}
+
+const clearComposerSelection = () => {
+  selectedAgents.value = []
+  emit('selection-change', [])
+}
+
+const handlerSubmitMsg = (payload?: ComposerSubmitPayload) => {
+  const nextPayload = payload ?? msgInputRef.value?.getStructuredValue?.()
+  if (!nextPayload || props.disabled) return
+  handleComposerPayload(nextPayload)
+  if (!nextPayload.text.trim()) return
+  emit('send', nextPayload)
+  msgContent.value = ''
+  clearComposerSelection()
+  msgInputRef.value?.clear?.()
+>>>>>>> Stashed changes
   referenceMsg.value = null
 }
 

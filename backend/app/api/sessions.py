@@ -23,8 +23,16 @@ from app.models.workspace import Workspace
 from app.schemas.common import Page
 from app.schemas.message import MessageResponse
 from app.schemas.session import SessionCreate, SessionResponse, SessionUpdate, WorkspaceSummary
+<<<<<<< Updated upstream
 from app.schemas.session_member import MemberResponse
 from app.services.group_host_agent import ensure_user_group_host_agent
+=======
+from app.schemas.session_member import MemberResponse, SessionMemberStatus
+from app.services.group_host_agent import (
+    GROUP_HOST_AGENT_NAME,
+    ensure_user_group_host_agent,
+)
+>>>>>>> Stashed changes
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -48,6 +56,7 @@ def _get_members_for_session(db: Session, session_id: str) -> list[MemberRespons
     members = db.query(SessionMember).filter(
         SessionMember.session_id == session_id
     ).all()
+<<<<<<< Updated upstream
     return [
         MemberResponse(
             id=m.id,
@@ -57,6 +66,21 @@ def _get_members_for_session(db: Session, session_id: str) -> list[MemberRespons
             is_primary=m.is_primary,
             health_status=m.health_status,
             created_at=m.created_at.isoformat(),
+=======
+    agent_ids = [m.member_id for m in members if m.member_type == "agent"]
+    agents = {
+        agent.id: agent
+        for agent in db.query(Agent).filter(Agent.id.in_(agent_ids)).all()
+    } if agent_ids else {}
+    response_members: list[MemberResponse] = []
+    for member in members:
+        agent = agents.get(member.member_id) if member.member_type == "agent" else None
+        if member.member_type == "agent" and getattr(agent, "name", None) == GROUP_HOST_AGENT_NAME:
+            continue
+        status = _normalize_member_status(
+            member.health_status,
+            agent_active=getattr(agent, "is_active", True),
+>>>>>>> Stashed changes
         )
         for m in members
     ]
@@ -136,6 +160,7 @@ def create_session(payload: SessionCreate, current_user: CurrentUser, db: Sessio
             if not ag.is_builtin and ag.owner_id != owner:
                 raise HTTPException(status_code=403, detail=f"Agent does not belong to current user: {agent_id}")
 
+<<<<<<< Updated upstream
         # Add primary agent as primary member
         db.add(SessionMember(
             session_id=session.id,
@@ -146,6 +171,9 @@ def create_session(payload: SessionCreate, current_user: CurrentUser, db: Sessio
         ))
 
         # Add participant agents as non-primary members
+=======
+        # Keep group host as an internal planner only; visible session members are real participant agents.
+>>>>>>> Stashed changes
         for agent_id in member_ids:
             db.add(SessionMember(
                 session_id=session.id,

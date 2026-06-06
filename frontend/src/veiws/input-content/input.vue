@@ -29,6 +29,7 @@
         :is-at-popup="props.targetId === '1'"
         @input="updateValue"
         @send="onSendMsg"
+        @structured-change="onStructuredChange"
       />
     </div>
   </div>
@@ -74,7 +75,7 @@ const props = defineProps<{
   handlerSubmitMsg?: (text: string) => void
 }>()
 
-const emit = defineEmits(['update:value'])
+const emit = defineEmits(['update:value', 'structured-change'])
 
 const showToast: ShowToast = useToast()
 const msgStore = useChatMsgStore()
@@ -118,6 +119,10 @@ const onSendMsg = (data: SendPayload) => {
     const text = typeof data === 'string' ? data : (data?.text || localValue.value)
     props.handlerSubmitMsg(text)
   }
+}
+
+const onStructuredChange = (data: ComposerSubmitPayload) => {
+  emit('structured-change', data)
 }
 
 const getNodeList = () => {

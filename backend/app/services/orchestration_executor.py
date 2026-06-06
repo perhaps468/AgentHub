@@ -54,6 +54,13 @@ class OrchestrationExecutor:
     def get_agent(self, agent_id: str) -> Agent | None:
         return self.db.get(Agent, agent_id)
 
+    def _resolve_host_agent(self, run: OrchestrationRun) -> Agent | None:
+        return self.get_agent(run.planner_agent_id)
+
+    def _resolve_host_sender_role(self, run: OrchestrationRun) -> str:
+        host_agent = self._resolve_host_agent(run)
+        return getattr(host_agent, "name", None) or getattr(host_agent, "role", None) or "Agent"
+
     def update_task_status(
         self,
         task_id: str,
@@ -539,17 +546,8 @@ class OrchestrationExecutor:
         if existing is not None:
             return
 
-        primary_member = (
-            self.db.query(SessionMember)
-            .filter(
-                SessionMember.session_id == run.session_id,
-                SessionMember.member_type == "agent",
-                SessionMember.is_primary == True,  # noqa: E712
-            )
-            .first()
-        )
-        host_agent = self.get_agent(primary_member.member_id) if primary_member is not None else self.get_agent(run.planner_agent_id)
-        host_role = getattr(host_agent, "role", None) or "PM"
+        host_agent = self._resolve_host_agent(run)
+        host_role = self._resolve_host_sender_role(run)
 
         message = Message(
             session_id=run.session_id,
@@ -578,17 +576,8 @@ class OrchestrationExecutor:
             if metadata.get("is_orchestration_summary") is True:
                 return
 
-        primary_member = (
-            self.db.query(SessionMember)
-            .filter(
-                SessionMember.session_id == run.session_id,
-                SessionMember.member_type == "agent",
-                SessionMember.is_primary == True,
-            )
-            .first()
-        )
-        host_agent = self.get_agent(primary_member.member_id) if primary_member is not None else self.get_agent(run.planner_agent_id)
-        host_role = getattr(host_agent, "role", None) or "PM"
+        host_agent = self._resolve_host_agent(run)
+        host_role = self._resolve_host_sender_role(run)
 
         if run.status == "completed":
             task_summaries = [

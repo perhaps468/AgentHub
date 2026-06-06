@@ -1497,3 +1497,83 @@ describe('Task CE: Recovery State Management', () => {
     expect(getSessionPendingChanges().length).toBe(0)
   })
 })
+
+describe('handleChangePreviewAsMessage', () => {
+  it('reuses the existing task stream instead of creating a PM preview stream', () => {
+    const { handleMessageStart, handleChangePreviewAsMessage, getStreamingMessages, getStream } = useChatStreamState()
+
+    handleMessageStart(
+      makeMessageStart({
+        stream_id: 'task-stream-1',
+        agent_role: 'Coder',
+        task_id: 'task-1',
+        agent_id: 'code_agent',
+        message: {
+          id: 'msg-task-1',
+          sender_role: 'Coder',
+          metadata: {
+            task_id: 'task-1',
+            agent_id: 'code_agent',
+          },
+        },
+      }),
+      'session-1',
+    )
+
+    const stream = handleChangePreviewAsMessage(
+      makeChangePreview({
+        change_id: 'change-task-1',
+        stream_id: 'task-stream-1',
+        message_id: 'msg-task-1',
+        task_id: 'task-1',
+        agent_id: 'code_agent',
+      }),
+      'session-1',
+    )
+
+    expect(stream).toBeDefined()
+    expect(stream!.stream_id).toBe('task-stream-1')
+    expect(stream!.sender_role).toBe('Coder')
+    expect(stream!.metadata.agent_id).toBe('code_agent')
+    expect(getStream('change_preview_change-task-1')).toBeUndefined()
+    expect(getStreamingMessages('session-1')).toHaveLength(1)
+  })
+
+  it('falls back to the task stream role when change_preview lacks agent_role', () => {
+    const { handleMessageStart, handleChangePreviewAsMessage } = useChatStreamState()
+
+    handleMessageStart(
+      makeMessageStart({
+        stream_id: 'task-stream-2',
+        agent_role: 'backend',
+        task_id: 'task-2',
+        agent_id: 'backend_agent',
+        message: {
+          id: 'msg-task-2',
+          sender_role: 'backend',
+          metadata: {
+            task_id: 'task-2',
+            agent_id: 'backend_agent',
+          },
+        },
+      }),
+      'session-1',
+    )
+
+    const stream = handleChangePreviewAsMessage(
+      makeChangePreview({
+        change_id: 'change-task-2',
+        stream_id: 'missing-stream',
+        message_id: 'msg-task-2',
+        task_id: 'task-2',
+        agent_id: 'backend_agent',
+        agent_role: undefined,
+      }),
+      'session-1',
+    )
+
+    expect(stream).toBeDefined()
+    expect(stream!.stream_id).toBe('task-stream-2')
+    expect(stream!.sender_role).toBe('backend')
+  })
+})

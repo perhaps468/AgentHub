@@ -1,22 +1,27 @@
 <template>
   <main class="chat-shell">
     <ChatHeader
-      :current-session="currentSession"
-      :current-session-id="currentSessionId"
-      :connection-state="connectionState"
-      :reconnect-attempt="reconnectAttempt"
-      :format-time="formatTime"
-      :workspace="workspace"
+      :current-session="props.currentSession"
+      :current-session-id="props.currentSessionId"
+      :connection-state="props.connectionState"
+      :reconnect-attempt="props.reconnectAttempt"
+      :format-time="props.formatTime"
+      :workspace="props.workspace"
+      :selected-agents="selectedAgents"
       @open-left="$emit('open-left')"
       @retry="$emit('retry')"
+<<<<<<< Updated upstream
+=======
+      @pick-agent="handlePickAgent"
+>>>>>>> Stashed changes
     />
 
     <section class="chat-stream-panel">
       <ChatShowArea
         ref="chatShow"
-        :targetId="currentSessionId || ''"
-        :isChatRecordLoading="isLoadingMessages"
-        :isSendLoading="isSendLoading"
+        :targetId="props.currentSessionId || ''"
+        :isChatRecordLoading="props.isLoadingMessages"
+        :isSendLoading="props.isSendLoading"
         :isComplete="false"
       />
     </section>
@@ -24,8 +29,9 @@
     <section class="chat-composer-panel">
       <ChatInputArea
         ref="chatRef"
-        :sessionId="currentSessionId || ''"
-        :disabled="!currentSessionId"
+        :sessionId="props.currentSessionId || ''"
+        :disabled="!props.currentSessionId"
+        @selection-change="handleSelectionChange"
         @send="$emit('send', $event)"
       />
     </section>
@@ -59,7 +65,23 @@ const emit = defineEmits<{
   (e: 'send', content: string): void
 }>()
 
+<<<<<<< Updated upstream
 const sessionStore = useSessionStore()
+=======
+const chatRef = ref<{
+  insertAgentChip?: (agent: ComposerAgent) => void
+  getStructuredValue?: () => ComposerSubmitPayload
+} | null>(null)
+const selectedAgents = ref<ComposerAgent[]>([])
+
+function handlePickAgent(agent: ComposerAgent) {
+  chatRef.value?.insertAgentChip?.(agent)
+}
+
+function handleSelectionChange(agents: ComposerAgent[]) {
+  selectedAgents.value = agents
+}
+>>>>>>> Stashed changes
 </script>
 
 <style scoped>

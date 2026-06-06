@@ -54,11 +54,20 @@
         class="msg-input"
         :class="{ 'is-empty': !hasContent }"
         :data-placeholder="placeholder || '输入消息...'"
+<<<<<<< Updated upstream
         @keyup="onInputKeyUp"
         @keydown="onInputKeyDown"
         @input="onInputText"
         @blur="onInputBlur"
         @focus="onInputFocus"
+=======
+        @input="syncFromDom"
+        @click="handleInputClick"
+        @keyup="handleMentionInput"
+        @keydown="handleKeyDown"
+        @compositionstart="handleCompositionStart"
+        @compositionend="handleCompositionEnd"
+>>>>>>> Stashed changes
       ></div>
       <!-- Toolbar -->
       <div class="composer-toolbar" role="toolbar" aria-label="消息工具">
@@ -84,6 +93,7 @@
       </div>
     </div>
 
+<<<<<<< Updated upstream
     <!-- 隐藏的文件上传 input -->
     <input
       ref="fileInputRef"
@@ -108,11 +118,49 @@ const showMentionsPopup = ref(false)
 const showEmoji = ref(false)
 const searchKey = ref('')
 const selectedUserIndex = ref(0)
+=======
+    <div v-if="showMentionPanel" class="agent-mention-panel" :style="mentionPanelStyle">
+      <button
+        v-for="(agent, index) in filteredSessionAgentOptions"
+        :key="agent.id"
+        type="button"
+        class="agent-mention-item"
+        :class="{ 'is-active': index === selectedMentionIndex }"
+        :data-agent-id="agent.id"
+        @mouseenter="selectedMentionIndex = index"
+        @click="selectMentionAgent(agent)"
+      >
+        <img v-if="agent.avatar" class="agent-mention-avatar" :src="agent.avatar" :alt="agent.name" />
+        <div v-else class="agent-mention-avatar agent-mention-avatar-fallback">{{ agent.name.slice(0, 1) }}</div>
+        <div class="agent-mention-copy">
+          <div class="agent-mention-name">{{ agent.name }}</div>
+          <div class="agent-mention-meta">
+            {{ agent.status }}<span v-if="agent.isPrimary"> · primary</span>
+          </div>
+        </div>
+      </button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+
+import type {
+  ComposerAgent,
+  ComposerMention,
+  ComposerNode,
+  ComposerSubmitPayload,
+  SessionAgentOption,
+  SessionMemberStatus,
+} from '@/types/agenthub'
+>>>>>>> Stashed changes
 
 const inputValue = defineModel('value')
 let nodeList = []
 const hasContent = ref(false)
 
+<<<<<<< Updated upstream
 const selection = ref({
   sel: null,
   range: null,
@@ -133,6 +181,586 @@ const userList = computed(() => {
     return props.user.filter((item) => item.name.includes(searchKey.value))
   } else {
     return props.user
+=======
+const emit = defineEmits<{
+  send: [payload: ComposerSubmitPayload]
+  'file-selected': [files: File[]]
+  'toggle-emoji': []
+  'structured-change': [payload: ComposerSubmitPayload]
+}>()
+
+const props = defineProps<{
+  user?: Array<{ id: string; name: string }>
+  isAtPopup?: boolean
+  placeholder?: string
+  sessionAgentOptions?: SessionAgentOption[]
+  handlerSubmitMsg?: (payload: ComposerSubmitPayload) => void
+}>()
+
+const inputRef = ref<HTMLDivElement | null>(null)
+const nodes = ref<ComposerNode[]>([])
+const mentionKeyword = ref('')
+const showMentionPanel = ref(false)
+const selectedMentionIndex = ref(0)
+const isComposing = ref(false)
+const mentionPanelStyle = ref<Record<string, string>>({})
+
+const statusRank: Record<SessionMemberStatus, number> = {
+  online: 0,
+  busy: 1,
+  offline: 2,
+}
+
+const filteredSessionAgentOptions = computed(() => {
+  const keyword = mentionKeyword.value.trim().toLowerCase()
+  const options = [...(props.sessionAgentOptions ?? [])].sort((left, right) => {
+    const rankDiff = statusRank[left.status] - statusRank[right.status]
+    if (rankDiff !== 0) return rankDiff
+    return left.name.localeCompare(right.name)
+  })
+
+  if (!keyword) return options
+  return options.filter((agent) => agent.name.toLowerCase().includes(keyword))
+})
+
+function createTextNode(content: string): ComposerNode {
+  return { type: 'text', content }
+}
+
+function normalizeAgent(agent: ComposerAgent): ComposerAgent {
+  return {
+    id: agent.id,
+    name: agent.name,
+    avatar: agent.avatar ?? null,
+    status: agent.status,
+    role: agent.role ?? null,
+  }
+}
+
+function createAgentChipElement(agent: ComposerAgent): HTMLButtonElement {
+  const el = document.createElement('button')
+  el.type = 'button'
+  el.className = 'agent-chip'
+  el.contentEditable = 'false'
+  el.setAttribute('contenteditable', 'false')
+  el.dataset.agent = JSON.stringify(normalizeAgent(agent))
+
+  const status = document.createElement('span')
+  status.className = `agent-chip-status status-${agent.status}`
+  status.setAttribute('aria-hidden', 'true')
+
+  const label = document.createElement('span')
+  label.className = 'agent-chip-label'
+  label.textContent = `@${agent.name}`
+
+  const remove = document.createElement('span')
+  remove.className = 'agent-chip-remove'
+  remove.setAttribute('aria-hidden', 'true')
+  remove.textContent = 'x'
+
+  el.append(status, label, remove)
+  return el
+}
+
+function parseAgentChipElement(el: Element): ComposerAgent | null {
+  const raw = el.getAttribute('data-agent')
+  if (!raw) return null
+  try {
+    return normalizeAgent(JSON.parse(raw))
+  } catch {
+    return null
+  }
+}
+
+function buildNodesFromDom(): ComposerNode[] {
+  const root = inputRef.value
+  if (!root) return []
+
+  const nextNodes: ComposerNode[] = []
+  Array.from(root.childNodes).forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const content = node.textContent ?? ''
+      if (content.length > 0) {
+        nextNodes.push(createTextNode(content))
+      }
+      return
+    }
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as Element
+      if (element.classList.contains('agent-chip')) {
+        const agent = parseAgentChipElement(element)
+        if (agent) {
+          nextNodes.push({ type: 'agent-chip', agent })
+          return
+        }
+      }
+      const content = element.textContent ?? ''
+      if (content.length > 0) {
+        nextNodes.push(createTextNode(content))
+      }
+    }
+  })
+  return nextNodes
+}
+
+function getStructuredValue(): ComposerSubmitPayload {
+  const currentNodes = nodes.value
+  const selectedAgents = currentNodes
+    .filter((node): node is Extract<ComposerNode, { type: 'agent-chip' }> => node.type === 'agent-chip')
+    .map((node) => normalizeAgent(node.agent))
+  const mentions: ComposerMention[] = selectedAgents.map((agent) => ({
+    agentId: agent.id,
+    agentName: agent.name,
+  }))
+  const text = currentNodes
+    .filter((node): node is Extract<ComposerNode, { type: 'text' }> => node.type === 'text')
+    .map((node) => node.content)
+    .join('')
+
+  return {
+    text,
+    targetAgentIds: selectedAgents.map((agent) => agent.id),
+    selectedAgents,
+    mentions,
+    nodes: [...currentNodes],
+  }
+}
+
+function syncFromDom() {
+  nodes.value = buildNodesFromDom()
+  const payload = getStructuredValue()
+  inputValue.value = payload.text
+  emit('structured-change', payload)
+}
+
+function focusComposer() {
+  inputRef.value?.focus()
+}
+
+function placeCaretAfter(node: Node) {
+  const selection = window.getSelection()
+  if (!selection) return
+  const range = document.createRange()
+  range.setStartAfter(node)
+  range.collapse(true)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
+function placeCaretAtEnd() {
+  if (!inputRef.value) return
+  const selection = window.getSelection()
+  if (!selection) return
+  const range = document.createRange()
+  range.selectNodeContents(inputRef.value)
+  range.collapse(false)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
+function insertTextAtEnd(text: string) {
+  if (!inputRef.value || !text) return
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) {
+    focusComposer()
+  }
+  const activeSelection = window.getSelection()
+  if (!activeSelection || activeSelection.rangeCount === 0) {
+    inputRef.value.appendChild(document.createTextNode(text))
+    syncFromDom()
+    return
+  }
+  const range = activeSelection.getRangeAt(0)
+  if (!inputRef.value.contains(range.startContainer)) {
+    focusComposer()
+    inputRef.value.appendChild(document.createTextNode(text))
+    syncFromDom()
+    return
+  }
+  range.deleteContents()
+  const textNode = document.createTextNode(text)
+  range.insertNode(textNode)
+  placeCaretAfter(textNode)
+  syncFromDom()
+}
+
+function insertAgentChip(agent: ComposerAgent) {
+  if (!inputRef.value) return
+  const normalized = normalizeAgent(agent)
+  const exists = nodes.value.some(
+    (node) => node.type === 'agent-chip' && node.agent.id === normalized.id,
+  )
+  if (exists) return
+
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) {
+    focusComposer()
+  }
+  const activeSelection = window.getSelection()
+  const chip = createAgentChipElement(normalized)
+  if (!activeSelection || activeSelection.rangeCount === 0) {
+    inputRef.value.appendChild(chip)
+    placeCaretAfter(chip)
+    syncFromDom()
+    return
+  }
+  const range = activeSelection.getRangeAt(0)
+  if (!inputRef.value.contains(range.startContainer)) {
+    focusComposer()
+    inputRef.value.appendChild(chip)
+    placeCaretAfter(chip)
+    syncFromDom()
+    return
+  }
+
+  if (range.startContainer.nodeType === Node.TEXT_NODE) {
+    const textNode = range.startContainer as Text
+    const beforeText = textNode.textContent?.slice(0, range.startOffset) ?? ''
+    const afterText = textNode.textContent?.slice(range.startOffset) ?? ''
+    const fragment = document.createDocumentFragment()
+    if (beforeText) fragment.appendChild(document.createTextNode(beforeText))
+    fragment.appendChild(chip)
+    if (afterText) fragment.appendChild(document.createTextNode(afterText))
+    textNode.parentNode?.replaceChild(fragment, textNode)
+    placeCaretAfter(chip)
+    syncFromDom()
+    return
+  }
+
+  range.deleteContents()
+  range.insertNode(chip)
+  placeCaretAfter(chip)
+  syncFromDom()
+}
+
+function closeMentionPanel() {
+  showMentionPanel.value = false
+  mentionKeyword.value = ''
+  selectedMentionIndex.value = 0
+}
+
+function updateMentionPanelPosition() {
+  if (!showMentionPanel.value || !inputRef.value) return
+  const rootRect = inputRef.value.getBoundingClientRect()
+  const selection = window.getSelection()
+  let left = 0
+  let top = -8
+
+  if (selection && selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0).cloneRange()
+    range.collapse(true)
+    let rect = range.getBoundingClientRect()
+
+    if (!rect.width && !rect.height && inputRef.value.lastChild) {
+      const fallbackRange = document.createRange()
+      fallbackRange.selectNodeContents(inputRef.value)
+      fallbackRange.collapse(false)
+      rect = fallbackRange.getBoundingClientRect()
+    }
+
+    if (rect.width || rect.height) {
+      left = Math.max(rect.left - rootRect.left, 0)
+      top = rect.top - rootRect.top - 8
+    }
+  }
+
+  mentionPanelStyle.value = {
+    left: `${left}px`,
+    top: `${top}px`,
+    transform: 'translateY(-100%)',
+  }
+}
+
+async function openMentionPanel() {
+  showMentionPanel.value = filteredSessionAgentOptions.value.length > 0
+  if (!showMentionPanel.value) return
+  await nextTick()
+  updateMentionPanelPosition()
+}
+
+function openAgentPicker() {
+  mentionKeyword.value = ''
+  selectedMentionIndex.value = 0
+  void openMentionPanel()
+}
+
+function getMentionTargetTextNode() {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return null
+  const range = selection.getRangeAt(0)
+  if (!inputRef.value?.contains(range.startContainer)) return null
+
+  if (range.startContainer.nodeType === Node.TEXT_NODE) {
+    return range.startContainer as Text
+  }
+
+  const container = range.startContainer
+  const offset = range.startOffset
+  const previousNode = container.childNodes[offset - 1]
+  if (previousNode?.nodeType === Node.TEXT_NODE) {
+    return previousNode as Text
+  }
+  const currentNode = container.childNodes[offset]
+  if (currentNode?.nodeType === Node.TEXT_NODE) {
+    return currentNode as Text
+  }
+  return null
+}
+
+function replaceTrailingMentionWithChip(agent: ComposerAgent) {
+  if (!inputRef.value) return
+
+  const normalized = normalizeAgent(agent)
+  const exists = nodes.value.some(
+    (node) => node.type === 'agent-chip' && node.agent.id === normalized.id,
+  )
+  if (exists) {
+    syncFromDom()
+    closeMentionPanel()
+    return
+  }
+
+  const mentionNode = getMentionTargetTextNode()
+  if (mentionNode) {
+    const text = mentionNode.textContent ?? ''
+    const mentionMatch = text.match(/(?:^|\s)@([^@\s]*)$/)
+    if (mentionMatch?.index !== undefined) {
+      const prefixIndex = mentionMatch.index
+      const preservedPrefix = text.slice(0, prefixIndex)
+      const fragment = document.createDocumentFragment()
+      if (preservedPrefix) {
+        fragment.appendChild(document.createTextNode(preservedPrefix))
+      }
+      const chip = createAgentChipElement(normalized)
+      fragment.appendChild(chip)
+      const spacer = document.createTextNode(' ')
+      fragment.appendChild(spacer)
+      mentionNode.parentNode?.replaceChild(fragment, mentionNode)
+      placeCaretAfter(spacer)
+      syncFromDom()
+      closeMentionPanel()
+      return
+    }
+  }
+
+  const chip = createAgentChipElement(normalized)
+  inputRef.value.appendChild(chip)
+  const spacer = document.createTextNode(' ')
+  inputRef.value.appendChild(spacer)
+  placeCaretAfter(spacer)
+  syncFromDom()
+  closeMentionPanel()
+}
+
+function removeAgentChip(agentId: string) {
+  if (!inputRef.value) return
+  if (!agentId) {
+    inputRef.value.innerHTML = ''
+    syncFromDom()
+    return
+  }
+  inputRef.value.querySelectorAll('.agent-chip').forEach((node) => {
+    const agent = parseAgentChipElement(node)
+    if (agent?.id === agentId) {
+      node.remove()
+    }
+  })
+  syncFromDom()
+}
+
+function getTrailingMentionMatch() {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || !inputRef.value?.contains(selection.anchorNode)) {
+    return null
+  }
+  const textNode = getMentionTargetTextNode()
+  const text = textNode?.textContent ?? inputRef.value?.textContent ?? ''
+  return text.match(/(?:^|\s)@([^@\s]*)$/)
+}
+
+function handleMentionInput() {
+  if (isComposing.value) return
+  const match = getTrailingMentionMatch()
+  if (!match) {
+    closeMentionPanel()
+    return
+  }
+
+  mentionKeyword.value = match[1] ?? ''
+  if (filteredSessionAgentOptions.value.length === 0) {
+    showMentionPanel.value = false
+    selectedMentionIndex.value = 0
+    return
+  }
+  if (selectedMentionIndex.value >= filteredSessionAgentOptions.value.length) {
+    selectedMentionIndex.value = 0
+  }
+  void openMentionPanel()
+}
+
+function handleCompositionStart() {
+  isComposing.value = true
+}
+
+function handleCompositionEnd() {
+  isComposing.value = false
+  syncFromDom()
+  handleMentionInput()
+}
+
+function selectMentionAgent(agent: SessionAgentOption) {
+  replaceTrailingMentionWithChip(agent)
+}
+
+function getAdjacentChipFromSelection(direction: 'backward' | 'forward'): Element | null {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return null
+  const range = selection.getRangeAt(0)
+  if (!range.collapsed || !inputRef.value?.contains(range.startContainer)) return null
+
+  if (range.startContainer.nodeType === Node.TEXT_NODE) {
+    const textNode = range.startContainer as Text
+    if (direction === 'backward' && range.startOffset === 0) {
+      return textNode.previousSibling instanceof Element && textNode.previousSibling.classList.contains('agent-chip')
+        ? textNode.previousSibling
+        : null
+    }
+    if (direction === 'forward' && range.startOffset === (textNode.textContent?.length ?? 0)) {
+      return textNode.nextSibling instanceof Element && textNode.nextSibling.classList.contains('agent-chip')
+        ? textNode.nextSibling
+        : null
+    }
+    return null
+  }
+
+  const container = range.startContainer
+  const childIndex = range.startOffset
+  const sibling =
+    direction === 'backward'
+      ? container.childNodes[childIndex - 1]
+      : container.childNodes[childIndex]
+  return sibling instanceof Element && sibling.classList.contains('agent-chip') ? sibling : null
+}
+
+function handleKeyDown(event: KeyboardEvent) {
+  if (showMentionPanel.value) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      selectedMentionIndex.value = (selectedMentionIndex.value + 1) % filteredSessionAgentOptions.value.length
+      return
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      selectedMentionIndex.value =
+        (selectedMentionIndex.value - 1 + filteredSessionAgentOptions.value.length) %
+        filteredSessionAgentOptions.value.length
+      return
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      const selected = filteredSessionAgentOptions.value[selectedMentionIndex.value]
+      if (selected) {
+        selectMentionAgent(selected)
+      }
+      return
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeMentionPanel()
+      return
+    }
+  }
+
+  if (event.key === 'Enter' && !event.shiftKey && !isComposing.value) {
+    event.preventDefault()
+    const payload = getStructuredValue()
+    if (!payload.text.trim()) return
+    emit('send', payload)
+    return
+  }
+
+  if (event.key === 'Backspace') {
+    const previousChip = getAdjacentChipFromSelection('backward')
+    if (previousChip) {
+      event.preventDefault()
+      previousChip.remove()
+      syncFromDom()
+      return
+    }
+  }
+
+  if (event.key === 'Delete') {
+    const nextChip = getAdjacentChipFromSelection('forward')
+    if (nextChip) {
+      event.preventDefault()
+      nextChip.remove()
+      syncFromDom()
+    }
+  }
+}
+
+function handleInputClick(event: MouseEvent) {
+  const target = event.target
+  if (!(target instanceof Element)) return
+  const removeButton = target.closest('.agent-chip-remove')
+  if (!removeButton) return
+  const chip = removeButton.closest('.agent-chip')
+  if (!chip) return
+  event.preventDefault()
+  event.stopPropagation()
+  chip.remove()
+  syncFromDom()
+  placeCaretAtEnd()
+}
+
+function clear() {
+  if (!inputRef.value) return
+  inputRef.value.innerHTML = ''
+  nodes.value = []
+  inputValue.value = ''
+  closeMentionPanel()
+}
+
+watch(
+  () => inputValue.value,
+  (value) => {
+    if (!inputRef.value) return
+    const currentText = getStructuredValue().text
+    if (!value) {
+      clear()
+      return
+    }
+    if (nodes.value.length === 0 && currentText !== value) {
+      inputRef.value.textContent = value
+      syncFromDom()
+    }
+  },
+)
+
+watch(
+  () => filteredSessionAgentOptions.value.length,
+  (length) => {
+    if (!showMentionPanel.value) return
+    if (length === 0) {
+      closeMentionPanel()
+      return
+    }
+    if (selectedMentionIndex.value >= length) {
+      selectedMentionIndex.value = 0
+    }
+    void nextTick().then(updateMentionPanelPosition)
+  },
+)
+
+onMounted(() => {
+  if (inputValue.value && inputRef.value) {
+    inputRef.value.textContent = inputValue.value
+    syncFromDom()
+>>>>>>> Stashed changes
   }
 })
 
@@ -594,8 +1222,15 @@ defineExpose({
   getRange() {
     return selection.value.range
   },
+<<<<<<< Updated upstream
   insertInputText(text) {
     insertInputText(text)
+=======
+  insertAgentChip,
+  removeAgentChip,
+  openAgentPicker() {
+    openAgentPicker()
+>>>>>>> Stashed changes
   },
   getNodeList() {
     return nodeList;
@@ -751,6 +1386,7 @@ const handleFileSelect = (event) => {
   }
 }
 
+<<<<<<< Updated upstream
 /* 隐藏的文件上传 input */
 .file-input-hidden {
   position: absolute;
@@ -780,11 +1416,101 @@ const handleFileSelect = (event) => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+=======
+.input-block {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: rgb(var(--surface-color));
+  border-radius: var(--radius-lg);
+  border: 1px solid rgb(var(--border-color));
+}
+
+.msg-input {
+  flex: 1;
+  min-height: 40px;
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 10px;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg-input:empty::before {
+  content: attr(data-placeholder);
+  color: rgb(var(--text-muted));
+}
+
+.composer-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.tool-btn {
+  width: 32px;
+  height: 32px;
+}
+
+.agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  background: rgba(59, 130, 246, 0.08);
+  color: rgb(var(--primary-color));
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.agent-chip-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #22c55e;
+  flex-shrink: 0;
+}
+
+.status-busy {
+  background: #f59e0b;
+}
+
+.status-offline {
+  background: #94a3b8;
+}
+
+.agent-chip-label {
+  white-space: nowrap;
+}
+
+.agent-chip-remove {
+  color: rgb(var(--text-secondary));
+  font-size: 11px;
+  line-height: 1;
+}
+
+.agent-mention-panel {
+  position: absolute;
+  z-index: 30;
+  min-width: 220px;
+  max-width: min(320px, 100%);
+  padding: 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgb(var(--surface-color));
+  box-shadow: var(--shadow-md);
+>>>>>>> Stashed changes
 }
 
 .emoji-header {
   display: flex;
+  width: 100%;
   align-items: center;
+<<<<<<< Updated upstream
   justify-content: space-between;
   padding: 12px 16px;
   border-bottom: 1px solid rgba(99, 102, 241, 0.08);
@@ -822,6 +1548,13 @@ const handleFileSelect = (event) => {
       color: #ef4444;
     }
   }
+=======
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  background: transparent;
+>>>>>>> Stashed changes
 }
 
 .emoji-grid {
@@ -846,8 +1579,21 @@ const handleFileSelect = (event) => {
   }
 }
 
+<<<<<<< Updated upstream
 .emoji-item {
   display: flex;
+=======
+.agent-mention-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.agent-mention-avatar-fallback {
+  display: inline-flex;
+>>>>>>> Stashed changes
   align-items: center;
   justify-content: center;
   width: 100%;
@@ -894,6 +1640,7 @@ const handleFileSelect = (event) => {
   background: transparent;
   border: none;
   color: rgb(var(--primary-color));
+<<<<<<< Updated upstream
   cursor: default;
   padding: 0 2px;
   margin: 0 2px;
@@ -901,6 +1648,8 @@ const handleFileSelect = (event) => {
   line-height: inherit;
   pointer-events: none;
   font-style: normal;
+=======
+>>>>>>> Stashed changes
 }
 
 .at-mentions-popup {
@@ -916,6 +1665,7 @@ const handleFileSelect = (event) => {
   border: 1px solid rgb(var(--border-color));
   box-shadow: var(--shadow-md);
 
+<<<<<<< Updated upstream
   .user-item {
     padding: 8px 12px;
     display: flex;
@@ -924,6 +1674,13 @@ const handleFileSelect = (event) => {
     font-size: 14px;
     color: rgb(var(--text-secondary));
     transition: all 0.12s ease;
+=======
+.agent-mention-name {
+  color: rgb(var(--text-primary));
+  font-size: 13px;
+  font-weight: 600;
+}
+>>>>>>> Stashed changes
 
     &:hover {
       background-color: rgb(var(--primary-soft));
