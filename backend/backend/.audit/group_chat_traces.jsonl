@@ -100,3 +100,5 @@
 {"timestamp": "2026-06-06T13:50:21.594231Z", "event_type": "user_message", "sequence": 3, "session_id": "58ebfcb0-943b-4262-ba70-6f17ac1d3f04", "message_id": "10c8cc06-f4e7-46cb-b39d-54ea18365bb2", "mode": "single", "content": "你好"}
 {"timestamp": "2026-06-06T13:50:32.952325Z", "event_type": "user_message", "sequence": 4, "session_id": "58ebfcb0-943b-4262-ba70-6f17ac1d3f04", "message_id": "7c01c1fb-9ec0-4168-adb1-acefc361edaf", "mode": "single", "content": "你好啊"}
 {"timestamp": "2026-06-06T13:54:14.698152Z", "event_type": "user_message", "sequence": 5, "session_id": "58ebfcb0-943b-4262-ba70-6f17ac1d3f04", "message_id": "1f0198d5-4ace-427b-955c-daa5f3a866fe", "mode": "single", "content": "你好"}
+{"timestamp": "2026-06-06T14:14:44.345013Z", "event_type": "user_message", "sequence": 1, "session_id": "f958ec6a-48e4-4acd-b97c-4e3e2630bc88", "message_id": "d6eecc70-98b0-4df5-ae11-2235f202b540", "mode": "single", "content": "你好"}
+{"timestamp": "2026-06-06T14:15:00.103754Z", "event_type": "user_message", "sequence": 2, "session_id": "58ebfcb0-943b-4262-ba70-6f17ac1d3f04", "message_id": "966b69d3-180e-498b-9259-e18660ba33f3", "mode": "single", "content": "吓死我了"}
