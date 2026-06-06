@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 MemberType = Literal["agent", "user"]
+SessionMemberStatus = Literal["online", "busy", "offline"]
 
 
 class MemberResponse(BaseModel):
@@ -13,8 +14,12 @@ class MemberResponse(BaseModel):
 
     id: str
     session_id: str
-    member_type: str
+    member_type: MemberType
     member_id: str
     is_primary: bool = False
     health_status: str = "connected"
+    status: SessionMemberStatus = "offline"
+    agent_name: str | None = None
+    agent_avatar: str | None = None
+    agent_role: str | None = None
     created_at: str
