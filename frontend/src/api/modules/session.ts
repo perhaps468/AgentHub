@@ -6,6 +6,7 @@ import type {
   UpdateSessionPayload,
   ChatMessage,
   OrchestrationRun,
+  OrchestrationTask,
 } from '@/types/agenthub'
 
 export const fetchConversationList = async (params: {

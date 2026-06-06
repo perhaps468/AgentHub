@@ -1,15 +1,15 @@
-import Http from '../utils/request'
+import { agenthubRequest } from '@/api/client'
 
 export default {
   list() {
-    return Http.get('/api/v1/user/list')
+    return agenthubRequest.get('/v1/user/list')
   },
   onlineWeb() {
-    return Http.get('/api/v1/user/online/web')
+    return agenthubRequest.get('/v1/user/online/web')
   },
   update(param: Record<string, unknown>) {
-    return Http.post('/api/v1/user/update', param)
+    return agenthubRequest.post('/v1/user/update', param)
   },
 
 }
-export  const listMap=()=> Http.get('/api/v1/user/list/map')
+export const listMap = () => agenthubRequest.get('/v1/user/list/map')

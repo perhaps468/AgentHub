@@ -10,7 +10,11 @@
     <div class="grid-pattern"></div>
 
     <!-- 玻璃态主容器 -->
-    <div class="glass-container" :class="{ 'sidebar-collapsed': isCollapsed }">
+    <div
+      class="glass-container"
+      :class="{ 'sidebar-collapsed': isCollapsed, 'is-preview-resizing': isResizingPreview }"
+      :style="glassContainerStyle"
+    >
       <!-- 左侧列表区 -->
       <LeftSidebarArea
         :show-left="showLeft"
@@ -61,6 +65,17 @@
         @send="handleSend"
       />
 
+      <div
+        class="preview-resize-handle"
+        :class="{ 'is-dragging': isResizingPreview }"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整预览区宽度"
+        @mousedown="startPreviewResize"
+      >
+        <span class="preview-resize-grip"></span>
+      </div>
+
       <!-- 右侧预览区 -->
       <PreviewPanel
         :preview-state="previewState"
@@ -110,16 +125,18 @@
  * 高级玻璃态设计，白色为主，带动态效果
  * 结合 V1 完整功能 + V3 清晰结构
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 
 import { fetchWorkspace } from '../api/modules/workspace'
+import userApi from '../api/user'
 import { useAgentStore } from '../store/index'
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
 import type {
   AgentDraft,
+  ComposerSubmitPayload,
   ConversationItem,
   ConversationMode,
   PreviewState,
@@ -128,7 +145,7 @@ import type {
   SidebarUser,
   Workspace,
 } from '../types/agenthub'
-import { getWsClientReconnectAttempt, wsClient } from '../utils/ws-client'
+import { getWsClientReconnectAttempt, ws } from '../utils/ws-client'
 import { useToast } from '../veiws/useToast'
 import AddAgentDialog from './zhu/AddAgentDialog.vue'
 import ChatWorkspace from './zhu/ChatWorkspace.vue'
@@ -148,8 +165,19 @@ const showToast = useToast()
 /** 左侧栏显示开关（移动端控制） */
 const showLeft = ref(true)
 
+const DEFAULT_PREVIEW_WIDTH = 340
+const MIN_PREVIEW_WIDTH = 280
+const MAX_PREVIEW_WIDTH = 1400
+const PREVIEW_RESIZE_HANDLE_WIDTH = 8
+
 /** 左侧栏收起状态 */
 const isCollapsed = ref(false)
+
+/** 右侧预览区宽度 */
+const previewWidth = ref(DEFAULT_PREVIEW_WIDTH)
+
+/** 是否正在拖拽调整预览区 */
+const isResizingPreview = ref(false)
 
 /** 左侧栏当前面板：消息列表 / Agent 列表 */
 const activeSidebarPanel = ref<SidebarPanel>('messages')
@@ -181,8 +209,8 @@ const showEditAgentDialog = ref(false)
 const editingAgent = ref<SidebarAgent | null>(null)
 
 // ==================== 发送状态 ====================
-/** 正在发送消息（显示 AI 回复 loading） */
-const isSendLoading = ref(false)
+/** 每个会话独立的发送加载状态 */
+const isSendLoadingMap = new Map<string, boolean>()
 
 // ==================== 预览状态 ====================
 /** 右侧预览区状态 */
@@ -244,6 +272,9 @@ const currentUser = computed<SidebarUser>(() => ({
 /** WebSocket 重连次数 */
 const reconnectAttempt = computed(() => getWsClientReconnectAttempt())
 
+/** 当前会话的发送中状态 */
+const isSendLoading = computed(() => !!sessionStore.currentSessionId && (isSendLoadingMap.get(sessionStore.currentSessionId) ?? false))
+
 /** Agent 列表过滤 */
 const filteredAgentList = computed(() => {
   if (!agentSearchValue.value) return sidebarAgents.value
@@ -261,6 +292,48 @@ const groupSelectableAgents = computed(() => {
   if (!primaryId) return filteredAgentList.value
   return filteredAgentList.value.filter((agent) => agent.id !== primaryId)
 })
+
+const glassContainerStyle = computed(() => {
+  const sidebarWidth = isCollapsed.value ? 72 : 400
+  const previewTrackWidth = PREVIEW_RESIZE_HANDLE_WIDTH + previewWidth.value
+  return {
+    gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr) ${previewTrackWidth}px`,
+    '--preview-width': `${previewWidth.value}px`,
+    '--preview-track-width': `${previewTrackWidth}px`,
+    '--preview-handle-width': `${PREVIEW_RESIZE_HANDLE_WIDTH}px`,
+  }
+})
+
+// ==================== 工具函数 ====================
+
+function clampPreviewWidth(nextWidth: number) {
+  return Math.min(MAX_PREVIEW_WIDTH, Math.max(MIN_PREVIEW_WIDTH, nextWidth))
+}
+
+function stopPreviewResize() {
+  isResizingPreview.value = false
+  document.body.classList.remove('preview-resizing')
+  document.removeEventListener('mousemove', handlePreviewResize)
+  document.removeEventListener('mouseup', stopPreviewResize)
+}
+
+function handlePreviewResize(event: MouseEvent) {
+  const viewportWidth = window.innerWidth
+  if (viewportWidth <= 1200) return
+
+  const nextWidth = clampPreviewWidth(viewportWidth - event.clientX - 16)
+  previewWidth.value = nextWidth
+}
+
+function startPreviewResize(event: MouseEvent) {
+  if (window.innerWidth <= 1200) return
+
+  event.preventDefault()
+  isResizingPreview.value = true
+  document.body.classList.add('preview-resizing')
+  document.addEventListener('mousemove', handlePreviewResize)
+  document.addEventListener('mouseup', stopPreviewResize)
+}
 
 // ==================== 工具函数 ====================
 
@@ -314,24 +387,25 @@ async function restorePendingChangesForCurrentSession(
 
 // ==================== 会话操作 ====================
 
-/** 选中会话 */
+/** 选中会话（多会话：不断开旧连接，所有会话保持 WebSocket 连接） */
 const selectSession = async (item: ConversationItem) => {
   if (sessionStore.currentSessionId === item.id) {
     showLeft.value = false
     return
   }
-  const previousSessionId = sessionStore.currentSessionId
-  wsClient.disconnect()
-  if (previousSessionId) {
-    sessionStore.clearMessages(previousSessionId)
-  }
   sessionStore.setCurrentSessionId(item.id)
+  ws.setActive(item.id)
+  if (!ws.getConnectedSessions().includes(item.id)) {
+    ws.connect(item.id)
+    sessionStore.setConnectionState('connecting')
+  }
   await sessionStore.fetchSessionDetail(item.id)
   await loadSessionWorkspace(sessionStore.currentSession)
   await sessionStore.fetchMessages(item.id, { page: 1, page_size: 20 })
   await sessionStore.fetchLatestRun(item.id)
   await restorePendingChangesForCurrentSession(item.id)
-  wsClient.connect(item.id)
+  // 订阅该 session 的 WebSocket 状态
+  subscribeSessionState(item.id)
   showLeft.value = false
 }
 
@@ -403,11 +477,11 @@ const handleCreateConversation = async (payload: {
       currentWorkspace.value = session.workspace as Workspace
     }
     sessionStore.setCurrentSessionId(session.id)
-  await sessionStore.fetchSessionDetail(session.id)
+    await sessionStore.fetchSessionDetail(session.id)
     await sessionStore.fetchMessages(session.id, { page: 1, page_size: 20 })
     await sessionStore.fetchLatestRun(session.id)
     await restorePendingChangesForCurrentSession(session.id)
-    wsClient.connect(session.id)
+    ws.connect(session.id)
     showNewConversationDialog.value = false
   } catch (error) {
     console.error('创建会话失败', error)
@@ -429,15 +503,19 @@ const handleEditAgent = (agent: SidebarAgent) => {
 
 // ==================== 发送消息 ====================
 
-/** 发送消息 */
-const handleSend = async (content: string) => {
+const handleSend = async (payload: ComposerSubmitPayload) => {
   const sessionId = sessionStore.currentSessionId
   if (!sessionId) {
     showToast('请先选择或新建会话', true)
     return
   }
 
-  isSendLoading.value = true
+  const content = payload.text.trim()
+  if (!content) {
+    return
+  }
+
+  isSendLoadingMap.set(sessionId, true)
   const tempId = `temp_${Date.now()}`
   sessionStore.appendHumanMessage(sessionId, {
     id: tempId,
@@ -447,21 +525,33 @@ const handleSend = async (content: string) => {
     content,
     type: 'text',
     payload: { text: content },
-    metadata: {},
+    metadata: {
+      mentioned_agents: payload.mentions,
+      target_agent_ids: payload.targetAgentIds,
+      selected_agents: payload.selectedAgents,
+      composer_nodes: payload.nodes,
+    },
     status: 'pending',
     created_at: new Date().toISOString(),
   })
 
-  const ok = wsClient.sendMessage(content)
+  const ok = ws.send(sessionId, {
+    content,
+    targetAgentIds: payload.targetAgentIds,
+    mentions: payload.mentions,
+  })
   if (!ok) {
     showToast('发送失败，请检查网络', true)
-    isSendLoading.value = false
+    isSendLoadingMap.delete(sessionId)
   }
 }
 
 /** 重试连接 */
 const handleRetry = () => {
-  wsClient.manualRetry()
+  const sessionId = sessionStore.currentSessionId
+  if (sessionId) {
+    ws.manualRetry(sessionId)
+  }
 }
 
 // ==================== 用户资料 ====================
@@ -473,12 +563,25 @@ const handleEditProfile = () => {
 }
 
 /** 提交资料更新 */
-const handleProfileUpdate = (data: Partial<SidebarUser>) => {
+const handleProfileUpdate = async (data: Partial<SidebarUser>) => {
   if (data.name) userInfoStore.setUserName(data.name)
   if (data.email) {
     ;(userInfoStore as unknown as { setEmail: (value: string) => void }).setEmail(data.email)
   }
   if (data.avatar !== undefined) userInfoStore.setUserAvatar(data.avatar)
+
+  const saved = localStorage.getItem('user')
+  const userData = saved ? JSON.parse(saved) : {}
+  if (data.name) userData.userName = data.name
+  if (data.email) userData.email = data.email
+  if (data.avatar !== undefined) userData.avatar = data.avatar
+  localStorage.setItem('user', JSON.stringify(userData))
+
+  try {
+    await userApi.update({ userName: data.name, avatar: data.avatar, email: data.email })
+  } catch (e) {
+    // silent fail
+  }
   showToast('资料已更新')
 }
 
@@ -571,7 +674,7 @@ const handleDeleteAgent = async (agent: SidebarAgent) => {
 /** 退出登录 */
 const handlerLogout = () => {
   showUserPopover.value = false
-  wsClient.disconnect()
+  ws.disconnect()  // 断开所有 WebSocket 连接
   localStorage.removeItem('x-token')
   localStorage.removeItem('user')
   localStorage.removeItem('session-store')
@@ -579,6 +682,39 @@ const handlerLogout = () => {
   sessionStore.clearMessages('')
   userInfoStore.clearUserInfo()
   router.push('/login')
+}
+
+// ==================== WebSocket 状态订阅管理 ====================
+
+/** 每个 session 的状态取消订阅函数 Map */
+const _wsStateUnsubscribers = new Map<string, () => void>()
+
+/**
+ * 订阅指定 session 的 WebSocket 状态变化。
+ * 如果该 session 已有订阅，先取消旧的。
+ */
+function subscribeSessionState(sessionId: string) {
+  if (!sessionId) return
+  const unsubscribe = _wsStateUnsubscribers.get(sessionId)
+  if (unsubscribe) return
+  const unsub = ws.onStateChange(sessionId, (state) => {
+    if (sessionStore.currentSessionId === sessionId) {
+      sessionStore.setConnectionState(state)
+      if (state === 'connected') {
+        void restorePendingChangesForCurrentSession(sessionId, { clearInFlight: true })
+      }
+    }
+  })
+  _wsStateUnsubscribers.set(sessionId, unsub)
+}
+
+/** 取消订阅指定 session 的 WebSocket 状态 */
+function unsubscribeSessionState(sessionId: string) {
+  const unsub = _wsStateUnsubscribers.get(sessionId)
+  if (unsub) {
+    unsub()
+    _wsStateUnsubscribers.delete(sessionId)
+  }
 }
 
 // ==================== 恢复当前会话 ====================
@@ -590,7 +726,15 @@ async function restoreCurrentSession() {
   await sessionStore.fetchMessages(sessionId, { page: 1, page_size: 20 })
   await sessionStore.fetchLatestRun(sessionId)
   await restorePendingChangesForCurrentSession(sessionId)
-  wsClient.connect(sessionId)
+  // 订阅该 session 的 WebSocket 状态（connect 之后订阅，确保能收到 connecting → connected）
+  if (!ws.getConnectedSessions().includes(sessionId)) {
+    ws.connect(sessionId)
+    sessionStore.setConnectionState('connecting')
+  } else {
+    ws.setActive(sessionId)
+    sessionStore.setConnectionState(ws.getState(sessionId))
+  }
+  subscribeSessionState(sessionId)
 }
 
 // ==================== 预览区 ====================
@@ -635,24 +779,11 @@ onMounted(async () => {
     agentStore.fetchAgents(),
   ])
 
-  // 监听 WebSocket 状态变化
-  wsClient.onStateChange((state) => {
-    sessionStore.setConnectionState(state)
-    if (state === 'connected') {
-      const sessionId = sessionStore.currentSessionId
-      if (sessionId) {
-        void restorePendingChangesForCurrentSession(sessionId, { clearInFlight: true })
-      }
-    }
-  })
-
-  // 监听 WebSocket 消息
-  wsClient.onReceiveMessage((msg) => {
+  // 监听 WebSocket 状态变化（多会话：订阅当前 session 的状态，连接后立即订阅）
+  ws.onReceiveMessage((msg, sessionId) => {
     const currentSessionId = sessionStore.currentSessionId
-    const resolvedSessionId =
-      msg.message?.session_id
-      || (msg.stream_id ? sessionStore.streamState.getSessionIdForStream(msg.stream_id) : undefined)
-      || currentSessionId
+    // 优先用 WebSocket 连接所属的 sessionId，其次用消息中的 session_id，最后用当前活跃 session
+    const resolvedSessionId = sessionId || msg.message?.session_id || msg.session_id || currentSessionId
 
     if (!resolvedSessionId) return
 
@@ -677,10 +808,10 @@ onMounted(async () => {
           created_at: stream.created_at,
         })
       }
-      isSendLoading.value = false
+      isSendLoadingMap.delete(resolvedSessionId)
     } else if (msg.type === 'message_error') {
       sessionStore.streamState.handleMessageError(msg, resolvedSessionId)
-      isSendLoading.value = false
+      isSendLoadingMap.delete(resolvedSessionId)
     } else if (msg.type === 'tool_event') {
       sessionStore.streamState.handleToolEvent(msg, resolvedSessionId)
     } else if (msg.type === 'runtime_state') {
@@ -706,10 +837,24 @@ onMounted(async () => {
       }
     } else if (msg.type === 'repair_state') {
       sessionStore.streamState.handleRepairState(msg)
-    } else if (msg.type === 'error') {
-      console.error('[WsClient] Server error:', msg.error_code, msg.error_message)
-      isSendLoading.value = false
-    } else if (msg.type === 'orchestration_run_started') {
+      } else if (msg.type === 'session_member_status') {
+        const current = sessionStore.currentSession
+        if (current?.id === resolvedSessionId && current.members?.length) {
+          const nextMembers = current.members.map((member) =>
+            member.id === msg.member_id || member.member_id === msg.agent_id
+              ? {
+                  ...member,
+                  status: (msg.status as any) || member.status,
+                  health_status: msg.status || member.health_status,
+                }
+              : member,
+          )
+          sessionStore.currentSession = {
+            ...current,
+            members: nextMembers,
+          }
+        }
+      } else if (msg.type === 'orchestration_run_started') {
       // M6: Handle orchestration run started event - initialize run and tasks
       const runId = msg.run_id
       const taskCount = msg.task_count
@@ -778,8 +923,14 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  stopPreviewResize()
   sessionStore.streamState.setOnTaskStatusUpdate(() => {})
-  wsClient.disconnect()
+  // 清理所有 WebSocket 状态订阅
+  for (const [sid, unsub] of _wsStateUnsubscribers) {
+    unsub()
+  }
+  _wsStateUnsubscribers.clear()
+  ws.disconnect()  // 断开所有 WebSocket 连接
 })
 </script>
 
@@ -846,11 +997,14 @@ onUnmounted(() => {
 
 /* ==================== 玻璃态主容器 ==================== */
 .glass-container {
+  --preview-width: 340px;
+  --preview-track-width: 348px;
+  --preview-handle-width: 8px;
   position: relative;
   z-index: 10;
   height: 100%;
   display: grid;
-  grid-template-columns: 400px minmax(0, 1fr) 340px;
+  grid-template-columns: 400px minmax(0, 1fr) var(--preview-track-width);
   gap: 0;
   padding: 16px;
   box-sizing: border-box;
@@ -868,6 +1022,14 @@ onUnmounted(() => {
   transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
+.glass-container > .preview-resize-handle {
+  background: transparent;
+  backdrop-filter: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .glass-container > :deep(*):hover {
   box-shadow:
     0 12px 40px rgba(59, 130, 246, 0.12),
@@ -875,19 +1037,53 @@ onUnmounted(() => {
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
-/* ==================== 侧边栏收起状态 ==================== */
+.glass-container > .preview-resize-handle:hover {
+  box-shadow: none;
+}
+
+.preview-resize-handle {
+  position: absolute;
+  top: 16px;
+  right: calc(var(--preview-width) + 16px);
+  width: var(--preview-handle-width);
+  height: calc(100% - 32px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  z-index: 20;
+}
+
+.preview-resize-grip {
+  width: 4px;
+  height: 72px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.5);
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.preview-resize-handle:hover .preview-resize-grip,
+.glass-container.is-preview-resizing .preview-resize-grip {
+  background: rgba(59, 130, 246, 0.75);
+  transform: scaleX(1.15);
+}
+
 .glass-container.sidebar-collapsed {
-  grid-template-columns: 72px minmax(0, 1fr) 340px;
+  grid-template-columns: 72px minmax(0, 1fr) var(--preview-track-width);
 }
 
 /* ==================== 响应式断点 ==================== */
 @media (max-width: 1400px) {
   .glass-container {
-    grid-template-columns: 72px 300px minmax(0, 1fr) 300px;
     padding: 12px;
   }
-  .glass-container.sidebar-collapsed {
-    grid-template-columns: 72px minmax(0, 1fr) 300px;
+
+  .preview-resize-handle {
+    top: 12px;
+    right: calc(var(--preview-width) + 12px);
+    height: calc(100% - 24px);
   }
 }
 
@@ -899,6 +1095,10 @@ onUnmounted(() => {
   .glass-container.sidebar-collapsed {
     grid-template-columns: 72px minmax(0, 1fr);
   }
+
+  .preview-resize-handle {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
@@ -908,6 +1108,10 @@ onUnmounted(() => {
   }
   .glass-container > :deep(*) {
     border-radius: 16px;
+  }
+
+  .preview-resize-handle {
+    display: none;
   }
 }
 

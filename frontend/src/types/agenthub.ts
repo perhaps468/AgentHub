@@ -11,13 +11,11 @@ export interface OrchestrationTask {
   result_payload?: Record<string, unknown> | null
   error_payload?: Record<string, unknown> | null
   status: TaskStatus
-  // P8: Planner integration fields
   client_task_id?: string | null
   assignment_reason?: string | null
   depends_on?: string[] | null
 }
 
-// M4: Extended task statuses for confirmation flow
 export type TaskStatus =
   | 'planned'
   | 'running'
@@ -34,15 +32,12 @@ export interface OrchestrationRun {
   planner_agent_id: string
   status: RunStatus
   summary?: string | null
-  // P8: Planning source field
   planning_source?: PlanningSource | null
   tasks: OrchestrationTask[]
 }
 
-// P8: Planning source enum
 export type PlanningSource = 'planner' | 'planner_repaired' | 'fallback_splitter'
 
-// M5: Extended run statuses for aggregation
 export type RunStatus =
   | 'planned'
   | 'running'
@@ -83,7 +78,6 @@ export interface PendingChange {
   session_id: string
   message_id?: string
   stream_id?: string
-  // M4: Task-aware fields for orchestration
   run_id?: string | null
   task_id?: string | null
   agent_id?: string | null
@@ -98,14 +92,12 @@ export interface PendingChange {
   applied_at?: string | null
 }
 
-// M4: Extended pending change statuses
 export type PendingChangeStatus =
   | 'pending_confirmation'
   | 'applied'
   | 'rejected'
   | 'failed'
 
-// M4: Apply/Reject response from API
 export interface ApplyChangeResponse {
   success: boolean
   change_id: string
@@ -117,7 +109,6 @@ export interface ApplyChangeResponse {
   agent_id?: string | null
 }
 
-// M4: Change preview event from WebSocket
 export interface ChangePreviewEvent {
   type: 'change_preview'
   change_id: string
@@ -128,18 +119,15 @@ export interface ChangePreviewEvent {
   unified_diff: string
   status: PendingChangeStatus
   timestamp?: string
-  // M4: Task-aware fields
   run_id?: string | null
   task_id?: string | null
   agent_id?: string | null
   batch_id?: string | null
-  // M6: Agent role for inline change preview
   agent_role?: string
 }
 
 export type RuntimeStateValue = 'thinking' | 'calling_tool' | 'observing' | 'responding' | 'finished' | 'error'
 
-// Task B: Workspace interface
 export interface Workspace {
   id: string
   owner_id: string
@@ -148,9 +136,120 @@ export interface Workspace {
   created_at: string
 }
 
-// ==================== 会话操作负载 ====================
-export interface CreateSessionPayload {
+export type SessionMemberStatus = 'online' | 'busy' | 'offline'
+
+export interface SessionMember {
+  id: string
+  session_id: string
+  member_type: 'agent' | 'user'
+  member_id: string
+  is_primary: boolean
+  health_status?: string
+  status: SessionMemberStatus
+  agent_name?: string | null
+  agent_avatar?: string | null
+  agent_role?: string | null
+  created_at: string
+}
+
+export interface ConversationItem {
+  id: string
   owner_id: string
+  workspace_id: string | null
+  agent_id: string | null
+  title: string | null
+  mode: 'single' | 'group'
+  is_pinned: boolean
+  is_archived: boolean
+  created_at: string
+  updated_at: string
+  workspace?: Workspace | null
+  members?: SessionMember[]
+  description?: string | null
+}
+
+export interface SessionMemberStatusEvent {
+  type: 'session_member_status'
+  session_id: string
+  member_id: string
+  agent_id?: string | null
+  status: SessionMemberStatus
+  timestamp?: string
+}
+
+export type ComposerAgent = {
+  id: string
+  name: string
+  avatar?: string | null
+  status: SessionMemberStatus
+  role?: string | null
+}
+
+export interface ComposerMention {
+  agentId: string
+  agentName: string
+}
+
+export interface SessionAgentOption extends ComposerAgent {
+  isPrimary: boolean
+}
+
+export type ComposerNode =
+  | { type: 'text'; content: string }
+  | { type: 'agent-chip'; agent: ComposerAgent }
+
+export interface ComposerSubmitPayload {
+  text: string
+  targetAgentIds: string[]
+  selectedAgents: ComposerAgent[]
+  mentions: ComposerMention[]
+  nodes: ComposerNode[]
+}
+
+export interface SendMessagePayload {
+  action: 'send_message'
+  session_id: string
+  content: string
+  target_agent_ids?: string[]
+  mentions?: ComposerMention[]
+}
+
+export type PreviewState =
+  | { type: 'empty'; title?: string }
+  | { type: 'code'; title?: string; code: string }
+  | { type: 'web'; title?: string; url: string; description?: string }
+  | {
+      type: 'diff'
+      title?: string
+      change_id: string
+      operation: 'create' | 'update' | 'delete'
+      path: string
+      unified_diff: string
+    }
+
+export interface PaginatedResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+  has_more: boolean
+}
+
+export interface ChatMessage {
+  id: string
+  session_id: string
+  sender_type: 'agent' | 'human'
+  sender_role: string | null
+  content: string
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
+  payload: Record<string, unknown>
+  metadata: Record<string, unknown>
+  status: string
+  created_at: string
+}
+
+export interface CreateSessionPayload {
+  owner_id?: string
   title: string
   mode: 'single' | 'group'
   workspace_id: string
@@ -164,16 +263,36 @@ export interface UpdateSessionPayload {
   is_archived?: boolean
 }
 
-// ==================== 预览区状态 ====================
-export type PreviewState =
-  | { type: 'empty'; title?: string }
-  | { type: 'code'; title?: string; code: string }
-  | { type: 'web'; title?: string; url: string; description?: string }
-  | {
-      type: 'diff'
-      title?: string
-      change_id: string
-      operation: 'create' | 'update' | 'delete'
-      path: string
-      unified_diff: string
-    }
+export interface SidebarUser {
+  id: string
+  name: string
+  avatar: string
+  email?: string
+  bio?: string
+}
+
+export interface SidebarAgent {
+  id: string
+  name: string
+  avatar: string
+  description?: string
+  capabilityTags: string[]
+  platform?: string
+  isCustom?: boolean
+  role?: string | null
+  model?: string | null
+  system_prompt?: string | null
+}
+
+export type SidebarPanel = 'messages' | 'agents'
+export type ConversationMode = 'single' | 'group'
+
+export interface AgentDraft {
+  id?: string
+  name: string
+  avatar?: string
+  description?: string
+  capabilityTags: string[]
+  platform?: string
+  model?: string
+}

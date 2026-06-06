@@ -1,22 +1,24 @@
 <template>
   <main class="chat-shell">
     <ChatHeader
-      :current-session="currentSession"
-      :current-session-id="currentSessionId"
-      :connection-state="connectionState"
-      :reconnect-attempt="reconnectAttempt"
-      :format-time="formatTime"
-      :workspace="workspace"
+      :current-session="props.currentSession"
+      :current-session-id="props.currentSessionId"
+      :connection-state="props.connectionState"
+      :reconnect-attempt="props.reconnectAttempt"
+      :format-time="props.formatTime"
+      :workspace="props.workspace"
+      :selected-agents="selectedAgents"
       @open-left="$emit('open-left')"
       @retry="$emit('retry')"
+      @pick-agent="handlePickAgent"
     />
 
     <section class="chat-stream-panel">
       <ChatShowArea
         ref="chatShow"
-        :targetId="currentSessionId || ''"
-        :isChatRecordLoading="isLoadingMessages"
-        :isSendLoading="isSendLoading"
+        :targetId="props.currentSessionId || ''"
+        :isChatRecordLoading="props.isLoadingMessages"
+        :isSendLoading="props.isSendLoading"
         :isComplete="false"
       />
     </section>
@@ -24,8 +26,10 @@
     <section class="chat-composer-panel">
       <ChatInputArea
         ref="chatRef"
-        :sessionId="currentSessionId || ''"
-        :disabled="!currentSessionId"
+        :sessionId="props.currentSessionId || ''"
+        :disabled="!props.currentSessionId"
+        :session-agent-options="props.currentSession?.members ?? []"
+        @selection-change="handleSelectionChange"
         @send="$emit('send', $event)"
       />
     </section>
@@ -33,12 +37,11 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { ref } from 'vue'
 
 import ChatInputArea from '../../veiws/Chat-input-area.vue'
 import ChatShowArea from '../../veiws/Chat-show-area.vue'
-import { useSessionStore } from '../../store/module/useSessionStore'
-import type { ConversationItem, Workspace } from '../../types/agenthub'
+import type { ComposerAgent, ComposerSubmitPayload, ConversationItem, Workspace } from '../../types/agenthub'
 import type { ConnectionState } from '../../utils/ws-client'
 import ChatHeader from './ChatHeader.vue'
 
@@ -56,10 +59,22 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'open-left'): void
   (e: 'retry'): void
-  (e: 'send', content: string): void
+  (e: 'send', payload: ComposerSubmitPayload): void
 }>()
 
-const sessionStore = useSessionStore()
+const chatRef = ref<{
+  insertAgentChip?: (agent: ComposerAgent) => void
+  getStructuredValue?: () => ComposerSubmitPayload
+} | null>(null)
+const selectedAgents = ref<ComposerAgent[]>([])
+
+function handlePickAgent(agent: ComposerAgent) {
+  chatRef.value?.insertAgentChip?.(agent)
+}
+
+function handleSelectionChange(agents: ComposerAgent[]) {
+  selectedAgents.value = agents
+}
 </script>
 
 <style scoped>
@@ -72,7 +87,6 @@ const sessionStore = useSessionStore()
   background: transparent;
 }
 
-/* Original Chat Panels */
 .chat-stream-panel {
   min-height: 0;
   flex: 1;

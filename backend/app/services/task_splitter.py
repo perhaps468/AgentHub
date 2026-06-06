@@ -258,7 +258,13 @@ def plan_tasks_from_message(user_message: str, agent_ids: list[str]) -> list[Pla
     if not tasks:
         return []
 
-    assignments = _round_robin_assign(agent_ids, len(tasks))
+    if len(agent_ids) == 1:
+        assignments = [agent_ids[0]] * len(tasks)
+    elif len(agent_ids) > 1:
+        assignments = [agent_ids[0]] * len(tasks)
+    else:
+        assignments = []
+
     return [
         PlannedTask(
             title=task.title,

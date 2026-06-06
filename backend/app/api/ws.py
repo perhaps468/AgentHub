@@ -6,16 +6,17 @@ import os
 import uuid
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from uvicorn.protocols.utils import ClientDisconnected
 
 from app.core.config import get_settings, load_env_file
 from app.core.database import SessionLocal
 from app.core.security import decode_token
 from app.models.agent import Agent
 from app.models.message import Message
-from app.models.orchestration import OrchestrationRun
+from app.models.orchestration import OrchestrationRun, OrchestrationTask
 from app.models.session import ChatSession, utcnow
 from app.models.session_member import SessionMember
 from app.observability.group_chat_audit import get_group_chat_audit_recorder
@@ -40,6 +41,7 @@ from app.schemas.orchestration_planner import (
     PlannerPlan,
     ValidationStatus,
 )
+from starlette.websockets import WebSocketState
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 _GROUP_CHAT_AUDIT = get_group_chat_audit_recorder()
@@ -67,6 +69,29 @@ _WS_CONNECTION_MANAGER = _WsConnectionManager()
 
 def get_ws_connection_manager() -> _WsConnectionManager:
     return _WS_CONNECTION_MANAGER
+
+
+def _is_ws_disconnect_error(exc: BaseException) -> bool:
+    if isinstance(exc, (WebSocketDisconnect, ClientDisconnected)):
+        return True
+    if isinstance(exc, RuntimeError):
+        return "Cannot call \"send\" once a close message has been sent." in str(exc)
+    return False
+
+
+async def _safe_send_json(websocket: WebSocket, payload: dict[str, Any]) -> bool:
+    if (
+        getattr(websocket, "client_state", None) is WebSocketState.DISCONNECTED
+        or getattr(websocket, "application_state", None) is WebSocketState.DISCONNECTED
+    ):
+        return False
+    try:
+        await websocket.send_json(payload)
+        return True
+    except Exception as exc:
+        if _is_ws_disconnect_error(exc):
+            return False
+        raise
 
 
 async def ws_send_apply_result(
@@ -105,7 +130,7 @@ async def ws_send_apply_result(
             payload["task_id"] = task_id
         if agent_id is not None:
             payload["agent_id"] = agent_id
-        await websocket.send_json(payload)
+        await _safe_send_json(websocket, payload)
         return True
     except Exception:
         return False
@@ -145,14 +170,29 @@ def get_primary_agent_for_group(db, session: ChatSession) -> Agent | None:
         return None
     primary_member = db.query(SessionMember).filter(
         SessionMember.session_id == session.id,
-        SessionMember.is_primary == True,
+        SessionMember.is_primary.is_(True),
     ).first()
-    if primary_member is None:
+    if primary_member is not None:
+        return db.get(Agent, primary_member.member_id)
+
+    fallback_member = db.query(SessionMember).filter(
+        SessionMember.session_id == session.id,
+        SessionMember.member_type == "agent",
+    ).order_by(SessionMember.created_at.asc()).first()
+    if fallback_member is None:
         return None
-    return db.get(Agent, primary_member.member_id)
+    return db.get(Agent, fallback_member.member_id)
 
 
 class _InFlightGuard:
+    """Per-session concurrency guard.
+
+    Now allows concurrent streaming responses for the same session — multiple
+    requests with different stream_ids are routed independently by the frontend
+    via the stream_id. This class is kept for future use (e.g. rate-limiting
+    or interrupting a specific stream).
+    """
+
     def __init__(self) -> None:
         self._sessions: set[str] = set()
 
@@ -160,9 +200,7 @@ class _InFlightGuard:
         return session_id in self._sessions
 
     def try_enter(self, session_id: str) -> bool:
-        if session_id in self._sessions:
-            return False
-        self._sessions.add(session_id)
+        """Always allow — concurrent streaming per session is now supported."""
         return True
 
     def leave(self, session_id: str) -> None:
@@ -194,7 +232,7 @@ async def _send_error(
     stream_id: str | None = None,
     agent_role: str = "PM",
 ) -> None:
-    await websocket.send_json({
+    await _safe_send_json(websocket, {
         "type": "error",
         "agent_role": agent_role,
         "timestamp": _utcnow_iso(),
@@ -237,7 +275,7 @@ async def ws_send_message_start(
         payload["task_id"] = task_id
     if agent_id is not None:
         payload["agent_id"] = agent_id
-    await websocket.send_json(payload)
+    await _safe_send_json(websocket, payload)
 
 
 async def ws_send_message_delta(
@@ -264,7 +302,7 @@ async def ws_send_message_delta(
         payload["task_id"] = task_id
     if agent_id is not None:
         payload["agent_id"] = agent_id
-    await websocket.send_json(payload)
+    await _safe_send_json(websocket, payload)
 
 
 async def ws_send_message_end(
@@ -294,7 +332,7 @@ async def ws_send_message_end(
         payload["task_id"] = task_id
     if agent_id is not None:
         payload["agent_id"] = agent_id
-    await websocket.send_json(payload)
+    await _safe_send_json(websocket, payload)
 
 
 async def ws_send_message_error(
@@ -323,7 +361,7 @@ async def ws_send_message_error(
         payload["task_id"] = task_id
     if agent_id is not None:
         payload["agent_id"] = agent_id
-    await websocket.send_json(payload)
+    await _safe_send_json(websocket, payload)
 
 
 async def ws_send_tool_event(
@@ -355,7 +393,7 @@ async def ws_send_tool_event(
         payload["task_id"] = task_id
     if agent_id is not None:
         payload["agent_id"] = agent_id
-    await websocket.send_json(payload)
+    await _safe_send_json(websocket, payload)
 
 
 async def ws_send_runtime_state(
@@ -381,7 +419,7 @@ async def ws_send_runtime_state(
         payload["task_id"] = task_id
     if agent_id is not None:
         payload["agent_id"] = agent_id
-    await websocket.send_json(payload)
+    await _safe_send_json(websocket, payload)
 
 
 async def ws_send_change_preview(
@@ -418,7 +456,7 @@ async def ws_send_change_preview(
         payload["agent_id"] = agent_id
     if agent_role is not None:
         payload["agent_role"] = agent_role
-    await websocket.send_json(payload)
+    await _safe_send_json(websocket, payload)
 
 
 async def ws_send_preview_result(
@@ -431,7 +469,7 @@ async def ws_send_preview_result(
     stream_id: str,
     timestamp: str,
 ) -> None:
-    await websocket.send_json({
+    await _safe_send_json(websocket, {
         "type": "preview_result",
         "preview_id": preview_id,
         "workspace_id": workspace_id,
@@ -453,7 +491,7 @@ async def ws_send_repair_state(
     message_id: str,
     timestamp: str,
 ) -> None:
-    await websocket.send_json({
+    await _safe_send_json(websocket, {
         "type": "repair_state",
         "state": state,
         "attempt": attempt,
@@ -475,7 +513,7 @@ async def ws_send_task_start(
     goal: str,
     kind: str,
 ) -> None:
-    await websocket.send_json({
+    await _safe_send_json(websocket, {
         "type": "task_start",
         "run_id": run_id,
         "task_id": task_id,
@@ -508,7 +546,7 @@ async def ws_send_task_end(
     }
     if result is not None:
         payload["result"] = result
-    await websocket.send_json(payload)
+    await _safe_send_json(websocket, payload)
 
 async def ws_send_task_error(
     websocket: WebSocket,
@@ -519,7 +557,7 @@ async def ws_send_task_error(
     error_code: str,
     error_message: str,
 ) -> None:
-    await websocket.send_json({
+    await _safe_send_json(websocket, {
         "type": "task_error",
         "run_id": run_id,
         "task_id": task_id,
@@ -542,7 +580,7 @@ async def ws_send_run_started(
 
     M6: This event marks the transition from planned to running state.
     """
-    await websocket.send_json({
+    await _safe_send_json(websocket, {
         "type": "orchestration_run_started",
         "run_id": run_id,
         "session_id": session_id,
@@ -572,7 +610,7 @@ async def ws_send_run_finished(
     }
     if summary is not None:
         payload["summary"] = summary
-    await websocket.send_json(payload)
+    await _safe_send_json(websocket, payload)
 
 
 async def ws_send_run_updated(
@@ -585,10 +623,27 @@ async def ws_send_run_updated(
 
     M6: For intermediate run status changes (e.g., planned -> running).
     """
-    await websocket.send_json({
+    await _safe_send_json(websocket, {
         "type": "orchestration_run_updated",
         "run_id": run_id,
         "session_id": session_id,
+        "status": status,
+        "timestamp": _utcnow_iso(),
+    })
+
+
+async def ws_send_session_member_status(
+    websocket: WebSocket,
+    session_id: str,
+    member_id: str,
+    agent_id: str,
+    status: str,
+) -> None:
+    await _safe_send_json(websocket, {
+        "type": "session_member_status",
+        "session_id": session_id,
+        "member_id": member_id,
+        "agent_id": agent_id,
         "status": status,
         "timestamp": _utcnow_iso(),
     })
@@ -693,6 +748,29 @@ async def _respond_pings(websocket: WebSocket) -> None:
         raise
 
 
+def _normalize_mentions(payload: dict[str, Any]) -> list[dict[str, str]]:
+    mentions = payload.get("mentions")
+    if not isinstance(mentions, list):
+        return []
+
+    normalized: list[dict[str, str]] = []
+    seen_agent_ids: set[str] = set()
+    for item in mentions:
+        if not isinstance(item, dict):
+            continue
+        agent_id = item.get("agent_id") or item.get("agentId")
+        agent_name = item.get("agent_name") or item.get("agentName") or ""
+        if not isinstance(agent_id, str) or not agent_id:
+            continue
+        if not isinstance(agent_name, str):
+            agent_name = ""
+        if agent_id in seen_agent_ids:
+            continue
+        seen_agent_ids.add(agent_id)
+        normalized.append({"agent_id": agent_id, "agent_name": agent_name})
+    return normalized
+
+
 def valid_send_message(payload: object, session_id: str) -> bool:
     if not isinstance(payload, dict):
         return False
@@ -704,12 +782,133 @@ def valid_send_message(payload: object, session_id: str) -> bool:
     if payload.get("type") == "send_message":
         return True
 
-    return payload.get("action") == "send_message" and payload.get("session_id") == session_id
+    if payload.get("action") != "send_message" or payload.get("session_id") != session_id:
+        return False
+
+    target_agent_ids = payload.get("target_agent_ids")
+    if target_agent_ids is not None:
+        if not isinstance(target_agent_ids, list):
+            return False
+        if not all(isinstance(aid, str) for aid in target_agent_ids):
+            return False
+
+    mentions = payload.get("mentions")
+    if mentions is not None:
+        if not isinstance(mentions, list):
+            return False
+        for item in mentions:
+            if not isinstance(item, dict):
+                return False
+            agent_id = item.get("agent_id") if "agent_id" in item else item.get("agentId")
+            agent_name = item.get("agent_name") if "agent_name" in item else item.get("agentName")
+            if not isinstance(agent_id, str) or len(agent_id) == 0:
+                return False
+            if agent_name is not None and not isinstance(agent_name, str):
+                return False
+
+    return True
+
+
+def validate_target_agents_in_session(
+    db,
+    session_id: str,
+    target_agent_ids: list[str],
+) -> bool:
+    """Check that all target_agent_ids are valid agent members of the session."""
+    if not target_agent_ids:
+        return True
+    members = db.query(SessionMember).filter(
+        SessionMember.session_id == session_id,
+        SessionMember.member_type == "agent",
+        SessionMember.member_id.in_(target_agent_ids),
+    ).all()
+    found_ids = {m.member_id for m in members}
+    return all(aid in found_ids for aid in target_agent_ids)
+
+
+def set_session_member_status(
+    db,
+    session_id: str,
+    agent_id: str,
+    status: str,
+) -> dict | None:
+    """Update a session member's health_status field and return the changed member."""
+    member = db.query(SessionMember).filter(
+        SessionMember.session_id == session_id,
+        SessionMember.member_id == agent_id,
+        SessionMember.member_type == "agent",
+    ).first()
+    if member is None:
+        return None
+    if member.health_status == status:
+        return None
+    member.health_status = status
+    db.add(member)
+    db.commit()
+    return {
+        "member_id": member.id,
+        "agent_id": member.member_id,
+        "status": status,
+    }
+
+
+def sync_session_member_statuses_for_run(db, run) -> list[dict]:
+    """Update member statuses based on task states in a run.
+
+    - running tasks -> busy
+    - terminal tasks -> online
+    """
+    if not run or not run.tasks:
+        return []
+    session_id = run.session_id
+    running_agents: set[str] = set()
+    terminal_states = {"completed", "failed", "rejected", "cancelled"}
+    changed_members: list[dict] = []
+    for task in run.tasks:
+        if task.status == "running":
+            running_agents.add(task.assigned_agent_id)
+        elif task.status in terminal_states:
+            changed = set_session_member_status(db, session_id, task.assigned_agent_id, "online")
+            if changed is not None:
+                changed_members.append(changed)
+    for agent_id in running_agents:
+        changed = set_session_member_status(db, session_id, agent_id, "busy")
+        if changed is not None:
+            changed_members.append(changed)
+    return changed_members
+
+
+async def _sync_and_broadcast_session_member_statuses(db, websocket: WebSocket, run) -> None:
+    changed_members = sync_session_member_statuses_for_run(db, run)
+    for member in changed_members:
+        await ws_send_session_member_status(
+            websocket,
+            session_id=run.session_id,
+            member_id=member["member_id"],
+            agent_id=member["agent_id"],
+            status=member["status"],
+        )
 
 
 def _is_orchestration_request(content: str) -> bool:
     text = content.lower()
-    return any(keyword in text for keyword in ("创建", "create", "新增", "添加", "生成", "拆分", "任务"))
+    return any(keyword in text for keyword in (
+        "创建", "create", "新增", "添加", "生成", "拆分", "任务",
+        "文件", "file", "写入", "write", "保存", "save", "修改",
+    ))
+
+
+def _should_use_orchestration(
+    session_mode: str,
+    content: str,
+    target_agent_ids: list[str],
+    mentions: list[dict[str, str]],
+) -> bool:
+    if session_mode != "group":
+        return False
+    if target_agent_ids or mentions:
+        return True
+    return _is_orchestration_request(content)
 
 
 def _get_session_agent_members(db, session_id: str) -> list[dict]:
@@ -741,6 +940,17 @@ def _get_session_agent_members(db, session_id: str) -> list[dict]:
     return result
 
 
+def _get_run_metadata(run: OrchestrationRun) -> dict:
+    metadata = getattr(run, "run_metadata", None)
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _resolve_host_display_name(agent: Agent | None) -> str:
+    if agent is None:
+        return "Agent"
+    return getattr(agent, "name", None) or getattr(agent, "role", None) or getattr(agent, "id", None) or "Agent"
+
+
 def _build_plan_payload(run: OrchestrationRun) -> dict:
     return {
         "run_id": run.id,
@@ -766,57 +976,73 @@ def _build_plan_payload(run: OrchestrationRun) -> dict:
 
 def _build_plan_summary(run: OrchestrationRun) -> str:
     tasks = sorted(run.tasks, key=lambda task: task.sequence)
-    lines = []
+    lines: list[str] = ["收到，我来主持这次协作。"]
 
-    # 让语气更符合群聊主agent的"主持风格"
+    run_metadata = _get_run_metadata(run)
+    mentioned_agents = [
+        item.get("agent_name") or item.get("agent_id")
+        for item in (run_metadata.get("mentioned_agents") or [])
+        if isinstance(item, dict) and (item.get("agent_name") or item.get("agent_id"))
+    ]
+    if mentioned_agents:
+        lines.append(f"你点名了 {'、'.join(mentioned_agents)}，我会在这些候选执行者中安排任务。")
+
     task_count = len(tasks)
     if task_count == 1:
-        lines.append(f"收到！我来帮你处理这个任务。")
-    else:
-        lines.append(f"收到！我来帮你拆解这些任务。")
+        task = tasks[0]
+        lines.append(
+            f"这次我只负责主持，具体执行交给 [{task.assigned_agent_id}] {task.title}。"
+        )
+        lines.append("它开始执行后，我会在完成后回来给你收尾汇总。")
+        return "\n".join(lines)
 
-    lines.append(f"我已经将你的请求分解为 {task_count} 个子任务：")
+    lines.append(f"我已经把你的请求拆成 {task_count} 个子任务，并分配给对应执行 Agent：")
 
     planning_source = getattr(run, 'planning_source', 'fallback_splitter')
     if planning_source == 'fallback_splitter':
-        lines.append("(使用自动规则拆分)")
+        lines.append("(当前使用自动规则拆分)")
 
     for task in tasks:
         lines.append(f"  {task.sequence}. [{task.assigned_agent_id}] {task.title}")
 
-    if len(tasks) > 1:
-        lines.append("\n这些任务我会安排并行处理，稍等片刻。")
-    else:
-        lines.append("\n任务马上开始执行，稍等片刻。")
-    lines.append("完成后我会来汇总结果。")
+    lines.append("接下来我继续主持推进，执行完成后我会统一回来收尾。")
     return "\n".join(lines)
 
 
-def _build_plan_summary_from_planner(tasks: list, planning_mode: str) -> str:
+def _build_plan_summary_from_planner(run: OrchestrationRun, tasks: list, planning_mode: str) -> str:
     """从planner输出构建计划摘要"""
-    lines = [f"已拆解出 {len(tasks)} 个任务。"]
+    lines: list[str] = ["收到，我来主持这次协作。"]
+
+    run_metadata = _get_run_metadata(run)
+    mentioned_agents = [
+        item.get("agent_name") or item.get("agent_id")
+        for item in (run_metadata.get("mentioned_agents") or [])
+        if isinstance(item, dict) and (item.get("agent_name") or item.get("agent_id"))
+    ]
+    if mentioned_agents:
+        lines.append(f"你点名了 {'、'.join(mentioned_agents)}，我会从这些候选执行者中选择最合适的一位来执行。")
+
+    lines.append(f"我已拆解出 {len(tasks)} 个任务。")
 
     mode_text = {
-        "parallel": "这些任务可以并行执行。",
-        "sequential": "这些任务需要按顺序执行。",
+        "parallel": "如果任务彼此独立，我会并行安排。",
+        "sequential": "这些任务需要按顺序推进。",
         "mixed": "这些任务包含并行和串行部分，我会协调执行顺序。",
     }
-    lines.append(mode_text.get(planning_mode, ""))
+    selected_mode_text = mode_text.get(planning_mode)
+    if selected_mode_text:
+        lines.append(selected_mode_text)
 
-    lines.append("\n任务分配：")
+    lines.append("\n任务分配如下：")
     for idx, task in enumerate(tasks):
         depends_text = ""
         if hasattr(task, 'depends_on') and task.depends_on:
             depends_text = f" (等待: {', '.join(task.depends_on)})"
         lines.append(f"{idx + 1}. [{task.assigned_agent_id}] {task.title}{depends_text}")
-        if hasattr(task, 'reason'):
-            lines.append(f"   原因: {task.reason}")
+        if hasattr(task, 'reason') and task.reason:
+            lines.append(f"   分配原因: {task.reason}")
 
-    if len(tasks) > 1:
-        lines.append("\n各任务将并行推进，我会继续统一主持进度并在完成后汇总结果。")
-    else:
-        lines.append("\n该任务将立即开始执行，我会继续统一主持进度并在完成后汇总结果。")
-
+    lines.append("我只负责主持和收尾，具体执行交给上面的 Agent；完成后我会回来统一汇总。")
     return "\n".join(lines)
 
 
@@ -880,7 +1106,12 @@ def _create_plan_message(session_id: str, planner_name: str, run: OrchestrationR
         type="text",
         status="completed",
         payload=_build_plan_payload(run),
-        metadata={"run_id": run.id, "is_orchestration_plan": True},
+        metadata={
+            "run_id": run.id,
+            "is_orchestration_plan": True,
+            "is_host_message": True,
+            "mentioned_agents": _get_run_metadata(run).get("mentioned_agents", []),
+        },
     )
 
 
@@ -891,19 +1122,28 @@ def _build_host_message_prompt(run: OrchestrationRun) -> str:
     for task in tasks:
         task_lines.append(f"- [{task.assigned_agent_id}] {task.title}")
 
+    run_metadata = _get_run_metadata(run)
+    mentioned_agents = [
+        item.get("agent_name") or item.get("agent_id")
+        for item in (run_metadata.get("mentioned_agents") or [])
+        if isinstance(item, dict) and (item.get("agent_name") or item.get("agent_id"))
+    ]
+    mentioned_note = f"\n用户点名候选 Agent：{'、'.join(mentioned_agents)}\n" if mentioned_agents else "\n"
+
     planning_source = getattr(run, 'planning_source', 'fallback_splitter')
     source_note = "(使用自动规则拆分)" if planning_source == 'fallback_splitter' else ""
 
     prompt = f"""你是群聊中的主Agent，负责主持任务进度并向用户汇总结果。
 
-当前已拆解出 {len(tasks)} 个任务 {source_note}
-
+当前已拆解出 {len(tasks)} 个任务 {source_note}{mentioned_note}
 任务分配如下：
 {chr(10).join(task_lines)}
 
-请用自然语言向用户汇报计划，语气亲切专业，像一个主持人在介绍团队分工。
-不要使用代码块或特殊格式，直接输出纯文本消息。
-确保用户知道各任务已分配给相应Agent执行。"""
+请用自然语言向用户汇报计划，必须满足以下要求：
+1. 明确说明“我主持、执行 Agent 执行、我最后收尾汇总”
+2. 如果用户点名了候选 Agent，要明确说明会从这些候选中安排执行
+3. 不要把主 Agent 描述成亲自执行者
+4. 不要使用代码块或特殊格式，直接输出纯文本消息。"""
     return prompt
 
 
@@ -942,7 +1182,7 @@ async def _send_planner_host_message(
         else:
             host_content = response.response.strip()
 
-        host_name = getattr(planner_agent, "name", None) or getattr(planner_agent, "role", None) or "PM"
+        host_name = _resolve_host_display_name(planner_agent)
 
         message = Message(
             session_id=session_id,
@@ -957,6 +1197,7 @@ async def _send_planner_host_message(
                 "is_orchestration_plan": True,
                 "is_host_message": True,
                 "agent_id": planner_agent.id,
+                "mentioned_agents": _get_run_metadata(run).get("mentioned_agents", []),
             },
         )
         db.add(message)
@@ -982,7 +1223,7 @@ async def _send_planner_host_message(
         logger.error("生成群聊主agent计划摘要消息失败: {}", str(exc))
         plan_message = _create_plan_message(
             session_id,
-            getattr(planner_agent, "name", None) or getattr(planner_agent, "role", "PM"),
+            _resolve_host_display_name(planner_agent),
             run,
         )
         plan_message.content = _build_plan_summary(run)
@@ -996,18 +1237,17 @@ async def _create_orchestration_plan(
     planner_agent: Agent,
     content: str,
     human_message: Message,
+    allowed_agent_ids: list[str] | None = None,
 ) -> OrchestrationRun | None:
     """创建编排计划 - 集成planner版本
 
     优先使用planner语义规划，失败时fallback到规则拆分。
     """
-    # 获取候选agent列表
     candidate_agents = _get_session_agent_members(db, session.id)
     member_ids = [a["id"] for a in candidate_agents if a["id"] != planner_agent.id]
     if not member_ids:
         member_ids = [planner_agent.id]
 
-    # 尝试使用planner
     run = await _create_orchestration_plan_with_planner(
         db=db,
         session=session,
@@ -1019,9 +1259,8 @@ async def _create_orchestration_plan(
     )
 
     if run is not None:
-        return run
+        return _restrict_run_tasks_to_allowed_agents(db, run.id, allowed_agent_ids)
 
-    # Fallback到规则拆分 - 记录决策原因
     _GROUP_CHAT_AUDIT.record_fallback_decision(
         session_id=session.id,
         run_id=None,
@@ -1034,7 +1273,7 @@ async def _create_orchestration_plan(
         },
     )
 
-    return _create_orchestration_plan_with_fallback(
+    run = _create_orchestration_plan_with_fallback(
         db=db,
         session=session,
         planner_agent=planner_agent,
@@ -1042,6 +1281,37 @@ async def _create_orchestration_plan(
         human_message=human_message,
         member_ids=member_ids,
     )
+    if run is None:
+        return None
+    return _restrict_run_tasks_to_allowed_agents(db, run.id, allowed_agent_ids)
+
+
+def _restrict_run_tasks_to_allowed_agents(
+    db,
+    run_id: str,
+    allowed_agent_ids: list[str] | None,
+) -> OrchestrationRun:
+    """Persist the allowed-agent constraint onto the stored task set."""
+    service = OrchestrationService(db)
+    if not allowed_agent_ids:
+        run = service.get_run(run_id)
+        if run is None:
+            raise RuntimeError("Failed to load orchestration run after creation")
+        return run
+
+    allowed_agent_id_set = set(allowed_agent_ids)
+    db.query(OrchestrationTask).filter(
+        OrchestrationTask.run_id == run_id,
+        OrchestrationTask.assigned_agent_id.notin_(allowed_agent_id_set),
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    run = service.get_run(run_id)
+    if run is None:
+        raise RuntimeError("Failed to load orchestration run after restricting tasks")
+    if not run.tasks:
+        raise ValueError("No valid target agents available for this session")
+    return run
 
 
 async def _create_orchestration_plan_with_planner(
@@ -1128,6 +1398,10 @@ async def _create_orchestration_plan_with_planner(
         summary=f"已拆解出 {len(plan.tasks)} 个任务",
         status="planned",
         planning_source=planning_source,
+        metadata={
+            "mentioned_agents": (human_message.msg_metadata or {}).get("mentioned_agents", []),
+            "target_agent_ids": (human_message.msg_metadata or {}).get("target_agent_ids", []),
+        },
     )
 
     # 创建tasks
@@ -1156,11 +1430,13 @@ async def _create_orchestration_plan_with_planner(
     # 创建计划消息
     plan_message = _create_plan_message(
         session.id,
-        getattr(planner_agent, "name", None) or getattr(planner_agent, "role", "PM"),
+        _resolve_host_display_name(planner_agent),
         run_with_tasks
     )
     plan_message.content = _build_plan_summary_from_planner(
-        plan.tasks, plan.planning_mode.value
+        run_with_tasks,
+        plan.tasks,
+        plan.planning_mode.value,
     )
     db.add(plan_message)
     db.commit()
@@ -1173,7 +1449,7 @@ async def _create_orchestration_plan_with_planner(
             run_id=final_run.id,
             trigger_message_id=human_message.id,
             planner_agent_id=planner_agent.id,
-            planner_role=getattr(planner_agent, "role", "PM"),
+            planner_role=_resolve_host_display_name(planner_agent),
             summary=final_run.summary,
             tasks=[
                 {
@@ -1289,6 +1565,10 @@ def _create_orchestration_plan_with_fallback(
         summary=f"已拆解出 {len(planned_tasks)} 个任务 (fallback)",
         status="planned",
         planning_source=PlanningSource.FALLBACK_SPLITTER.value,
+        metadata={
+            "mentioned_agents": (human_message.msg_metadata or {}).get("mentioned_agents", []),
+            "target_agent_ids": (human_message.msg_metadata or {}).get("target_agent_ids", []),
+        },
     )
 
     service.create_tasks(
@@ -1313,6 +1593,8 @@ def _create_orchestration_plan_with_fallback(
         raise RuntimeError("Failed to load orchestration run after creation")
 
     # 审计记录 - fallback任务分配
+    persisted_tasks = sorted(run_with_tasks.tasks, key=lambda task: task.sequence)
+
     _GROUP_CHAT_AUDIT.record_fallback_task_allocation(
         session_id=session.id,
         run_id=run.id,
@@ -1320,24 +1602,26 @@ def _create_orchestration_plan_with_fallback(
         user_request=content,
         planned_tasks=[
             {
-                "task_id": f"planned_{index + 1}",
-                "sequence": index + 1,
+                "task_id": task.id,
+                "sequence": task.sequence,
                 "title": task.title,
                 "assigned_agent_id": task.assigned_agent_id,
                 "input_payload": task.input_payload,
             }
-            for index, task in enumerate(planned_tasks)
+            for task in persisted_tasks
         ],
         agent_ids=member_ids,
     )
 
     # 通过群聊主agent的LLM生成计划摘要消息
-    _send_planner_host_message(
-        db=db,
-        session_id=session.id,
-        planner_agent=planner_agent,
-        run=run_with_tasks,
+    plan_message = _create_plan_message(
+        session.id,
+        _resolve_host_display_name(planner_agent),
+        run_with_tasks,
     )
+    plan_message.content = _build_plan_summary(run_with_tasks)
+    db.add(plan_message)
+    db.commit()
 
     return run_with_tasks
 
@@ -1345,7 +1629,6 @@ def _create_orchestration_plan_with_fallback(
 async def _execute_orchestration_tasks(
     db,
     websocket: WebSocket,
-    db,
     session_id: str,
     run: OrchestrationRun,
 ) -> None:
@@ -1620,21 +1903,32 @@ async def _handle_streaming_response(
                 await ws_send_preview_result(websocket, preview_id=event.preview_id, workspace_id=event.workspace_id, preview_url=event.preview_url, status=event.status, message_id=event.message_id, stream_id=event.stream_id, timestamp=event.timestamp)
             elif event.type == "repair_state":
                 await ws_send_repair_state(websocket, state=event.state, attempt=event.attempt, max_attempts=event.max_attempts, message=event.message, stream_id=event.stream_id, message_id=event.message_id, timestamp=event.timestamp)
+            if (
+                getattr(websocket, "client_state", None) is WebSocketState.DISCONNECTED
+                or getattr(websocket, "application_state", None) is WebSocketState.DISCONNECTED
+            ):
+                break
     except Exception as exc:
+        disconnected = _is_ws_disconnect_error(exc)
         if active_message_id:
             agent_message = db.get(Message, active_message_id)
             if agent_message is not None:
                 agent_message.status = "failed"
                 db.add(agent_message)
                 db.commit()
-        await ws_send_message_error(
-            websocket,
-            agent_role=active_agent_role,
-            stream_id=active_stream_id,
-            message_id=active_message_id or "",
-            error_code=active_error_code,
-            error_message=str(exc),
-        )
+        if disconnected:
+            return
+        try:
+            await ws_send_message_error(
+                websocket,
+                agent_role=active_agent_role,
+                stream_id=active_stream_id,
+                message_id=active_message_id or "",
+                error_code=active_error_code,
+                error_message=str(exc),
+            )
+        except Exception:
+            pass
 
 
 @router.websocket("/{session_id}")
@@ -1698,7 +1992,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 break
 
             if isinstance(payload, dict) and payload.get("type") == "ping":
-                await websocket.send_json({"type": "pong"})
+                await _safe_send_json(websocket, {"type": "pong"})
                 continue
 
             if not valid_send_message(payload, session_id):
@@ -1718,6 +2012,20 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             agent_name = getattr(selected_agent, "name", None) or getattr(selected_agent, "role", "PM")
 
             content = payload["content"]
+            mentions = _normalize_mentions(payload)
+            target_agent_ids = [aid for aid in payload.get("target_agent_ids", []) if isinstance(aid, str)]
+            if not target_agent_ids and mentions:
+                target_agent_ids = [item["agent_id"] for item in mentions if item.get("agent_id")]
+            if session.mode == "group" and target_agent_ids:
+                if not validate_target_agents_in_session(db, session_id, target_agent_ids):
+                    await _send_error(
+                        websocket,
+                        "invalid_target_agents",
+                        "One or more target agents are not members of this session",
+                        stream_id=str(uuid.uuid4()),
+                        agent_role=agent_name,
+                    )
+                    continue
             human_message = Message(
                 session_id=session_id,
                 sender_type="human",
@@ -1726,7 +2034,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 type="text",
                 status="completed",
                 payload={"text": content},
-                metadata={},
+                metadata={
+                    "mentioned_agents": mentions,
+                    "target_agent_ids": target_agent_ids,
+                },
             )
             db.add(human_message)
             session.updated_at = utcnow()
@@ -1741,8 +2052,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             )
 
             try:
-                if session.mode == "group" and _is_orchestration_request(content):
-                    run = await _create_orchestration_plan(db, session, selected_agent, content, human_message)
+                if _should_use_orchestration(session.mode, content, target_agent_ids, mentions):
+                    run = await _create_orchestration_plan(
+                        db,
+                        session,
+                        selected_agent,
+                        content,
+                        human_message,
+                        allowed_agent_ids=target_agent_ids or None,
+                    )
                     if run is not None:
                         plan_message = (
                             db.query(Message)

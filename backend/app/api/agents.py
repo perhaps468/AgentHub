@@ -49,11 +49,6 @@ def _parse_env_list(*env_names: str) -> list[str]:
 
 def _provider_model_pairs() -> list[tuple[str, str]]:
     settings = get_settings()
-    pairs = [
-        ("qwen_openai_compatible", settings.qwen_model),
-        ("doubao", settings.doubao_model),
-        ("glm", settings.glm_model),
-    ]
     configured = _parse_env_list("AGENT_AVAILABLE_MODELS", "AVAILABLE_MODELS")
     if configured:
         explicit_pairs: list[tuple[str, str]] = []
@@ -61,7 +56,12 @@ def _provider_model_pairs() -> list[tuple[str, str]]:
             matched_provider = _infer_provider_for_model(model)
             explicit_pairs.append((matched_provider, model))
         return explicit_pairs
-    return [(provider, model) for provider, model in pairs if model]
+    candidates = [
+        ("qwen_openai_compatible", settings.qwen_model, settings.qwen_api_key),
+        ("doubao", settings.doubao_model, settings.doubao_api_key),
+        ("glm", settings.glm_model, settings.glm_api_key),
+    ]
+    return [(provider, model) for provider, model, api_key in candidates if model and api_key]
 
 
 def _available_models() -> list[str]:

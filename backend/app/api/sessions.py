@@ -16,6 +16,8 @@ from app.core.database import get_db
 from app.core.security import CurrentUser
 from app.models.agent import Agent
 from app.models.message import Message
+from app.models.orchestration import OrchestrationRun as OrchRun
+from app.models.pending_change import PendingChangeModel
 from app.models.session import ChatSession
 from app.models.session import utcnow
 from app.models.session_member import SessionMember
@@ -23,8 +25,11 @@ from app.models.workspace import Workspace
 from app.schemas.common import Page
 from app.schemas.message import MessageResponse
 from app.schemas.session import SessionCreate, SessionResponse, SessionUpdate, WorkspaceSummary
-from app.schemas.session_member import MemberResponse
-from app.services.group_host_agent import ensure_user_group_host_agent
+from app.schemas.session_member import MemberResponse, SessionMemberStatus
+from app.services.group_host_agent import (
+    GROUP_HOST_AGENT_NAME,
+    ensure_user_group_host_agent,
+)
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -43,23 +48,61 @@ def _get_workspace_summary(db: Session, workspace_id: str | None) -> WorkspaceSu
     )
 
 
+def _normalize_member_status(
+    health_status: str | None,
+    *,
+    agent_active: bool = True,
+) -> SessionMemberStatus:
+    if not agent_active:
+        return "offline"
+    status = (health_status or "").strip().lower()
+    if status in {"online", "busy", "offline"}:
+        return status  # type: ignore[return-value]
+    if status in {"connected", "idle", "ready"}:
+        return "online"
+    if status in {"running", "working"}:
+        return "busy"
+    return "offline"
+
+
 def _get_members_for_session(db: Session, session_id: str) -> list[MemberResponse]:
     """Get members for a session."""
     members = db.query(SessionMember).filter(
         SessionMember.session_id == session_id
     ).all()
-    return [
-        MemberResponse(
-            id=m.id,
-            session_id=m.session_id,
-            member_type=m.member_type,
-            member_id=m.member_id,
-            is_primary=m.is_primary,
-            health_status=m.health_status,
-            created_at=m.created_at.isoformat(),
+    agent_ids = [m.member_id for m in members if m.member_type == "agent"]
+    agents = {
+        agent.id: agent
+        for agent in db.query(Agent).filter(Agent.id.in_(agent_ids)).all()
+    } if agent_ids else {}
+    response_members: list[MemberResponse] = []
+    for member in members:
+        agent = agents.get(member.member_id) if member.member_type == "agent" else None
+        if member.member_type == "agent" and getattr(agent, "name", None) == GROUP_HOST_AGENT_NAME:
+            continue
+        status = _normalize_member_status(
+            member.health_status,
+            agent_active=getattr(agent, "is_active", True),
         )
-        for m in members
-    ]
+        response_members.append(
+            MemberResponse(
+                id=member.id,
+                session_id=member.session_id,
+                member_type=member.member_type,
+                member_id=member.member_id,
+                is_primary=member.is_primary,
+                health_status=member.health_status,
+                status=status,
+                agent_name=getattr(agent, "name", None),
+                agent_avatar=(
+                    getattr(agent, "avatar_url", None)
+                    or getattr(agent, "avatar", None)
+                ),
+                agent_role=getattr(agent, "role", None),
+                created_at=member.created_at.isoformat(),
+            )
+        )
+    return response_members
 
 
 def _session_to_response(db: Session, session: ChatSession) -> SessionResponse:
@@ -96,7 +139,6 @@ def get_session_with_ownership_check(db: Session, session_id: str, current_user:
 
 @router.post("", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
 def create_session(payload: SessionCreate, current_user: CurrentUser, db: Session = Depends(get_db)) -> SessionResponse:
-    # Task B+C-1: Validate workspace_id exists and belongs to current user
     owner = str(current_user.id)
     ws = db.get(Workspace, payload.workspace_id)
     if ws is None:
@@ -119,16 +161,14 @@ def create_session(payload: SessionCreate, current_user: CurrentUser, db: Sessio
         agent_id=payload.agent_id,
     )
     db.add(session)
-    db.flush()  # flush to get session.id for member creation
+    db.flush()
 
-    # P6-3: Group mode — auto-add primary agent and participant agents as members
     if payload.mode == "group":
         host_agent = ensure_user_group_host_agent(db, owner)
         participant_ids = list(payload.participant_agent_ids or [])
         member_ids = set(participant_ids)
         member_ids.discard(host_agent.id)
 
-        # Validate all participant agents exist
         for agent_id in member_ids:
             ag = db.get(Agent, agent_id)
             if ag is None:
@@ -136,23 +176,13 @@ def create_session(payload: SessionCreate, current_user: CurrentUser, db: Sessio
             if not ag.is_builtin and ag.owner_id != owner:
                 raise HTTPException(status_code=403, detail=f"Agent does not belong to current user: {agent_id}")
 
-        # Add primary agent as primary member
-        db.add(SessionMember(
-            session_id=session.id,
-            member_type="agent",
-            member_id=host_agent.id,
-            is_primary=True,
-            health_status="connected",
-        ))
-
-        # Add participant agents as non-primary members
-        for agent_id in member_ids:
+        for index, agent_id in enumerate(member_ids):
             db.add(SessionMember(
                 session_id=session.id,
                 member_type="agent",
                 member_id=agent_id,
-                is_primary=False,
-                health_status="connected",
+                is_primary=index == 0,
+                health_status="online",
             ))
 
     db.commit()
@@ -257,15 +287,11 @@ def list_messages(
 # M6: Active Run Recovery Endpoint
 class ActiveRunRecoveryResponse(BaseModel):
     """Response model for active run recovery endpoint."""
+
     run: Optional[dict] = None
     tasks: list[dict] = []
     pending_changes: list[dict] = []
-    is_recent: bool = False  # M6: indicates if this is a recently completed run
-
-
-from app.models.orchestration import OrchestrationRun as OrchRun
-from app.models.orchestration import OrchestrationTask as OrchTask
-from app.models.pending_change import PendingChangeModel
+    is_recent: bool = False
 
 
 @router.get("/{session_id}/active-run", response_model=ActiveRunRecoveryResponse)
@@ -273,40 +299,21 @@ def get_active_run(
     session_id: str,
     current_user: CurrentUser,
     db: Session = Depends(get_db),
-) -> ActiveRunRecoveryResponse:
-    """Get active run with tasks and pending changes for UI state recovery.
+ ) -> ActiveRunRecoveryResponse:
+    """Get active run with tasks and pending changes for UI state recovery."""
+    session = get_session_with_ownership_check(db, session_id, current_user)
 
-    M6: This endpoint provides the minimum data needed for frontend to render
-    the orchestration execution view after page refresh or session re-entry.
-
-    Returns:
-        - run: Active run data (or None if no active run)
-        - tasks: List of tasks with all UI fields
-        - pending_changes: List of pending changes for this session
-
-    Raises:
-        HTTPException 404: If session not found.
-        HTTPException 403: If user doesn't own the session.
-    """
-    # Check session ownership
-    get_session_with_ownership_check(db, session_id, current_user)
-
-    from sqlalchemy import desc
-
-    # M6: First try to get active run (planned/running/waiting_confirmation)
     run = db.scalars(
         select(OrchRun)
         .options(selectinload(OrchRun.tasks))
         .where(
-            OrchRun.session_id == session_id,
-            OrchRun.status.in_(['planned', 'running', 'waiting_confirmation'])
+            OrchRun.session_id == session.id,
+            OrchRun.status.in_(["planned", "running", "waiting_confirmation"]),
         )
-        .order_by(desc(OrchRun.created_at))
+        .order_by(OrchRun.created_at.desc())
         .limit(1)
     ).first()
 
-    # M6: If no active run, try to get the most recent completed/partial run
-    # (within last 5 minutes) for refresh recovery
     is_recent = False
     if run is None:
         five_minutes_ago = utcnow() - timedelta(minutes=5)
@@ -314,11 +321,11 @@ def get_active_run(
             select(OrchRun)
             .options(selectinload(OrchRun.tasks))
             .where(
-                OrchRun.session_id == session_id,
-                OrchRun.status.in_(['completed', 'partial', 'cancelled', 'failed']),
+                OrchRun.session_id == session.id,
+                OrchRun.status.in_(["completed", "partial", "cancelled", "failed"]),
                 OrchRun.updated_at >= five_minutes_ago,
             )
-            .order_by(desc(OrchRun.updated_at))
+            .order_by(OrchRun.updated_at.desc())
             .limit(1)
         ).first()
         if run is not None:
@@ -327,81 +334,74 @@ def get_active_run(
     if run is None:
         return ActiveRunRecoveryResponse(run=None, tasks=[], pending_changes=[])
 
-    # Build run response
-    run_data = {
-        'id': run.id,
-        'session_id': run.session_id,
-        'trigger_message_id': run.trigger_message_id,
-        'planner_agent_id': run.planner_agent_id,
-        'status': run.status,
-        'summary': run.summary,
-        'created_at': run.created_at.isoformat() if run.created_at else None,
-        'updated_at': run.updated_at.isoformat() if run.updated_at else None,
-    }
+    agent_ids = {task.assigned_agent_id for task in run.tasks}
+    agents = {
+        agent.id: agent
+        for agent in db.query(Agent).filter(Agent.id.in_(agent_ids)).all()
+    } if agent_ids else {}
 
-    # Build tasks response with agent role/name for M6
     tasks_data = []
-    from app.models.agent import Agent as AgentModel
     for task in run.tasks:
-        # M6: Look up agent to get role and name
-        agent_role = None
-        agent_name = None
-        agent = db.get(AgentModel, task.assigned_agent_id)
-        if agent:
-            agent_role = getattr(agent, 'role', None)
-            agent_name = getattr(agent, 'name', None)
-
+        agent = agents.get(task.assigned_agent_id)
         tasks_data.append({
-            'id': task.id,
-            'run_id': task.run_id,
-            'parent_task_id': task.parent_task_id,
-            'sequence': task.sequence,
-            'assigned_agent_id': task.assigned_agent_id,
-            'agent_role': agent_role,  # M6: for frontend display
-            'agent_name': agent_name,  # M6: for frontend display
-            'kind': task.kind,
-            'title': task.title,
-            'goal': task.goal,
-            'input_payload': task.input_payload,
-            'result_payload': task.result_payload,
-            'error_payload': task.error_payload,
-            'status': task.status,
+            "id": task.id,
+            "run_id": task.run_id,
+            "parent_task_id": task.parent_task_id,
+            "sequence": task.sequence,
+            "assigned_agent_id": task.assigned_agent_id,
+            "agent_role": getattr(agent, "role", None),
+            "agent_name": getattr(agent, "name", None),
+            "kind": task.kind,
+            "title": task.title,
+            "goal": task.goal,
+            "input_payload": task.input_payload,
+            "result_payload": task.result_payload,
+            "error_payload": task.error_payload,
+            "status": task.status,
         })
 
-    # Get pending changes for this session/run
     pending_changes = (
         db.query(PendingChangeModel)
         .filter(
-            PendingChangeModel.session_id == session_id,
-            PendingChangeModel.status == 'pending_confirmation'
+            PendingChangeModel.session_id == session.id,
+            PendingChangeModel.status == "pending_confirmation",
         )
         .all()
     )
-
-    pending_changes_data = []
-    for pc in pending_changes:
-        pending_changes_data.append({
-            'change_id': pc.change_id,
-            'session_id': pc.session_id,
-            'message_id': pc.message_id,
-            'stream_id': pc.stream_id,
-            'run_id': pc.run_id,
-            'task_id': pc.task_id,
-            'agent_id': pc.agent_id,
-            'batch_id': pc.batch_id,
-            'operation': pc.operation,
-            'path': pc.path,
-            'unified_diff': pc.unified_diff,
-            'original_content': pc.original_content,
-            'proposed_content': pc.proposed_content,
-            'status': pc.status,
-            'created_at': pc.created_at.isoformat() if pc.created_at else None,
-            'applied_at': pc.applied_at.isoformat() if pc.applied_at else None,
-        })
+    pending_changes_data = [
+        {
+            "change_id": pc.change_id,
+            "session_id": pc.session_id,
+            "message_id": pc.message_id,
+            "stream_id": pc.stream_id,
+            "run_id": pc.run_id,
+            "task_id": pc.task_id,
+            "agent_id": pc.agent_id,
+            "batch_id": pc.batch_id,
+            "operation": pc.operation,
+            "path": pc.path,
+            "unified_diff": pc.unified_diff,
+            "original_content": pc.original_content,
+            "proposed_content": pc.proposed_content,
+            "status": pc.status,
+            "created_at": pc.created_at.isoformat() if pc.created_at else None,
+            "applied_at": pc.applied_at.isoformat() if pc.applied_at else None,
+        }
+        for pc in pending_changes
+    ]
 
     return ActiveRunRecoveryResponse(
-        run=run_data,
+        run={
+            "id": run.id,
+            "session_id": run.session_id,
+            "trigger_message_id": run.trigger_message_id,
+            "planner_agent_id": run.planner_agent_id,
+            "status": run.status,
+            "summary": run.summary,
+            "created_at": run.created_at.isoformat() if run.created_at else None,
+            "updated_at": run.updated_at.isoformat() if run.updated_at else None,
+        },
         tasks=tasks_data,
         pending_changes=pending_changes_data,
-        is_recent=is_recent,  # M6: indicates if this is a recently completed run
+        is_recent=is_recent,
     )

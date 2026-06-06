@@ -189,7 +189,7 @@ const emit = defineEmits<{
   (e: 'toggle-pin', item: ConversationItem): void
   (e: 'toggle-archive', item: ConversationItem): void
   (e: 'delete-session', item: ConversationItem): void
-  (e: 'rename-session', sessionId: string, newTitle: string): void
+  (e: 'rename-session', item: ConversationItem, newTitle: string): void
   (e: 'toggle-collapse'): void
 }>()
 
@@ -216,7 +216,10 @@ const startRename = (item: ConversationItem) => {
 
 const confirmRename = () => {
   if (renamingId.value && renamingValue.value.trim()) {
-    emit('rename-session', renamingId.value, renamingValue.value.trim())
+    const item = props.filteredSessions.find(s => s.id === renamingId.value)
+    if (item) {
+      emit('rename-session', item, renamingValue.value.trim())
+    }
   }
   cancelRename()
 }
@@ -272,25 +275,15 @@ const sortedActiveSessions = computed(() =>
 // ==================== 辅助函数 ====================
 
 const getAgentAvatar = (item: ConversationItem, agents: SidebarAgent[]) => {
-  const sessionAgentId = (item as ConversationItem & { agent_id?: string | null }).agent_id
-  const agentById = sessionAgentId
-    ? agents.find((a) => a.id === sessionAgentId)
-    : undefined
-  if (agentById?.avatar) return agentById.avatar
-
-  const agentByTitle = agents.find((a) => item.title?.includes(a.name))
-  return agentByTitle?.avatar || ''
+  if (!item.agent_id) return ''
+  const agent = agents.find((a) => a.id === item.agent_id)
+  return agent?.avatar || ''
 }
 
 const getAgentTags = (item: ConversationItem, agents: SidebarAgent[]) => {
-  const sessionAgentId = (item as ConversationItem & { agent_id?: string | null }).agent_id
-  const agentById = sessionAgentId
-    ? agents.find((a) => a.id === sessionAgentId)
-    : undefined
-  if (agentById?.capabilityTags?.length) return agentById.capabilityTags
-
-  const agentByTitle = agents.find((a) => item.title?.includes(a.name))
-  return agentByTitle?.capabilityTags || []
+  if (!item.agent_id) return []
+  const agent = agents.find((a) => a.id === item.agent_id)
+  return agent?.capabilityTags || []
 }
 
 // ==================== ... 操作菜单 ====================

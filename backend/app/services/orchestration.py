@@ -19,6 +19,7 @@ class OrchestrationService:
         summary: str | None = None,
         status: str = "planned",
         planning_source: str | None = None,
+        metadata: dict | None = None,
     ) -> OrchestrationRun:
         run = OrchestrationRun(
             session_id=session_id,
@@ -27,6 +28,7 @@ class OrchestrationService:
             summary=summary,
             status=status,
             planning_source=planning_source,
+            run_metadata=metadata or {},
         )
         self.db.add(run)
         self.db.flush()

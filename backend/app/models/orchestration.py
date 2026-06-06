@@ -21,6 +21,7 @@ class OrchestrationRun(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="planned")
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     planning_source: Mapped[str | None] = mapped_column(String(50), nullable=True, default="fallback_splitter")
+    run_metadata: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

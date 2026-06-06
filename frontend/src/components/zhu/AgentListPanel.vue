@@ -29,28 +29,22 @@
         v-for="agent in agents"
         :key="agent.id"
         class="agent-item-wrapper"
-        @contextmenu.prevent="showContextMenu($event, agent)"
+        :class="{ 'is-selected': selectedAgentId === agent.id }"
       >
         <button
           class="agent-item"
-          :class="{ 'is-selected': selectedAgentId === agent.id }"
           type="button"
           @click="$emit('select-agent', agent)"
         >
-          <div class="avatar-wrapper" @click.stop="showAgentInfo(agent)" >
-            <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="42px" />
-            <div class="avatar-overlay">
-              <el-icon ></el-icon>
-            </div>
-          </div>
+          <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="42px" :style="getAgentAvatarStyle(agent)" />
           <div class="agent-info">
             <div class="agent-title-row">
               <span class="agent-name">{{ agent.name }}</span>
-              <span class="agent-badge" >
+              <span class="agent-badge" :class="agent.isCustom ? 'custom' : 'builtin'">
                 {{ agent.isCustom ? '自建' : '内置' }}
               </span>
             </div>
-            <span class="agent-desc">{{ agent.description  }}</span>
+            <span class="agent-desc">{{ agent.description || getAgentPlatformLabel(agent) }}</span>
             <div class="capability-tags">
               <span v-for="tag in getVisibleCapabilityTags(agent.capabilityTags)" :key="tag" class="capability-tag">{{ tag }}</span>
               <span v-if="agent.capabilityTags.length > 3" class="capability-tag more">+{{ agent.capabilityTags.length - 3 }}</span>
@@ -77,14 +71,11 @@
     v-model="showInfoDialog"
     :agent="selectedAgentForInfo"
   />
-
-
-
 </template>
 
 <script lang="ts" setup>
-import { Fold, Expand, Delete } from '@element-plus/icons-vue'
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref } from 'vue'
+import { Fold, Expand, Edit, Delete } from '@element-plus/icons-vue'
 import type { SidebarAgent, SidebarPanel } from '../../types/agenthub'
 import Search from '../../veiws/Serach.vue'
 import avatar from '../../veiws/img/avatar.vue'
@@ -105,7 +96,6 @@ const emit = defineEmits<{
   (e: 'edit-agent', agent: SidebarAgent): void
   (e: 'delete-agent', agent: SidebarAgent): void
   (e: 'toggle-collapse'): void
-  (e: 'delete-agent', agent: SidebarAgent): void
 }>()
 
 // Agent 信息弹窗
@@ -117,56 +107,31 @@ const showAgentInfo = (agent: SidebarAgent) => {
   showInfoDialog.value = true
 }
 
-// 右键菜单
-const contextMenu = reactive({
-  visible: false,
-  x: 0,
-  y: 0,
-  agent: null as SidebarAgent | null,
-})
 
-const showContextMenu = (event: MouseEvent, agent: SidebarAgent) => {
-  // 计算菜单位置，确保不超出屏幕
-  let x = event.clientX
-  let y = event.clientY
 
-  // 菜单宽度约 150px
-  if (x + 150 > window.innerWidth) {
-    x = window.innerWidth - 160
-  }
-  // 菜单高度约 50px
-  if (y + 50 > window.innerHeight) {
-    y = window.innerHeight - 60
-  }
-
-  contextMenu.x = x
-  contextMenu.y = y
-  contextMenu.agent = agent
-  contextMenu.visible = true
-}
-
-const hideContextMenu = () => {
-  contextMenu.visible = false
-  contextMenu.agent = null
-}
-
-// 点击其他地方关闭右键菜单
-const handleGlobalClick = () => {
-  if (contextMenu.visible) {
-    hideContextMenu()
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleGlobalClick)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleGlobalClick)
-})
 
 const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
 
+const getAgentPlatformLabel = (agent: SidebarAgent) => {
+  const labels: Record<string, string> = {
+    'claude-code': 'Claude',
+    codex: 'Codex',
+    opencode: 'OpenCode',
+    custom: '自建',
+  }
+  return labels[agent.platform || 'custom'] || agent.platform || ''
+}
+
+const getAgentAvatarStyle = (agent: SidebarAgent) => {
+  if (agent.avatar) {
+    return undefined
+  }
+
+  return {
+    background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
+    color: '#fff',
+  }
+}
 </script>
 
 <style scoped lang="less">
@@ -275,17 +240,9 @@ const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
   font-weight: 500;
 }
 
-/* ==================== Agent 项 ==================== */
+/* ==================== Agent 项容器 ==================== */
 .agent-item-wrapper {
   position: relative;
-}
-
-.agent-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  width: 100%;
-  padding: 16px;
   border-radius: 14px;
   border: 1px solid transparent;
   background: rgba(255, 255, 255, 0.4);
@@ -305,33 +262,42 @@ const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
-/* ==================== 头像包装器 ==================== */
-.avatar-wrapper {
-  position: relative;
-  flex-shrink: 0;
-  border-radius: 50%;
+/* ==================== Agent 项 ==================== */
+.agent-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  border-radius: 14px;
+  border: none;
+  text-align: left;
+  background: transparent;
   cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-  .avatar-overlay {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: rgba(59, 130, 246, 0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.2s ease;
+/* ==================== 操作按钮 ==================== */
+.agent-actions {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
 
-    .el-icon {
-      font-size: 18px;
-      color: #fff;
-    }
-  }
+.agent-item-wrapper:hover .agent-actions {
+  opacity: 1;
+}
 
-  &:hover .avatar-overlay {
-    opacity: 1;
-  }
+.agent-actions .el-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
 }
 
 /* ==================== Agent 信息 ==================== */
@@ -360,11 +326,17 @@ const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
   padding: 2px 8px;
   font-size: 10px;
   font-weight: 600;
+}
+
+.agent-badge.builtin {
   background: rgba(37, 99, 235, 0.12);
   color: #1d4ed8;
 }
 
-
+.agent-badge.custom {
+  background: rgba(249, 115, 22, 0.12);
+  color: #c2410c;
+}
 
 .agent-desc {
   font-size: 12px;
@@ -393,28 +365,6 @@ const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
   background: rgba(100, 116, 139, 0.1);
   color: #64748b;
   border-color: rgba(100, 116, 139, 0.15);
-}
-
-.agent-actions {
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  transform: translateY(-50%);
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.agent-item-wrapper:hover .agent-actions {
-  opacity: 1;
-}
-
-.agent-actions .el-button {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 6px;
 }
 
 /* ==================== 右键菜单 ==================== */
