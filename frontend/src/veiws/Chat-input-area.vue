@@ -31,16 +31,6 @@
           @send="handlerSubmitMsg"
         />
       </div>
-
-      <!-- Send button -->
-      <button
-        type="button"
-        class="send-btn"
-        aria-label="发送消息"
-        @click="handlerSubmitMsg"
-      >
-       ➤
-      </button>
     </div>
 
     <!-- Emoji panel -->
@@ -228,32 +218,6 @@ const insertEmoji = (emoji: string) => {
   min-width: 0;
 }
 
-/* Send button */
-.send-btn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 45px;
-  font-size: 20px;
-  height: 45px;
-  border-radius: var(--radius-sm);
-  background: rgb(var(--primary-color));
-  color: #fff;
-  cursor: pointer;
-  transition: all 0.18s ease;
-}
-
-
-.send-btn:hover {
-  background: rgb(var(--primary-strong));
-  transform: scale(1.05);
-}
-
-.send-btn.active:active {
-  transform: scale(0.95);
-}
-
 /* Emoji panel */
 .emoji-panel {
   position: absolute;
@@ -322,10 +286,6 @@ const insertEmoji = (emoji: string) => {
   .composer-editor-wrap {
     order: 2;
     flex: 1 1 100%;
-  }
-
-  .send-btn {
-    order: 3;
   }
 }
 </style>

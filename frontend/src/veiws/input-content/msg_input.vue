@@ -81,6 +81,18 @@
           </span>
           <span class="tool-ripple"></span>
         </button>
+        
+        <!-- Send button -->
+        <button
+          type="button"
+          class="send-btn"
+          :class="{ active: hasContent }"
+          :disabled="!hasContent"
+          aria-label="发送消息"
+          @click="handleSendClick"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3125 0.981587C8.66767 1.0545 8.97902 1.20558 9.2627 1.43374C9.48724 1.61438 9.73029 1.85933 9.97949 2.10854L14.707 6.83608L13.293 8.25014L9 3.95717V15.0431H7V3.95717L2.70703 8.25014L1.29297 6.83608L6.02051 2.10854C6.26971 1.85933 6.51277 1.61438 6.7373 1.43374C6.97662 1.24126 7.28445 1.04542 7.6875 0.981587C7.8973 0.94841 8.1031 0.956564 8.3125 0.981587Z" fill="currentColor"></path></svg>
+        </button>
       </div>
     </div>
 
@@ -617,6 +629,19 @@ const handleFileSelect = (event) => {
   // 清空 input 以便再次选择相同文件
   event.target.value = ''
 }
+
+// 发送按钮点击处理
+const handleSendClick = () => {
+  if (!hasContent.value) return
+  // 构建消息数据
+  const messageData = buildMessageData()
+  emit('send', messageData)
+  // 清空输入框
+  inputValue.value = ''
+  inputRef.value.innerHTML = ''
+  nodeList = []
+  hasContent.value = false
+}
 </script>
 
 <style scoped lang="less">
@@ -632,7 +657,6 @@ const handleFileSelect = (event) => {
     border-radius: var(--radius-lg);
     border: 1px solid rgb(var(--border-color));
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-
     &:focus-within {
       border-color: rgba(0, 112, 243, 0.4);
       box-shadow:
@@ -647,7 +671,7 @@ const handleFileSelect = (event) => {
     max-height: 140px;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 10px 10px;
+    padding-left: 10px;
     border-radius: var(--radius-md);
     border: none;
     background: transparent;
@@ -675,17 +699,12 @@ const handleFileSelect = (event) => {
   .tool-btn {
     position: relative;
     display: flex;
-    align-items: center;
     justify-content: center;
-    width: 38px;
-    height: 38px;
+    margin-top: 4px;
+    width: 40px;
+    height: 40px;
     border-radius: 20px;
     color: rgb(var(--text-muted));
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    overflow: hidden;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 
     .tool-icon {
       position: relative;
@@ -696,8 +715,8 @@ const handleFileSelect = (event) => {
       transition: all 0.2s ease;
 
       svg {
-        width: 18px;
-        height: 18px;
+        width: 30px;
+        height: 30px;
         transition: transform 0.2s ease;
       }
     }
@@ -749,6 +768,50 @@ const handleFileSelect = (event) => {
       }
     }
   }
+
+  /* Send button */
+  .send-btn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
+    background: rgb(var(--text-muted));
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    margin: 4px;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    &.active {
+      background: rgb(var(--primary-color));
+    }
+
+    &:hover {
+      &.active {
+        background: rgb(var(--primary-strong));
+        transform: scale(1.05);
+      }
+    }
+
+    &:active {
+      &.active {
+        transform: scale(0.95);
+      }
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+  }
 }
 
 /* 隐藏的文件上传 input */
@@ -763,8 +826,8 @@ const handleFileSelect = (event) => {
 /* 表情面板 */
 .emoji-panel {
   position: fixed;
-  right: 10%;
-  bottom: 100px;
+  right: -5%;
+  bottom: 90px;
   transform: translateX(-50%);
   z-index: 9999;
   width: 340px;
