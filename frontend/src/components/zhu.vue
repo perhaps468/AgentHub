@@ -10,7 +10,7 @@
     <div class="grid-pattern"></div>
 
     <!-- 玻璃态主容器 -->
-    <div class="glass-container" :class="{ 'sidebar-collapsed': isCollapsed }">
+    <div class="glass-container" :class="{ 'sidebar-collapsed': isCollapsed, 'show-preview': showPreviewPanel }">
       <!-- 左侧列表区 -->
       <LeftSidebarArea
         :show-left="showLeft"
@@ -46,23 +46,31 @@
         @toggle-collapse="isCollapsed = !isCollapsed"
       />
 
-      <!-- 中间聊天区 -->
-      <ChatWorkspace
-        :current-session="sessionStore.currentSession"
-        :current-session-id="sessionStore.currentSessionId || ''"
-        :connection-state="sessionStore.connectionState"
-        :reconnect-attempt="reconnectAttempt"
-        :is-loading-messages="sessionStore.isLoadingMessages"
-        :is-send-loading="isSendLoading"
-        :format-time="formatTime"
-        :workspace="currentWorkspace"
-        @open-left="showLeft = true"
-        @retry="handleRetry"
-        @send="handleSend"
-      />
+      <!-- 中间聊天区 - 条件渲染：欢迎页 vs 聊天工作区 -->
+      <template v-if="showWelcome">
+        <!-- 登录后显示欢迎页 -->
+        <WelcomeAfterLogin @enter-chat="showWelcome = false" />
+      </template>
+      <template v-else>
+        <!-- 选择会话后显示聊天工作区 -->
+        <ChatWorkspace
+          :current-session="sessionStore.currentSession"
+          :current-session-id="sessionStore.currentSessionId || ''"
+          :connection-state="sessionStore.connectionState"
+          :reconnect-attempt="reconnectAttempt"
+          :is-loading-messages="sessionStore.isLoadingMessages"
+          :is-send-loading="isSendLoading"
+          :format-time="formatTime"
+          :workspace="currentWorkspace"
+          @open-left="showLeft = true"
+          @retry="handleRetry"
+          @send="handleSend"
+        />
+      </template>
 
-      <!-- 右侧预览区 -->
+      <!-- 右侧预览区 - 只有点击预览按钮后才显示 -->
       <PreviewPanel
+        v-if="showPreviewPanel"
         :preview-state="previewState"
         @close="closePreview"
       />
@@ -132,6 +140,7 @@ import { getWsClientReconnectAttempt, wsClient } from '../utils/ws-client'
 import { useToast } from '../veiws/useToast'
 import AddAgentDialog from './zhu/AddAgentDialog.vue'
 import ChatWorkspace from './zhu/ChatWorkspace.vue'
+import WelcomeAfterLogin from './zhu/WelcomeAfterLogin.vue'
 import LeftSidebarArea from './zhu/LeftSidebarArea.vue'
 import NewConversationDialog from './zhu/NewConversationDialog.vue'
 import PreviewPanel from './zhu/PreviewPanel.vue'
@@ -153,6 +162,9 @@ const isCollapsed = ref(false)
 
 /** 左侧栏当前面板：消息列表 / Agent 列表 */
 const activeSidebarPanel = ref<SidebarPanel>('messages')
+
+/** 欢迎页显示状态 - 登录后显示欢迎页，选择会话后隐藏 */
+const showWelcome = ref(true)
 
 // ==================== 搜索状态 ====================
 /** 消息列表搜索关键字 */
@@ -187,6 +199,9 @@ const isSendLoading = ref(false)
 // ==================== 预览状态 ====================
 /** 右侧预览区状态 */
 const previewState = ref<PreviewState>({ type: 'empty', title: '' })
+
+/** 是否显示右侧预览区 - 只有当有预览内容时才显示 */
+const showPreviewPanel = computed(() => previewState.value.type !== 'empty')
 
 // ==================== Agent 列表选中 ====================
 /** 当前选中的 Agent ID（用于高亮） */
@@ -316,6 +331,8 @@ async function restorePendingChangesForCurrentSession(
 
 /** 选中会话 */
 const selectSession = async (item: ConversationItem) => {
+  // 隐藏欢迎页，显示聊天工作区
+  showWelcome.value = false
   if (sessionStore.currentSessionId === item.id) {
     showLeft.value = false
     return
@@ -606,6 +623,8 @@ watch(
   () => sessionStore.streamState?.previewDiff,
   (previewDiff) => {
     if (previewDiff) {
+      // 点击预览按钮时，收起左侧栏
+      isCollapsed.value = true
       previewState.value = {
         type: 'diff',
         title: previewDiff.path.split(/[/\\]/).pop() || '文件预览',
@@ -850,10 +869,17 @@ onUnmounted(() => {
   z-index: 10;
   height: 100%;
   display: grid;
-  grid-template-columns: 400px minmax(0, 1fr) 340px;
+  /* 三列布局：左侧 | 中间 | 右侧 */
+  /* 默认：左侧展开(400px) | 中间(剩余空间) | 右侧(隐藏) */
+  grid-template-columns: 400px 1fr 0;
   gap: 0;
   padding: 16px;
   box-sizing: border-box;
+}
+
+/* 显示预览区时：左侧展开(400px) | 中间(剩余空间) | 右侧(340px) */
+.glass-container.show-preview {
+  grid-template-columns: 400px 1fr 800px;
 }
 
 .glass-container > :deep(*) {
@@ -876,28 +902,46 @@ onUnmounted(() => {
 }
 
 /* ==================== 侧边栏收起状态 ==================== */
+/* 左侧收起 | 中间(剩余空间) | 右侧(隐藏) */
 .glass-container.sidebar-collapsed {
-  grid-template-columns: 72px minmax(0, 1fr) 340px;
+  grid-template-columns: 72px 1fr 0;
+}
+
+/* 左侧收起 | 中间固定(700px) | 右侧(340px) */
+.glass-container.sidebar-collapsed.show-preview {
+  grid-template-columns: 72px 700px minmax(0, 1fr);
 }
 
 /* ==================== 响应式断点 ==================== */
 @media (max-width: 1400px) {
   .glass-container {
-    grid-template-columns: 72px 300px minmax(0, 1fr) 300px;
+    grid-template-columns: 300px 1fr 0;
     padding: 12px;
   }
+  .glass-container.show-preview {
+    grid-template-columns: 300px 1fr 300px;
+  }
   .glass-container.sidebar-collapsed {
-    grid-template-columns: 72px minmax(0, 1fr) 300px;
+    grid-template-columns: 72px 1fr 0;
+  }
+  .glass-container.sidebar-collapsed.show-preview {
+    grid-template-columns: 72px 600px 300px;
   }
 }
 
 @media (max-width: 1200px) {
   .glass-container {
-    grid-template-columns: 72px 300px minmax(0, 1fr);
+    grid-template-columns: 280px 1fr 0;
     padding: 12px;
   }
+  .glass-container.show-preview {
+    grid-template-columns: 280px 1fr 280px;
+  }
   .glass-container.sidebar-collapsed {
-    grid-template-columns: 72px minmax(0, 1fr);
+    grid-template-columns: 72px 1fr 0;
+  }
+  .glass-container.sidebar-collapsed.show-preview {
+    grid-template-columns: 72px 600px 280px;
   }
 }
 
@@ -905,6 +949,12 @@ onUnmounted(() => {
   .glass-container {
     grid-template-columns: 1fr;
     padding: 8px;
+  }
+  .glass-container.show-preview {
+    grid-template-columns: 1fr;
+  }
+  .glass-container.sidebar-collapsed.show-preview {
+    grid-template-columns: 1fr;
   }
   .glass-container > :deep(*) {
     border-radius: 16px;
