@@ -39,6 +39,8 @@ if (savedUser && localStorage.getItem('x-token')) {
 
 const handlerLogout = () => {
   localStorage.removeItem('x-token')
+  localStorage.removeItem('user')
+  localStorage.removeItem('session-store')
   userInfoStore.clearUserInfo()
   ws.disConnect()
   router.push('/login')

@@ -26,7 +26,7 @@
 
     <div class="agent-list">
       <div
-        v-for="agent in agents"
+        v-for="agent in visibleAgents"
         :key="agent.id"
         class="agent-item-wrapper"
         :class="{ 'is-selected': selectedAgentId === agent.id }"
@@ -60,7 +60,7 @@
           </el-button>
         </div>
       </div>
-      <div v-if="agents.length === 0" class="empty-hint">
+      <div v-if="visibleAgents.length === 0" class="empty-hint">
         暂无 Agent
       </div>
     </div>
@@ -74,7 +74,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Fold, Expand, Edit, Delete } from '@element-plus/icons-vue'
 import type { SidebarAgent, SidebarPanel } from '../../types/agenthub'
 import Search from '../../veiws/Serach.vue'
@@ -107,8 +107,17 @@ const showAgentInfo = (agent: SidebarAgent) => {
   showInfoDialog.value = true
 }
 
-
-
+const visibleAgents = computed(() =>
+  props.agents.filter((agent) => {
+    if (!agent.isCustom && agent.role === 'PM') {
+      return false
+    }
+    if (agent.name === 'PM Agent' || agent.name === 'Primary PM Agent' || agent.name === '主 PM Agent') {
+      return false
+    }
+    return true
+  }),
+)
 
 const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
 

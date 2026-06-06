@@ -53,7 +53,7 @@
             v-if="item.mode === 'group'"
             :info="{ name: '群', avatar: '' }"
             size="38px"
-            :style="{ background: '#ff7043', color: '#fff' }"
+            :style="groupConversationAvatarStyle"
           />
           <avatar
             v-else
@@ -284,6 +284,11 @@ const getAgentTags = (item: ConversationItem, agents: SidebarAgent[]) => {
   if (!item.agent_id) return []
   const agent = agents.find((a) => a.id === item.agent_id)
   return agent?.capabilityTags || []
+}
+
+const groupConversationAvatarStyle = {
+  background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
+  color: '#fff',
 }
 
 // ==================== ... 操作菜单 ====================

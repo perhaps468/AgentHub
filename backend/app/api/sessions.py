@@ -165,23 +165,26 @@ def create_session(payload: SessionCreate, current_user: CurrentUser, db: Sessio
 
     if payload.mode == "group":
         host_agent = ensure_user_group_host_agent(db, owner)
-        participant_ids = list(payload.participant_agent_ids or [])
-        member_ids = set(participant_ids)
-        member_ids.discard(host_agent.id)
+        participant_ids = list(dict.fromkeys(payload.participant_agent_ids or []))
+        if host_agent.id not in participant_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="Group sessions must explicitly include the user group host agent",
+            )
 
-        for agent_id in member_ids:
+        for agent_id in participant_ids:
             ag = db.get(Agent, agent_id)
             if ag is None:
                 raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
             if not ag.is_builtin and ag.owner_id != owner:
                 raise HTTPException(status_code=403, detail=f"Agent does not belong to current user: {agent_id}")
 
-        for index, agent_id in enumerate(member_ids):
+        for index, agent_id in enumerate(participant_ids):
             db.add(SessionMember(
                 session_id=session.id,
                 member_type="agent",
                 member_id=agent_id,
-                is_primary=index == 0,
+                is_primary=agent_id == host_agent.id and index == 0,
                 health_status="online",
             ))
 

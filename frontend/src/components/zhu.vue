@@ -229,7 +229,15 @@ const sidebarAgents = computed(() => agentStore.agents)
 const hiddenAgentIds = new Set(['pm_agent', 'primary_pm_agent'])
 const hiddenAgentNames = new Set(['PM Agent', 'Primary PM Agent', '主 PM Agent'])
 const visibleSidebarAgents = computed(() =>
-  sidebarAgents.value.filter((agent) => !hiddenAgentIds.has(agent.id) && !hiddenAgentNames.has(agent.name)),
+  sidebarAgents.value.filter((agent) => {
+    if (hiddenAgentIds.has(agent.id) || hiddenAgentNames.has(agent.name)) {
+      return false
+    }
+    if (agent.role === 'PM' && !agent.id.startsWith('group_host_')) {
+      return false
+    }
+    return true
+  }),
 )
 const primaryGroupAgent = computed(() => {
   const groupHost = visibleSidebarAgents.value.find((item) => item.id.startsWith('group_host_'))

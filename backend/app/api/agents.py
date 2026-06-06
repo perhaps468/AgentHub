@@ -25,6 +25,9 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 _Db = Annotated[Session, Depends(get_db)]
 _DEFAULT_ROLE = "Custom"
 _ALL_TOOLS_PERMISSION = "*"
+_HIDDEN_AGENT_IDS = {"primary_pm_agent", "pm_agent"}
+_VISIBLE_GROUP_HOST_PREFIX = "group_host_"
+_HIDDEN_AGENT_NAMES = {"PM Agent", "Primary PM Agent", "主 PM Agent"}
 _DEFAULT_CAPABILITY_TAGS = [
     "需求分析",
     "方案设计",
@@ -151,6 +154,16 @@ def _get_agent_or_404(db: Session, agent_id: str) -> Agent:
     return agent
 
 
+def _is_hidden_agent(agent: Agent) -> bool:
+    if agent.id in _HIDDEN_AGENT_IDS:
+        return True
+    if agent.name in _HIDDEN_AGENT_NAMES:
+        return True
+    if agent.role == "PM" and not agent.id.startswith(_VISIBLE_GROUP_HOST_PREFIX):
+        return True
+    return False
+
+
 def resolve_default_agent(db: Session, owner_id: str | None = None, include_group_host: bool = True) -> Agent | None:
     if owner_id:
         # Only consider group host agent for group chat scenarios
@@ -208,6 +221,22 @@ def resolve_default_agent(db: Session, owner_id: str | None = None, include_grou
     if group_host is not None:
         return group_host
 
+    builtin_agent = (
+        db.execute(
+            select(Agent)
+            .where(
+                Agent.is_builtin == True,  # noqa: E712
+                Agent.is_active == True,  # noqa: E712
+                Agent.id.not_in(_HIDDEN_AGENT_IDS),
+            )
+            .order_by(Agent.updated_at.desc(), Agent.created_at.desc())
+        )
+        .scalars()
+        .first()
+    )
+    if builtin_agent is not None:
+        return builtin_agent
+
     return None
 
 
@@ -251,7 +280,7 @@ def list_agents(
     if not include_inactive:
         stmt = stmt.where(Agent.is_active == True)  # noqa: E712
 
-    agents = db.execute(stmt).scalars().all()
+    agents = [agent for agent in db.execute(stmt).scalars().all() if not _is_hidden_agent(agent)]
     items = [_agent_to_response(a) for a in agents]
     return AgentListResponse(items=items, total=len(items))
 
@@ -320,6 +349,8 @@ def get_agent(
 
     if not agent.is_builtin and agent.owner_id != user_id:
         raise HTTPException(status_code=403, detail="Forbidden")
+    if _is_hidden_agent(agent):
+        raise HTTPException(status_code=404, detail="Agent not found")
 
     return _agent_to_response(agent)
 
