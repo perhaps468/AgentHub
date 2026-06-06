@@ -209,7 +209,7 @@ def list_sessions(
     items = db.scalars(
         select(ChatSession)
         .where(*filters)
-        .order_by(ChatSession.updated_at.desc())
+        .order_by(ChatSession.updated_at.desc(), ChatSession.created_at.desc(), ChatSession.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()
@@ -274,7 +274,7 @@ def list_messages(
     items = db.scalars(
         select(Message)
         .where(Message.session_id == session_id, Message.status != "streaming")
-        .order_by(Message.created_at.desc())
+        .order_by(Message.created_at.desc(), Message.id.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).all()

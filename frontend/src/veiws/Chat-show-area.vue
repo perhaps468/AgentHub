@@ -166,7 +166,46 @@ const msgRecord = computed(() => {
       }
     })
 
-  return [...historicalRecords, ...streamingRecords]
+  // Sort: primary by created_at, but for same-second messages, use id for stable ordering
+  // Since id is UUID v4 (random), we use id only for messages created at the exact same second
+  const allRecords = [...historicalRecords, ...streamingRecords].sort((a, b) => {
+    // First compare by timestamp (ascending: older messages first)
+    const timeA = new Date(a.createTime).getTime()
+    const timeB = new Date(b.createTime).getTime()
+    if (timeA !== timeB) return timeA - timeB
+
+    // Same second: use id for stable ordering (ids are roughly chronological)
+    return a.id.localeCompare(b.id)
+  })
+
+  // Fix inverted timestamps: if a later message in the list has an earlier timestamp,
+  // it means timestamps are unreliable - use insertion order (id) instead
+  let needsFix = false
+  for (let i = 1; i < allRecords.length; i++) {
+    const prev = allRecords[i - 1]
+    const curr = allRecords[i]
+    const prevTime = new Date(prev.createTime).getTime()
+    const currTime = new Date(curr.createTime).getTime()
+    if (currTime < prevTime) {
+      needsFix = true
+      break
+    }
+  }
+
+  if (needsFix) {
+    // Timestamps are unreliable, use id for ordering (insertion order)
+    console.log('[msgRecord] Timestamps inverted, using id for ordering')
+    allRecords.sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  // Debug logging
+  if (allRecords.length > 0) {
+    console.log('[msgRecord] Count:', allRecords.length)
+    console.log('[msgRecord] First:', allRecords[0].id, allRecords[0].createTime, allRecords[0].message?.substring(0, 30))
+    console.log('[msgRecord] Last:', allRecords[allRecords.length - 1].id, allRecords[allRecords.length - 1].createTime, allRecords[allRecords.length - 1].message?.substring(0, 30))
+  }
+
+  return allRecords
 })
 
 watch(() => props.targetId, () => {

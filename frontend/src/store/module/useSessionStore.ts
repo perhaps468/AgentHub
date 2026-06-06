@@ -39,7 +39,21 @@ export interface InFlightStream {
 }
 
 function toChronologicalOrder(messages: ChatMessage[]): ChatMessage[] {
-  return [...messages].reverse()
+  const sorted = [...messages].sort((a, b) => {
+    const timeA = new Date(a.created_at).getTime()
+    const timeB = new Date(b.created_at).getTime()
+    if (timeA !== timeB) return timeA - timeB
+    // Same timestamp, use id for stable sort
+    return a.id.localeCompare(b.id)
+  })
+  console.log('[toChronologicalOrder] Input count:', messages.length)
+  if (messages.length > 0) {
+    console.log('[toChronologicalOrder] First item:', messages[0].id, messages[0].created_at)
+    console.log('[toChronologicalOrder] Last item:', messages[messages.length - 1].id, messages[messages.length - 1].created_at)
+    console.log('[toChronologicalOrder] Output first:', sorted[0].id, sorted[0].created_at)
+    console.log('[toChronologicalOrder] Output last:', sorted[sorted.length - 1].id, sorted[sorted.length - 1].created_at)
+  }
+  return sorted
 }
 
 export const useSessionStore = defineStore(
@@ -133,13 +147,22 @@ export const useSessionStore = defineStore(
       try {
         const page = opts.page ?? 1
         const res = await fetchConversationMessages(sessionId, opts)
+        console.log('[fetchMessages] API returned items count:', res.items.length)
+        if (res.items.length > 0) {
+          console.log('[fetchMessages] First item created_at:', res.items[0].created_at)
+          console.log('[fetchMessages] Last item created_at:', res.items[res.items.length - 1].created_at)
+        }
         const filtered = res.items.filter((msg) => msg.metadata?.source !== 'optimistic_human')
+        console.log('[fetchMessages] After filter count:', filtered.length)
 
         if (page === 1) {
           messageMap.value[sessionId] = toChronologicalOrder(filtered)
+          console.log('[fetchMessages] Set messageMap (page 1), count:', filtered.length)
         } else {
           const existing = messageMap.value[sessionId] ?? []
+          // Older pages should be prepended so the full list remains chronological.
           messageMap.value[sessionId] = [...toChronologicalOrder(filtered), ...existing]
+          console.log('[fetchMessages] Appended page', page, 'total count:', messageMap.value[sessionId].length)
         }
 
         messagePageMap.value[sessionId] = {
