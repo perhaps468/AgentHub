@@ -106,7 +106,9 @@ export const useSessionStore = defineStore(
       const res = await updateConversationApi(sessionId, payload)
       const idx = sessionList.value.findIndex((s) => s.id === sessionId)
       if (idx !== -1) {
-        sessionList.value[idx] = res
+        const newList = [...sessionList.value]
+        newList[idx] = res
+        sessionList.value = newList
       }
       if (currentSession.value?.id === sessionId) {
         currentSession.value = res

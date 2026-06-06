@@ -44,6 +44,7 @@
         @edit-agent="handleEditAgent"
         @delete-agent="handleDeleteAgent"
         @delete-session="handleDeleteSession"
+        @rename-session="handleRenameSession"
         @edit-profile="handleEditProfile"
         @logout="handlerLogout"
         @toggle-collapse="isCollapsed = !isCollapsed"
@@ -223,6 +224,7 @@ const selectedAgentId = ref('')
 /** 当前会话的工作空间 */
 const currentWorkspace = ref<Workspace | null>(null)
 
+
 const sidebarAgents = computed(() => agentStore.agents)
 const primaryGroupAgent = computed(() => {
   const groupHost = sidebarAgents.value.find((item) => item.id.startsWith('group_host_'))
@@ -398,6 +400,7 @@ const selectSession = async (item: ConversationItem) => {
     sessionStore.setConnectionState('connecting')
   }
   await sessionStore.fetchSessionDetail(item.id)
+  await loadSessionWorkspace(sessionStore.currentSession)
   await sessionStore.fetchMessages(item.id, { page: 1, page_size: 20 })
   await sessionStore.fetchLatestRun(item.id)
   await restorePendingChangesForCurrentSession(item.id)
@@ -431,6 +434,16 @@ const handleDeleteSession = async (item: ConversationItem) => {
     showToast('会话已删除')
   } catch {
     showToast('删除失败', true)
+  }
+}
+
+/** 重命名会话 */
+const handleRenameSession = async (sessionId: string, newTitle: string) => {
+  try {
+    await sessionStore.updateSession(sessionId, { title: newTitle })
+    showToast('会话已重命名')
+  } catch {
+    showToast('重命名失败', true)
   }
 }
 
@@ -487,18 +500,6 @@ const handleEditAgent = (agent: SidebarAgent) => {
   showEditAgentDialog.value = true
 }
 
-/** 删除 Agent */
-const handleDeleteAgent = async (agent: SidebarAgent) => {
-  try {
-    await agentStore.deleteAgent(agent.id)
-    showToast('Agent 已删除')
-    if (selectedAgentId.value === agent.id) {
-      selectedAgentId.value = ''
-    }
-  } catch {
-    showToast('删除失败', true)
-  }
-}
 
 // ==================== 发送消息 ====================
 
@@ -608,7 +609,7 @@ const handleAddAgent = async (newAgent: AgentDraft) => {
 /** 更新 Agent */
 const handleUpdateAgent = async (agentData: AgentDraft & { id: string }) => {
   try {
-    await agentStore.updateAgent(agentData.id, {
+    const { previousAgentName, updatedAgentName } = await agentStore.updateAgent(agentData.id, {
       name: agentData.name,
       model: agentData.model,
       platform: agentData.platform || 'custom',
@@ -616,12 +617,55 @@ const handleUpdateAgent = async (agentData: AgentDraft & { id: string }) => {
       avatar_url: agentData.avatar || null,
       capability_tags: agentData.capabilityTags,
     })
+    const syncedSessions = await agentStore.syncSessionTitlesForAgentRename(
+      sessionStore.sessionList,
+      agentData.id,
+      previousAgentName,
+      updatedAgentName,
+    )
+    syncedSessions.forEach((session) => {
+      const sessionIndex = sessionStore.sessionList.findIndex((item) => item.id === session.id)
+      if (sessionIndex !== -1) {
+        sessionStore.sessionList[sessionIndex] = session
+      }
+      if (sessionStore.currentSession?.id === session.id) {
+        sessionStore.currentSession = session
+      }
+    })
     showEditAgentDialog.value = false
     showToast('Agent 已更新')
     await agentStore.fetchAgents()
   } catch (error) {
     console.error('更新 Agent 失败', error)
     showToast('更新 Agent 失败', true)
+  }
+}
+
+// ==================== 删除 Agent ====================
+
+const handleDeleteAgent = async (agent: SidebarAgent) => {
+  if (!agent.isCustom) {
+    showToast('内置 Agent 不能删除', true)
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除 Agent「${agent.name}」吗？删除后不可恢复。`,
+      '删除确认',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        customClass: 'delete-confirm-dialog',
+      },
+    )
+    await agentStore.deleteAgent(agent.id)
+    showToast('Agent 已删除')
+    if (selectedAgentId.value === agent.id) {
+      selectedAgentId.value = ''
+    }
+  } catch {
+    // 用户取消
   }
 }
 

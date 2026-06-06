@@ -66,6 +66,8 @@
 <script lang="ts" setup>
 import { computed, reactive, watch } from 'vue'
 
+import { Check } from '@element-plus/icons-vue'
+
 import type { AgentDraft, SidebarAgent } from '@/types/agenthub'
 
 import BaseDialog from './BaseDialog.vue'
@@ -105,6 +107,7 @@ const availableImages = [
   '/msg5.png',
 ]
 
+
 const form = reactive({
   name: '',
   model: '',
@@ -125,6 +128,7 @@ function resetForm() {
     form.model = props.availableModels[0] || ''
     form.capabilityTags = []
     form.description = ''
+    form.avatar = ''
   }
 }
 
@@ -170,7 +174,7 @@ const confirmAdd = () => {
       model: form.model,
       capabilityTags: [...form.capabilityTags],
       description: description || undefined,
-      avatar: form.avatar || '',
+      avatar: form.avatar,
       platform: 'custom',
     })
   } else {
@@ -179,7 +183,7 @@ const confirmAdd = () => {
       model: form.model,
       capabilityTags: [...form.capabilityTags],
       description: description || undefined,
-      avatar: form.avatar || '',
+      avatar: form.avatar,
       platform: 'custom',
     })
   }
@@ -264,6 +268,67 @@ const confirmAdd = () => {
   color: #475569;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.avatar-picker {
+  width: 100%;
+}
+
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.avatar-option {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  background: rgba(59, 130, 246, 0.05);
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  &:hover {
+    border-color: rgba(59, 130, 246, 0.4);
+    transform: scale(1.05);
+  }
+
+  &.selected {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+
+    .avatar-check {
+      opacity: 1;
+    }
+  }
+
+  .avatar-check {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #3b82f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+
+    .el-icon {
+      color: white;
+      font-size: 12px;
+    }
+  }
 }
 
 .avatar-picker {

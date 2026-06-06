@@ -1,9 +1,7 @@
 <template>
   <div class="linyu-loading">
-    <div class="balls">
-      <div></div>
-      <div></div>
-      <div></div>
+    <div class="loading-bounce-wrap">
+      <img class="loading-bounce-image" src="../../../public/msg12.png" alt="loading">
     </div>
     <div v-if="props.label" class="mt-[10px]">{{ props.label }}</div>
   </div>
@@ -25,37 +23,27 @@ const props = defineProps({
   user-select: none;
 }
 
-.balls {
-  width: 50px;
+.loading-bounce-wrap {
+  height: 100px;
   display: flex;
-  flex-flow: row nowrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
 }
 
-.balls div {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background-color: rgba(var(--primary-color));
-  transform: translateY(-100%);
-  animation: wave 0.8s ease-in-out alternate infinite;
+.loading-bounce-image {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  animation: image-bounce 0.9s ease-in-out infinite;
+  will-change: transform;
 }
 
-.balls div:nth-of-type(1) {
-  animation-delay: -0.4s;
-}
-
-.balls div:nth-of-type(2) {
-  animation-delay: -0.2s;
-}
-
-@keyframes wave {
-  from {
-    transform: translateY(-100%);
+@keyframes image-bounce {
+  0%, 100% {
+    transform: translateY(6px);
   }
-  to {
-    transform: translateY(100%);
+  50% {
+    transform: translateY(-6px);
   }
 }
 </style>

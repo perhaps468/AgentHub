@@ -67,7 +67,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   async function deleteAgentAction(agentId: string) {
     await deleteAgent(agentId)
-    agents.value = agents.value.filter((a) => a.id !== agentId)
+    agents.value = agents.value.filter((item) => item.id !== agentId)
   }
 
   return {
