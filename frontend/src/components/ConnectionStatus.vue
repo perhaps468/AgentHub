@@ -50,13 +50,11 @@ const label = computed(() => {
 .connection-status {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
+  gap: 4px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
   background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(59, 130, 246, 0.15);
   backdrop-filter: blur(10px);
   transition: all 0.25s ease;
 }

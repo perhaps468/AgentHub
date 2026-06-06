@@ -6,17 +6,17 @@
       </div>
       <div class="chat-header-right">
         <h2>{{ currentSession?.title || '选择或新建会话' }}</h2>
-        <div >
-        <ConnectionStatus
-          v-if="currentSessionId"
-          :state="connectionState"
-          :reconnectAttempt="reconnectAttempt"
-          @retry="$emit('retry')"
-        />
-      </div>
-        <div v-if="workspace" class="workspace-badge" :title="workspace.root_path">
-          <span class="workspace-icon">&#128193;</span>
-          <span class="workspace-name">{{ workspace.name || workspaceRootName }}</span>
+        <div class="header-right-items">
+          <ConnectionStatus
+            v-if="currentSessionId"
+            :state="connectionState"
+            :reconnectAttempt="reconnectAttempt"
+            @retry="$emit('retry')"
+          />
+          <div v-if="workspace" class="workspace-badge" :title="workspace.root_path">
+            <span class="workspace-icon">&#128193;</span>
+            <span class="workspace-name">{{ workspace.name || workspaceRootName }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -71,24 +71,35 @@ const workspaceRootName = computed(() => {
 }
 
 .chat-header h2 {
-  margin: 0 0 4px;
-  font-size: 18px;
+  margin: 0;
+  font-size: 20px;
   font-weight: 600;
   color: #1e293b;
   line-height: 1.2;
+  letter-spacing: 3px
+}
+
+.chat-header-right {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.header-right-items {
+  display: flex;
+  flex-direction: column;
 }
 
 .workspace-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin-top: 4px;
-  padding: 2px 8px;
+  padding-top:5px;
   border-radius: 999px;
-  background: rgba(59, 130, 246, 0.08);
   color: #3b82f6;
   font-size: 11px;
   font-weight: 500;
+  width: fit-content;
 }
 
 .workspace-icon {
@@ -100,12 +111,6 @@ const workspaceRootName = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* P6-9: Group member chips */
-.chat-header-right {
-  flex-direction: column;
-  gap: 5px;
 }
 
 
