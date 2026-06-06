@@ -188,7 +188,7 @@ const insertEmoji = (emoji: string) => {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  padding: 12px 16px;
+  padding: 12px 80px;
   background: rgb(var(--surface-color));
 }
 
