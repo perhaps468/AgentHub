@@ -38,6 +38,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
+import type { ComposerAgent, ComposerSubmitPayload } from '../../types/agenthub'
 import { invite } from '../../api/file'
 import { currentTargetEventBus } from '../../utils/EventBus'
 import EventBus from '../../utils/EventBus'
@@ -61,18 +62,21 @@ type InviteMessage = {
   fileInfo?: File | null
 }
 
-type SendPayload = string | { text?: string }
+type SendPayload = ComposerSubmitPayload | string | { text?: string }
 
 type MsgInputExpose = {
   getNodeList?: () => unknown[]
+  getStructuredValue?: () => ComposerSubmitPayload
   insertEmoji?: (emoji: string) => unknown
+  insertAgentChip?: (agent: ComposerAgent) => void
+  clear?: () => void
 }
 
 const props = defineProps<{
   value?: string
   targetId?: string
   user?: object
-  handlerSubmitMsg?: (text: string) => void
+  handlerSubmitMsg?: (payload: ComposerSubmitPayload) => void
 }>()
 
 const emit = defineEmits(['update:value', 'structured-change'])
@@ -115,14 +119,52 @@ const updateValue = () => {
 }
 
 const onSendMsg = (data: SendPayload) => {
-  if (props.handlerSubmitMsg) {
-    const text = typeof data === 'string' ? data : (data?.text || localValue.value)
-    props.handlerSubmitMsg(text)
+  if (typeof data === 'string') {
+    props.handlerSubmitMsg?.({
+      text: data,
+      targetAgentIds: [],
+      selectedAgents: [],
+      mentions: [],
+      nodes: [],
+    })
+    return
   }
+
+  const payload: ComposerSubmitPayload = 'targetAgentIds' in data
+    ? data
+    : {
+        text: data?.text || localValue.value,
+        targetAgentIds: [],
+        selectedAgents: [],
+        mentions: [],
+        nodes: [],
+      }
+
+  props.handlerSubmitMsg?.(payload)
 }
 
 const onStructuredChange = (data: ComposerSubmitPayload) => {
   emit('structured-change', data)
+}
+
+const getStructuredValue = () => {
+  return msgInputRef.value?.getStructuredValue?.() ?? {
+    text: localValue.value,
+    targetAgentIds: [],
+    selectedAgents: [],
+    mentions: [],
+    nodes: [],
+  }
+}
+
+const clear = () => {
+  localValue.value = ''
+  emit('update:value', '')
+  msgInputRef.value?.clear?.()
+}
+
+const insertAgentChip = (agent: ComposerAgent) => {
+  msgInputRef.value?.insertAgentChip?.(agent)
 }
 
 const getNodeList = () => {
@@ -224,7 +266,10 @@ onUnmounted(() => {
 
 defineExpose({
   getNodeList,
+  getStructuredValue,
   insertEmoji,
+  insertAgentChip,
+  clear,
   openFilePicker,
   startAudioCall,
   startVideoCall,

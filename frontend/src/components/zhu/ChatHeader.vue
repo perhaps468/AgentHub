@@ -2,28 +2,19 @@
   <header class="chat-header">
     <div class="chat-header-main">
       <div class="chat-header-left">
-        <avatar :info="{ name: currentSession?.title, avatar: currentAgentAvatar }" size="38" />
+        <avatar :info="{ name: currentSession?.title, avatar: currentAgentAvatar }" size="20px" />
       </div>
-<<<<<<< Updated upstream
-      <div class="chat-header-right">
-        <h2>{{ currentSession?.title || '选择或新建会话' }}</h2>
-        <div >
-        <!-- P6-9: Group member status display -->
-        <div v-if="currentSession?.mode === 'group' && currentSession.members?.length" class="group-members">
-          <div
-            v-for="member in currentSession.members"
-            :key="member.id"
-            class="member-chip"
-            :class="{ 'is-primary': member.is_primary }"
-          >
-            <span class="member-status-dot"></span>
-            <span class="member-name">{{ member.is_primary ? '主Agent' : `Agent` }}</span>
-            <span class="member-health">{{ member.health_status === 'connected' ? '在线' : member.health_status }}</span>
-          </div>
-=======
+
       <div ref="summaryRootRef" class="chat-header-right">
         <div class="chat-title-row">
-          <h2>{{ currentSession?.title || '閫夋嫨鎴栨柊寤轰細璇?' }}</h2>
+          <div class="chat-title-copy">
+            <h2>{{ currentSession?.title || '选择或新建会话' }}</h2>
+            <div v-if="workspace" class="workspace-badge" :title="workspace.root_path">
+              <span class="workspace-icon">📁</span>
+              <span class="workspace-name">{{ workspace.name || workspaceRootName }}</span>
+            </div>
+          </div>
+
           <button
             v-if="summaryAgents.length > 0"
             type="button"
@@ -53,7 +44,6 @@
               <span v-else class="agent-summary-extra chevron">{{ isPanelOpen ? '^' : 'v' }}</span>
             </span>
           </button>
->>>>>>> Stashed changes
         </div>
 
         <div v-if="isPanelOpen" class="agent-panel" data-testid="agent-panel">
@@ -78,7 +68,7 @@
               </span>
               <span class="agent-panel-meta">
                 {{ agent.status }}
-                <span v-if="agent.role"> 路 {{ agent.role }}</span>
+                <span v-if="agent.role"> · {{ agent.role }}</span>
               </span>
             </span>
           </button>
@@ -91,22 +81,14 @@
           @retry="$emit('retry')"
         />
       </div>
-        <div v-if="workspace" class="workspace-badge" :title="workspace.root_path">
-          <span class="workspace-icon">&#128193;</span>
-          <span class="workspace-name">{{ workspace.name || workspaceRootName }}</span>
-        </div>
-      </div>
     </div>
   </header>
 </template>
 
 <script lang="ts" setup>
-<<<<<<< Updated upstream
-import { computed } from 'vue'
-import { useAgentStore } from '../../store'
-=======
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
+import ConnectionStatus from '../ConnectionStatus.vue'
 import type {
   ComposerAgent,
   ConversationItem,
@@ -116,11 +98,6 @@ import type {
 } from '../../types/agenthub'
 import type { ConnectionState } from '../../utils/ws-client'
 import avatar from '../../veiws/img/avatar.vue'
->>>>>>> Stashed changes
-import ConnectionStatus from '../ConnectionStatus.vue'
-import type { ConversationItem, Workspace } from '../../types/agenthub'
-import type { ConnectionState } from '../../utils/ws-client'
-import { log } from 'console'
 
 type HeaderAgentSummaryItem = {
   id: string
@@ -141,13 +118,10 @@ const props = defineProps<{
   selectedAgents?: ComposerAgent[]
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'open-left'): void
   (e: 'retry'): void
-<<<<<<< Updated upstream
-=======
   (e: 'pick-agent', agent: ComposerAgent): void
->>>>>>> Stashed changes
 }>()
 
 const isPanelOpen = ref(false)
@@ -165,17 +139,6 @@ const workspaceRootName = computed(() => {
   return parts[parts.length - 1] || props.workspace.root_path
 })
 
-const agentStore = useAgentStore()
-
-<<<<<<< Updated upstream
-const currentAgentAvatar = computed(() => {
-  if (!props.currentSession?.title) return ''
-  const agent = agentStore.agents.find((a) =>{ 
-    return props.currentSession?.title?.includes(a.name) 
-  }) 
-  return agent?.avatar || '无头像'
-})
-=======
 const summaryAgents = computed<HeaderAgentSummaryItem[]>(() => {
   const members = props.currentSession?.members ?? []
 
@@ -212,6 +175,9 @@ const summaryStatusText = computed(() => {
   if (counts.busy > 0) {
     return `${counts.online} online · ${counts.busy} busy`
   }
+  if (counts.offline > 0) {
+    return `${counts.online} online · ${counts.offline} offline`
+  }
   return `${counts.online} online`
 })
 
@@ -222,6 +188,11 @@ const summaryMetaTone = computed<SessionMemberStatus>(() => {
 })
 
 const selectedAgentIds = computed(() => new Set((props.selectedAgents ?? []).map((agent) => agent.id)))
+
+const currentAgentAvatar = computed(() => {
+  const primary = summaryAgents.value.find((agent) => agent.isPrimary)
+  return primary?.avatar || summaryAgents.value[0]?.avatar || ''
+})
 
 function handleDocumentPointerDown(event: PointerEvent) {
   const target = event.target
@@ -278,18 +249,16 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   })
   setPanelOpen(false)
 }
->>>>>>> Stashed changes
 </script>
 
 <style scoped>
-/* ==================== 聊天头部 ==================== */
 .chat-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 72px;
-  padding: 16px 24px;
+  min-height: 64px;
+  padding: 14px 24px;
   border-bottom: 1px solid rgba(59, 130, 246, 0.08);
   background: rgba(255, 255, 255, 0.5);
 }
@@ -297,13 +266,11 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
 .chat-header-main {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
   width: 100%;
 }
 
-<<<<<<< Updated upstream
-=======
 .chat-header-right {
   position: relative;
   display: flex;
@@ -321,14 +288,19 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   min-width: 0;
 }
 
->>>>>>> Stashed changes
+.chat-title-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
 .chat-header h2 {
   margin: 0 0 4px;
   font-size: 18px;
   font-weight: 600;
   color: #1e293b;
-<<<<<<< Updated upstream
   line-height: 1.2;
+  min-width: 0;
 }
 
 .workspace-badge {
@@ -342,6 +314,7 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   color: #3b82f6;
   font-size: 11px;
   font-weight: 500;
+  width: fit-content;
 }
 
 .workspace-icon {
@@ -355,15 +328,6 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   white-space: nowrap;
 }
 
-/* P6-9: Group member chips */
-.chat-header-right {
-  flex-direction: column;
-  gap: 5px;
-=======
-  min-width: 0;
->>>>>>> Stashed changes
-}
-
 .agent-summary-trigger {
   display: inline-flex;
   align-items: center;
@@ -373,16 +337,6 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   padding: 7px 10px;
   border-radius: 16px;
   border: 1px solid rgba(59, 130, 246, 0.12);
-<<<<<<< Updated upstream
-  font-size: 11px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-
-  &.is-primary {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.08));
-    border-color: rgba(59, 130, 246, 0.25);
-  }
-=======
   background: rgba(248, 250, 252, 0.92);
   cursor: pointer;
 }
@@ -392,7 +346,6 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   align-items: center;
   padding-left: 10px;
   flex-shrink: 0;
->>>>>>> Stashed changes
 }
 
 .agent-summary-avatar {
@@ -428,10 +381,6 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   border: 2px solid #fff;
   border-radius: 999px;
   background: #22c55e;
-<<<<<<< Updated upstream
-  box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
-  flex-shrink: 0;
-=======
 }
 
 .status-busy {
@@ -440,7 +389,6 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
 
 .status-offline {
   background: #94a3b8;
->>>>>>> Stashed changes
 }
 
 .agent-panel-copy {
@@ -528,10 +476,10 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   width: 38px;
   height: 38px;
   overflow: hidden;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.12);
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.1);
   color: #1e293b;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -539,90 +487,27 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
 .agent-panel-topline {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
 }
 
 .agent-panel-name {
   color: #0f172a;
   font-size: 14px;
   font-weight: 600;
-
-  .is-primary & {
-    color: #3b82f6;
-  }
 }
 
-<<<<<<< Updated upstream
-.member-health {
-  color: #94a3b8;
-  font-size: 10px;
-=======
 .agent-panel-badge {
-  display: inline-flex;
-  align-items: center;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
-  color: #475569;
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
   font-size: 11px;
   font-weight: 600;
 }
 
 .agent-panel-badge.selected {
-  background: rgba(59, 130, 246, 0.12);
-  color: #2563eb;
->>>>>>> Stashed changes
-}
-
-.header-icon {
-  width: 38px;
-  height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: rgba(59, 130, 246, 0.08);
-  color: #64748b;
-  font-size: 16px;
-  transition: all 0.25s ease;
-}
-
-.header-icon:hover {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.1));
-  color: #3b82f6;
-  transform: scale(1.05);
-}
-
-.mobile-only {
-  display: none;
-}
-
-@media (max-width: 900px) {
-  .mobile-only {
-    display: inline-flex;
-  }
-}
-
-@media (max-width: 900px) {
-  .chat-title-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .agent-summary-trigger {
-    margin-left: 0;
-    max-width: 100%;
-  }
-}
-
-@media (max-width: 640px) {
-  .agent-summary-trigger {
-    padding: 8px 10px;
-  }
-
-  .agent-panel {
-    width: 100%;
-  }
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
 }
 </style>
