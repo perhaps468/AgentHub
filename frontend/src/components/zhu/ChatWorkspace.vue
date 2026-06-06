@@ -28,7 +28,7 @@
         ref="chatRef"
         :sessionId="props.currentSessionId || ''"
         :disabled="!props.currentSessionId"
-        :session-agent-options="props.currentSession?.members ?? []"
+        :session-agent-options="sessionAgentOptions"
         @selection-change="handleSelectionChange"
         @send="$emit('send', $event)"
       />
@@ -37,11 +37,19 @@
 </template>
 
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import ChatInputArea from '../../veiws/Chat-input-area.vue'
 import ChatShowArea from '../../veiws/Chat-show-area.vue'
-import type { ComposerAgent, ComposerSubmitPayload, ConversationItem, Workspace } from '../../types/agenthub'
+import type {
+  ComposerAgent,
+  ComposerSubmitPayload,
+  ConversationItem,
+  SessionAgentOption,
+  SessionMember,
+  SessionMemberStatus,
+  Workspace,
+} from '../../types/agenthub'
 import type { ConnectionState } from '../../utils/ws-client'
 import ChatHeader from './ChatHeader.vue'
 
@@ -67,6 +75,32 @@ const chatRef = ref<{
   getStructuredValue?: () => ComposerSubmitPayload
 } | null>(null)
 const selectedAgents = ref<ComposerAgent[]>([])
+
+const statusRank: Record<SessionMemberStatus, number> = {
+  online: 0,
+  busy: 1,
+  offline: 2,
+}
+
+const sessionAgentOptions = computed<SessionAgentOption[]>(() => {
+  const members = props.currentSession?.members ?? []
+
+  return members
+    .filter((member): member is SessionMember => member.member_type === 'agent')
+    .map((member) => ({
+      id: member.member_id,
+      name: member.agent_name || member.member_id,
+      avatar: member.agent_avatar ?? null,
+      status: member.status,
+      role: member.agent_role ?? null,
+      isPrimary: Boolean(member.is_primary),
+    }))
+    .sort((left, right) => {
+      const rankDiff = statusRank[left.status] - statusRank[right.status]
+      if (rankDiff !== 0) return rankDiff
+      return left.name.localeCompare(right.name)
+    })
+})
 
 function handlePickAgent(agent: ComposerAgent) {
   chatRef.value?.insertAgentChip?.(agent)

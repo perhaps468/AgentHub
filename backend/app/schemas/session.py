@@ -44,6 +44,16 @@ class SessionCreate(TimestampedModel):
             raise ValueError("workspace_id cannot be empty")
         return v.strip()
 
+    @model_validator(mode="after")
+    def validate_agent_selection(self):
+        if self.mode == "single" and not self.agent_id:
+            raise ValueError("agent_id is required for single sessions")
+        if self.mode == "group":
+            participant_ids = self.participant_agent_ids or []
+            if not participant_ids:
+                raise ValueError("participant_agent_ids must include the user group host agent for group sessions")
+        return self
+
 
 class SessionUpdate(TimestampedModel):
     title: str | None = Field(default=None, max_length=255)

@@ -4,7 +4,7 @@
       <time-msg v-if="props.msg.isShowTime" :content="props.msg.createTime" class="msg-time" />
       <div v-if="props.msg.type === 'recall'" class="recall-msg">这条消息已撤回</div>
       <div v-else class="msg-box-wrapper">
-        <Avatar :info="displayUser" size="40px" class="msg-avatar" />
+        <Avatar :info="displayUser" size="40px" class="msg-avatar" :style="displayAvatarStyle" />
         <div class="msg-box-info">
           <div class="msg-user-row">
             <div class="msg-username" v-if="!isOwn">
@@ -49,6 +49,17 @@ const agentStore = useAgentStore()
 const isOwn = computed(() => props.msg?.fromId === userStore.userId)
 const isGroup = computed(() => props.msg?.source === MessageSource.Group)
 const displayUser = computed(() => props.user || props.msg?.fromInfo)
+const displayAvatarStyle = computed(() => {
+  const user = displayUser.value
+  if (!user?.avatar) {
+    return {
+      background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
+      color: '#fff',
+    }
+  }
+
+  return undefined
+})
 
 const roleLabel = computed(() => {
   return agentStore.agent?.role ?? '成员'

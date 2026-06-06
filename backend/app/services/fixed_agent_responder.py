@@ -198,6 +198,7 @@ class FixedAgentResponder:
                 await asyncio.sleep(0.05)
 
             agent_msg.status = "completed"
+            agent_msg.created_at = utcnow()
             self.db.add(agent_msg)
             self.db.commit()
 

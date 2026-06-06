@@ -25,7 +25,7 @@
               name="single-agent"
               :value="agent.id"
             />
-            <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="32px" />
+            <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="32px" :style="getAgentAvatarStyle(agent)" />
             <div class="agent-picker-meta">
               <span class="agent-picker-name">{{ agent.name }}</span>
             </div>
@@ -36,19 +36,14 @@
           <!-- P6-7: Fixed primary agent card (always selected, disabled) -->
           <div v-if="primaryAgent" class="agent-picker-item primary-agent-card selected">
             <input type="checkbox" checked disabled />
-            <avatar :info="{ name: primaryAgent.name, avatar: primaryAgent.avatar }" size="32px"  title="primaryAgent.name" />
+            <avatar :info="{ name: primaryAgent.name, avatar: primaryAgent.avatar }" size="32px" :style="getAgentAvatarStyle(primaryAgent)" title="primaryAgent.name" />
             <div class="agent-picker-meta">
               <span class="agent-picker-name">{{ primaryAgent.name }}</span>
               <span class="primary-agent-badge">主 Agent</span>
             </div>
           </div>
-          <div v-if="!primaryAgent" class="agent-picker-item primary-agent-card selected">
-            <input type="checkbox" checked disabled />
-            <avatar :info="{ name: '主 PM Agent', avatar: '' }" size="32px" />
-            <div class="agent-picker-meta">
-              <span class="agent-picker-name">主 PM Agent</span>
-              <span class="primary-agent-badge">主 Agent</span>
-            </div>
+          <div v-if="!primaryAgent" class="workspace-empty-tip">
+            请先等待系统创建你的自建主 PM，然后再创建群聊。
           </div>
           <label
             v-for="agent in agentsWithoutPrimary"
@@ -60,7 +55,7 @@
               type="checkbox"
               :value="agent.id"
             />
-            <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="32px" />
+            <avatar :info="{ name: agent.name, avatar: agent.avatar }" size="32px" :style="getAgentAvatarStyle(agent)" />
             <div class="agent-picker-meta">
               <span class="agent-picker-name">{{ agent.name }}</span>
             </div>
@@ -231,18 +226,50 @@ const workspaceMode = ref<'create' | 'select'>('create')
 const existingWorkspaces = ref<Workspace[]>([])
 const workspacesLoading = ref(false)
 
-// P6-7: Primary agent for group mode
-const PRIMARY_AGENT_ID = 'primary_pm_agent'
-
 const primaryAgent = computed(() => {
-  return props.primaryAgent || null
+  if (!props.primaryAgent) {
+    return null
+  }
+
+  const matchedById = props.agents.find((agent) => agent.id === props.primaryAgent?.id)
+  if (matchedById) {
+    return matchedById
+  }
+
+  const matchedGroupHost = props.agents.find(
+    (agent) =>
+      agent.id.startsWith('group_host_') ||
+      agent.name === '群聊主Agent',
+  )
+  return matchedGroupHost || props.primaryAgent
 })
 
 const agentsWithoutPrimary = computed(() => {
   const primaryAgentId = primaryAgent.value?.id
-  if (!primaryAgentId) return props.agents
-  return props.agents.filter((a) => a.id !== primaryAgentId)
+  return props.agents.filter((agent) => {
+    if (primaryAgentId && agent.id === primaryAgentId) {
+      return false
+    }
+    if (agent.id.startsWith('group_host_')) {
+      return false
+    }
+    if (agent.name === '群聊主Agent') {
+      return false
+    }
+    return true
+  })
 })
+
+function getAgentAvatarStyle(agent: SidebarAgent) {
+  if (agent.avatar) {
+    return undefined
+  }
+
+  return {
+    background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
+    color: '#fff',
+  }
+}
 
 function openFolderPicker() {
   workspaceCreateError.value = ''
@@ -355,8 +382,7 @@ const canCreateConversation = computed(() => {
   if (newConvType.value === 'single') {
     return !!selectedAgentForConv.value
   }
-  // P6-7: Group mode always has the primary agent, so zero additional agents is allowed
-  return true
+  return !!primaryAgent.value
 })
 
 
@@ -384,7 +410,11 @@ const confirmCreate = () => {
     mode,
     title,
     agentId: mode === 'single' ? selectedAgentForConv.value : undefined,
-    participantAgentIds: mode === 'group' ? [...selectedAgentsForGroup.value] : undefined,
+    participantAgentIds: mode === 'group'
+      ? primaryAgent.value
+        ? [primaryAgent.value.id, ...selectedAgentsForGroup.value]
+        : []
+      : undefined,
     workspace_id: selectedWorkspaceId.value,
   })
   visible.value = false

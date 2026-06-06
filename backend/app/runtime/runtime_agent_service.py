@@ -96,7 +96,7 @@ def load_session_history(db: Session, session_id: str) -> list[RuntimeMessage]:
     messages = (
         db.query(Message)
         .filter_by(session_id=session_id)
-        .order_by(Message.created_at)
+        .order_by(Message.created_at, Message.id)
         .all()
     )
     result = []
@@ -829,6 +829,10 @@ class RuntimeAgentService:
         self._agent_message.content = final_text
         self._agent_message.payload = {"text": final_text}
         self._agent_message.status = status
+        # Streaming agent messages are created before the final answer exists.
+        # Refresh-time history sorting uses created_at, so completed messages must
+        # move to their completion timestamp to preserve visible chat order.
+        self._agent_message.created_at = utcnow()
         # Task A: Persist runtime replay nodes for minimal replay support
         runtime_nodes = []
         if self._bridge is not None:
@@ -854,6 +858,7 @@ class RuntimeAgentService:
         if self._agent_message is None:
             return
         self._agent_message.status = "failed"
+        self._agent_message.created_at = utcnow()
         self.db.add(self._agent_message)
         self.db.commit()
 

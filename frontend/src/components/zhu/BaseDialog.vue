@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="dialog-pop">
       <div v-if="modelValue" class="dialog-overlay" @click.self="handleClose">
-        <div class="dialog-container">
+        <div class="dialog-container" :class="containerClass">
           <!-- 装饰背景 -->
           <div class="dialog-bg-gradient"></div>
 
@@ -47,6 +47,7 @@
 defineProps<{
   modelValue: boolean
   title: string
+  containerClass?: string
 }>()
 
 const emit = defineEmits<{

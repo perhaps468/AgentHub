@@ -666,7 +666,8 @@ async def _send_group_plain_response(
         type="text",
         status="completed",
         payload={"text": final_content},
-        metadata={"source": source, "stream_id": stream_id, "group_chat_direct": True},
+        msg_metadata={"source": source, "stream_id": stream_id, "group_chat_direct": True},
+        created_at=utcnow(),
     )
     db.add(agent_message)
     db.commit()
@@ -706,7 +707,7 @@ async def _send_orchestration_summary_message(
                     Message.session_id == session_id,
                     Message.sender_type == "agent",
                 )
-                .order_by(Message.created_at.desc())
+                .order_by(Message.created_at.desc(), Message.id.desc())
                 .all()
             )
             if (message.msg_metadata or {}).get("run_id") == run_id
@@ -2069,7 +2070,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                                 Message.sender_type == "agent",
                                 Message.msg_metadata["run_id"].as_string() == run.id,
                             )
-                            .order_by(Message.created_at.desc())
+                            .order_by(Message.created_at.desc(), Message.id.desc())
                             .first()
                         )
                         if plan_message is not None:

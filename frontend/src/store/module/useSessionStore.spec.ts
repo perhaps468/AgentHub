@@ -181,6 +181,86 @@ describe('useSessionStore', () => {
     expect(store.currentMessages[0].content).toBe('final reply')
   })
 
+  it('prepends older paginated messages so chronological order stays stable', async () => {
+    fetchConversationMessages
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'msg-3',
+            session_id: 'session-1',
+            sender_type: 'agent',
+            sender_role: 'PM',
+            type: 'text',
+            content: 'third',
+            payload: { text: 'third' },
+            metadata: {},
+            status: 'completed',
+            created_at: '2026-06-03T00:00:00Z',
+          },
+          {
+            id: 'msg-2',
+            session_id: 'session-1',
+            sender_type: 'agent',
+            sender_role: 'PM',
+            type: 'text',
+            content: 'second',
+            payload: { text: 'second' },
+            metadata: {},
+            status: 'completed',
+            created_at: '2026-06-02T00:00:00Z',
+          },
+        ],
+        page: 1,
+        page_size: 20,
+        total: 4,
+        has_more: true,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'msg-1',
+            session_id: 'session-1',
+            sender_type: 'human',
+            sender_role: null,
+            type: 'text',
+            content: 'first',
+            payload: { text: 'first' },
+            metadata: {},
+            status: 'completed',
+            created_at: '2026-06-01T00:00:00Z',
+          },
+          {
+            id: 'msg-0',
+            session_id: 'session-1',
+            sender_type: 'human',
+            sender_role: null,
+            type: 'text',
+            content: 'zero',
+            payload: { text: 'zero' },
+            metadata: {},
+            status: 'completed',
+            created_at: '2026-05-31T00:00:00Z',
+          },
+        ],
+        page: 2,
+        page_size: 20,
+        total: 4,
+        has_more: false,
+      })
+
+    const store = useSessionStore()
+
+    await store.fetchMessages('session-1')
+    await store.fetchMessages('session-1', { page: 2 })
+
+    expect(store.messageMap['session-1'].map((message) => message.id)).toEqual([
+      'msg-0',
+      'msg-1',
+      'msg-2',
+      'msg-3',
+    ])
+  })
+
   it('updates currentMessages immediately when mergeOrUpdateMessage replaces an existing message', () => {
     const store = useSessionStore()
     store.setCurrentSessionId('session-1')
