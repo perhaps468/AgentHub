@@ -170,11 +170,18 @@ def get_primary_agent_for_group(db, session: ChatSession) -> Agent | None:
         return None
     primary_member = db.query(SessionMember).filter(
         SessionMember.session_id == session.id,
-        SessionMember.is_primary == True,
+        SessionMember.is_primary.is_(True),
     ).first()
-    if primary_member is None:
+    if primary_member is not None:
+        return db.get(Agent, primary_member.member_id)
+
+    fallback_member = db.query(SessionMember).filter(
+        SessionMember.session_id == session.id,
+        SessionMember.member_type == "agent",
+    ).order_by(SessionMember.created_at.asc()).first()
+    if fallback_member is None:
         return None
-    return db.get(Agent, primary_member.member_id)
+    return db.get(Agent, fallback_member.member_id)
 
 
 class _InFlightGuard:
@@ -625,8 +632,6 @@ async def ws_send_run_updated(
     })
 
 
-<<<<<<< Updated upstream
-=======
 async def ws_send_session_member_status(
     websocket: WebSocket,
     session_id: str,
@@ -644,7 +649,6 @@ async def ws_send_session_member_status(
     })
 
 
->>>>>>> Stashed changes
 async def _send_group_plain_response(
     websocket: WebSocket,
     db,
@@ -778,9 +782,6 @@ def valid_send_message(payload: object, session_id: str) -> bool:
     if payload.get("type") == "send_message":
         return True
 
-<<<<<<< Updated upstream
-    return payload.get("action") == "send_message" and payload.get("session_id") == session_id
-=======
     if payload.get("action") != "send_message" or payload.get("session_id") != session_id:
         return False
 
@@ -887,7 +888,6 @@ async def _sync_and_broadcast_session_member_statuses(db, websocket: WebSocket, 
             agent_id=member["agent_id"],
             status=member["status"],
         )
->>>>>>> Stashed changes
 
 
 def _is_orchestration_request(content: str) -> bool:
@@ -1237,18 +1237,17 @@ async def _create_orchestration_plan(
     planner_agent: Agent,
     content: str,
     human_message: Message,
+    allowed_agent_ids: list[str] | None = None,
 ) -> OrchestrationRun | None:
     """创建编排计划 - 集成planner版本
 
     优先使用planner语义规划，失败时fallback到规则拆分。
     """
-    # 获取候选agent列表
     candidate_agents = _get_session_agent_members(db, session.id)
     member_ids = [a["id"] for a in candidate_agents if a["id"] != planner_agent.id]
     if not member_ids:
         member_ids = [planner_agent.id]
 
-    # 尝试使用planner
     run = await _create_orchestration_plan_with_planner(
         db=db,
         session=session,
@@ -1260,13 +1259,8 @@ async def _create_orchestration_plan(
     )
 
     if run is not None:
-<<<<<<< Updated upstream
-        return run
-=======
         return _restrict_run_tasks_to_allowed_agents(db, run.id, allowed_agent_ids)
->>>>>>> Stashed changes
 
-    # Fallback到规则拆分 - 记录决策原因
     _GROUP_CHAT_AUDIT.record_fallback_decision(
         session_id=session.id,
         run_id=None,
@@ -1433,10 +1427,6 @@ async def _create_orchestration_plan_with_planner(
     if run_with_tasks is None:
         raise RuntimeError("Failed to load orchestration run after creation")
 
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
     # 创建计划消息
     plan_message = _create_plan_message(
         session.id,
@@ -1602,10 +1592,6 @@ def _create_orchestration_plan_with_fallback(
     if run_with_tasks is None:
         raise RuntimeError("Failed to load orchestration run after creation")
 
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
     # 审计记录 - fallback任务分配
     persisted_tasks = sorted(run_with_tasks.tasks, key=lambda task: task.sequence)
 
@@ -1616,13 +1602,8 @@ def _create_orchestration_plan_with_fallback(
         user_request=content,
         planned_tasks=[
             {
-<<<<<<< Updated upstream
-                "task_id": f"planned_{index + 1}",
-                "sequence": index + 1,
-=======
                 "task_id": task.id,
                 "sequence": task.sequence,
->>>>>>> Stashed changes
                 "title": task.title,
                 "assigned_agent_id": task.assigned_agent_id,
                 "input_payload": task.input_payload,
@@ -1935,7 +1916,8 @@ async def _handle_streaming_response(
                 agent_message.status = "failed"
                 db.add(agent_message)
                 db.commit()
-<<<<<<< Updated upstream
+        if disconnected:
+            return
         try:
             await ws_send_message_error(
                 websocket,
@@ -1947,18 +1929,6 @@ async def _handle_streaming_response(
             )
         except Exception:
             pass
-=======
-        if disconnected:
-            return
-        await ws_send_message_error(
-            websocket,
-            agent_role=active_agent_role,
-            stream_id=active_stream_id,
-            message_id=active_message_id or "",
-            error_code=active_error_code,
-            error_message=str(exc),
-        )
->>>>>>> Stashed changes
 
 
 @router.websocket("/{session_id}")
@@ -2042,8 +2012,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             agent_name = getattr(selected_agent, "name", None) or getattr(selected_agent, "role", "PM")
 
             content = payload["content"]
-<<<<<<< Updated upstream
-=======
             mentions = _normalize_mentions(payload)
             target_agent_ids = [aid for aid in payload.get("target_agent_ids", []) if isinstance(aid, str)]
             if not target_agent_ids and mentions:
@@ -2058,7 +2026,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         agent_role=agent_name,
                     )
                     continue
->>>>>>> Stashed changes
             human_message = Message(
                 session_id=session_id,
                 sender_type="human",
@@ -2085,10 +2052,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             )
 
             try:
-<<<<<<< Updated upstream
-                if session.mode == "group" and _is_orchestration_request(content):
-                    run = await _create_orchestration_plan(db, session, selected_agent, content, human_message)
-=======
                 if _should_use_orchestration(session.mode, content, target_agent_ids, mentions):
                     run = await _create_orchestration_plan(
                         db,
@@ -2098,7 +2061,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         human_message,
                         allowed_agent_ids=target_agent_ids or None,
                     )
->>>>>>> Stashed changes
                     if run is not None:
                         plan_message = (
                             db.query(Message)

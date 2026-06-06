@@ -135,6 +135,7 @@ import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
 import type {
   AgentDraft,
+  ComposerSubmitPayload,
   ConversationItem,
   ConversationMode,
   PreviewState,
@@ -143,11 +144,7 @@ import type {
   SidebarUser,
   Workspace,
 } from '../types/agenthub'
-<<<<<<< Updated upstream
 import { getWsClientReconnectAttempt, ws } from '../utils/ws-client'
-=======
-import { getWsClientReconnectAttempt, wsClient } from '../utils/ws-client'
->>>>>>> Stashed changes
 import { useToast } from '../veiws/useToast'
 import AddAgentDialog from './zhu/AddAgentDialog.vue'
 import ChatWorkspace from './zhu/ChatWorkspace.vue'
@@ -211,13 +208,8 @@ const showEditAgentDialog = ref(false)
 const editingAgent = ref<SidebarAgent | null>(null)
 
 // ==================== 发送状态 ====================
-<<<<<<< Updated upstream
 /** 每个会话独立的发送加载状态 */
 const isSendLoadingMap = new Map<string, boolean>()
-=======
-/** 正在发送消息（显示 AI 回复 loading） */
-const isSendLoading = ref(false)
->>>>>>> Stashed changes
 
 // ==================== 预览状态 ====================
 /** 右侧预览区状态 */
@@ -472,7 +464,7 @@ const handleCreateConversation = async (payload: {
       currentWorkspace.value = session.workspace as Workspace
     }
     sessionStore.setCurrentSessionId(session.id)
-  await sessionStore.fetchSessionDetail(session.id)
+    await sessionStore.fetchSessionDetail(session.id)
     await sessionStore.fetchMessages(session.id, { page: 1, page_size: 20 })
     await sessionStore.fetchLatestRun(session.id)
     await restorePendingChangesForCurrentSession(session.id)
@@ -510,13 +502,6 @@ const handleDeleteAgent = async (agent: SidebarAgent) => {
 
 // ==================== 发送消息 ====================
 
-/** 发送消息 */
-<<<<<<< Updated upstream
-const handleSend = async (content: string) => {
-  const sessionId = sessionStore.currentSessionId
-  if (!sessionId) {
-    showToast('请先选择或新建会话', true)
-=======
 const handleSend = async (payload: ComposerSubmitPayload) => {
   const sessionId = sessionStore.currentSessionId
   if (!sessionId) {
@@ -526,7 +511,6 @@ const handleSend = async (payload: ComposerSubmitPayload) => {
 
   const content = payload.text.trim()
   if (!content) {
->>>>>>> Stashed changes
     return
   }
 
@@ -540,26 +524,24 @@ const handleSend = async (payload: ComposerSubmitPayload) => {
     content,
     type: 'text',
     payload: { text: content },
-    metadata: {},
+    metadata: {
+      mentioned_agents: payload.mentions,
+      target_agent_ids: payload.targetAgentIds,
+      selected_agents: payload.selectedAgents,
+      composer_nodes: payload.nodes,
+    },
     status: 'pending',
     created_at: new Date().toISOString(),
   })
 
-<<<<<<< Updated upstream
-  const ok = ws.send(sessionId, content)
-  if (!ok) {
-    showToast('发送失败，请检查网络', true)
-    isSendLoadingMap.delete(sessionId)
-=======
-  const ok = wsClient.sendMessage({
+  const ok = ws.send(sessionId, {
     content,
     targetAgentIds: payload.targetAgentIds,
     mentions: payload.mentions,
   })
   if (!ok) {
     showToast('发送失败，请检查网络', true)
-    isSendLoading.value = false
->>>>>>> Stashed changes
+    isSendLoadingMap.delete(sessionId)
   }
 }
 
@@ -586,7 +568,6 @@ const handleProfileUpdate = async (data: Partial<SidebarUser>) => {
     ;(userInfoStore as unknown as { setEmail: (value: string) => void }).setEmail(data.email)
   }
   if (data.avatar !== undefined) userInfoStore.setUserAvatar(data.avatar)
-<<<<<<< Updated upstream
 
   const saved = localStorage.getItem('user')
   const userData = saved ? JSON.parse(saved) : {}
@@ -600,9 +581,6 @@ const handleProfileUpdate = async (data: Partial<SidebarUser>) => {
   } catch (e) {
     // silent fail
   }
-
-=======
->>>>>>> Stashed changes
   showToast('资料已更新')
 }
 
@@ -757,24 +735,8 @@ onMounted(async () => {
     agentStore.fetchAgents(),
   ])
 
-<<<<<<< Updated upstream
   // 监听 WebSocket 状态变化（多会话：订阅当前 session 的状态，连接后立即订阅）
   ws.onReceiveMessage((msg, sessionId) => {
-=======
-  // 监听 WebSocket 状态变化
-  wsClient.onStateChange((state) => {
-    sessionStore.setConnectionState(state)
-    if (state === 'connected') {
-      const sessionId = sessionStore.currentSessionId
-      if (sessionId) {
-        void restorePendingChangesForCurrentSession(sessionId, { clearInFlight: true })
-      }
-    }
-  })
-
-  // 监听 WebSocket 消息
-  wsClient.onReceiveMessage((msg) => {
->>>>>>> Stashed changes
     const currentSessionId = sessionStore.currentSessionId
     // 优先用 WebSocket 连接所属的 sessionId，其次用消息中的 session_id，最后用当前活跃 session
     const resolvedSessionId = sessionId || msg.message?.session_id || msg.session_id || currentSessionId
@@ -831,10 +793,24 @@ onMounted(async () => {
       }
     } else if (msg.type === 'repair_state') {
       sessionStore.streamState.handleRepairState(msg)
-    } else if (msg.type === 'error') {
-      console.error('[WsClient] Server error:', msg.error_code, msg.error_message)
-      isSendLoadingMap.delete(resolvedSessionId)
-    } else if (msg.type === 'orchestration_run_started') {
+      } else if (msg.type === 'session_member_status') {
+        const current = sessionStore.currentSession
+        if (current?.id === resolvedSessionId && current.members?.length) {
+          const nextMembers = current.members.map((member) =>
+            member.id === msg.member_id || member.member_id === msg.agent_id
+              ? {
+                  ...member,
+                  status: (msg.status as any) || member.status,
+                  health_status: msg.status || member.health_status,
+                }
+              : member,
+          )
+          sessionStore.currentSession = {
+            ...current,
+            members: nextMembers,
+          }
+        }
+      } else if (msg.type === 'orchestration_run_started') {
       // M6: Handle orchestration run started event - initialize run and tasks
       const runId = msg.run_id
       const taskCount = msg.task_count
