@@ -1,21 +1,12 @@
 <template>
-  <!-- ==================== 外层容器：白色到蓝色渐变背景 ==================== -->
   <div class="auth-container">
-    <!-- 动态背景光晕 - 右上角蓝色光晕 -->
     <div class="glow-orb glow-orb-1"></div>
-    <!-- 动态背景光晕 - 左下角青色光晕 -->
     <div class="glow-orb glow-orb-2"></div>
-    <!-- 动态背景光晕 - 中心光晕 -->
     <div class="glow-orb glow-orb-3"></div>
-
-    <!-- 装饰性网格点阵背景 -->
     <div class="grid-pattern"></div>
 
-    <!-- 主内容区域 -->
     <div class="auth-content">
-      <!-- ==================== 左侧品牌展示区 ==================== -->
       <div class="brand-section">
-        <!-- Logo区域 -->
         <div class="brand-logo">
           <div class="logo-icon">
             <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -26,18 +17,15 @@
           <span class="logo-text">AgentHub</span>
         </div>
 
-        <!-- 品牌标题 -->
         <h1 class="brand-title">
           <span class="title-line">智能协作</span>
           <span class="title-line gradient-text">全新体验</span>
         </h1>
 
-        <!-- 品牌描述 -->
         <p class="brand-desc">
-          融合AI与协作的未来工作空间，让每一次对话都充满可能
+          融合 AI 与协作的未来工作空间，让每一次对话都充满可能。
         </p>
 
-        <!-- 装饰性浮动卡片 -->
         <div class="floating-cards">
           <div class="float-card float-card-1">
             <div class="card-icon">
@@ -69,11 +57,8 @@
         </div>
       </div>
 
-      <!-- ==================== 右侧登录/注册表单区 - 玻璃态卡片 ==================== -->
       <div class="form-section">
-        <!-- 玻璃态背景卡片 + 动态边框 -->
         <div class="glass-card">
-          <!-- 标签页切换器 -->
           <div class="tab-header">
             <button
               class="tab-btn"
@@ -91,15 +76,11 @@
             </button>
           </div>
 
-          <!-- ==================== 表单切换动画 ==================== -->
           <Transition name="form-slide" mode="out-in">
-
-            <!-- ==================== 登录表单 ==================== -->
             <form v-if="isLoginMode" key="login" class="auth-form" @submit.prevent="loging">
               <h2 class="form-title">欢迎回来</h2>
-              <p class="form-subtitle">请登录您的账户继续</p>
+              <p class="form-subtitle">请登录您的账户继续使用</p>
 
-              <!-- 用户名输入框 -->
               <div class="input-group">
                 <label class="input-label">账号</label>
                 <div class="input-wrapper" :class="{ focused: loginFocused.userName }">
@@ -118,7 +99,6 @@
                 </div>
               </div>
 
-              <!-- 密码输入框 -->
               <div class="input-group">
                 <label class="input-label">密码</label>
                 <div class="input-wrapper" :class="{ focused: loginFocused.password }">
@@ -137,15 +117,13 @@
                 </div>
               </div>
 
-              <!-- 提交按钮 -->
               <button class="submit-btn" type="submit">
-                <span class="btn-text">登 录</span>
+                <span class="btn-text">登录</span>
                 <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M5 12h14M12 5l7 7-7 7"/>
                 </svg>
               </button>
 
-              <!-- 切换到注册 -->
               <p class="form-footer">
                 还没有账号？
                 <button type="button" class="link-btn" @click="isLoginMode = false">
@@ -154,12 +132,10 @@
               </p>
             </form>
 
-            <!-- ==================== 注册表单 ==================== -->
             <form v-else key="register" class="auth-form" @submit.prevent="registering">
               <h2 class="form-title">创建账户</h2>
               <p class="form-subtitle">开启您的智能协作之旅</p>
 
-              <!-- 用户名输入框 -->
               <div class="input-group">
                 <label class="input-label">用户名</label>
                 <div class="input-wrapper" :class="{ focused: registerFocused.userName }">
@@ -178,58 +154,6 @@
                 </div>
               </div>
 
-              <!-- 邮箱输入框 -->
-              <div class="input-group">
-                <label class="input-label">邮箱</label>
-                <div class="input-wrapper" :class="{ focused: registerFocused.email }">
-                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                    <polyline points="22,6 12,13 2,6"/>
-                  </svg>
-                  <input
-                    v-model="registerParam.email"
-                    type="email"
-                    class="input-field"
-                    placeholder="请输入邮箱"
-                    @focus="registerFocused.email = true"
-                    @blur="registerFocused.email = false"
-                  />
-                </div>
-              </div>
-
-              <!-- 验证码输入框 -->
-              <div class="input-group">
-                <label class="input-label">验证码</label>
-                <div class="input-row">
-                  <div class="input-wrapper" :class="{ focused: registerFocused.code }" style="flex: 1;">
-                    <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                    <input
-                      v-model="registerParam.emailCode"
-                      type="text"
-                      class="input-field"
-                      placeholder="验证码"
-                      @focus="registerFocused.code = true"
-                      @blur="registerFocused.code = false"
-                    />
-                  </div>
-                  <!-- 验证码发送按钮 -->
-                  <button
-                    type="button"
-                    class="code-btn"
-                    :class="{ disabled: !isEmail || cutdown > 0 }"
-                    :disabled="!isEmail || cutdown > 0"
-                    @click="sendCode"
-                  >
-                    <span v-if="cutdown > 0" class="countdown">{{ cutdown }}s</span>
-                    <span v-else>获取验证码</span>
-                  </button>
-                </div>
-              </div>
-
-              <!-- 密码输入框 -->
               <div class="input-group">
                 <label class="input-label">密码</label>
                 <div class="input-wrapper" :class="{ focused: registerFocused.password }">
@@ -248,15 +172,31 @@
                 </div>
               </div>
 
-              <!-- 提交按钮 -->
+              <div class="input-group">
+                <label class="input-label">确认密码</label>
+                <div class="input-wrapper" :class="{ focused: registerFocused.confirmPassword }">
+                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                  <input
+                    v-model="registerParam.confirmPassword"
+                    type="password"
+                    class="input-field"
+                    placeholder="请再次输入密码"
+                    @focus="registerFocused.confirmPassword = true"
+                    @blur="registerFocused.confirmPassword = false"
+                  />
+                </div>
+              </div>
+
               <button class="submit-btn" type="submit">
-                <span class="btn-text">注 册</span>
+                <span class="btn-text">注册</span>
                 <svg class="btn-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M5 12h14M12 5l7 7-7 7"/>
                 </svg>
               </button>
 
-              <!-- 切换到登录 -->
               <p class="form-footer">
                 已有账号？
                 <button type="button" class="link-btn" @click="isLoginMode = true">
@@ -264,7 +204,6 @@
                 </button>
               </p>
             </form>
-
           </Transition>
         </div>
       </div>
@@ -276,39 +215,28 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 
-// 导入API和类型
-import { getCode, login, register } from '../api/login'
-import type { CodeResponese, LoginResponse, RegisterResponese, UserInfo } from '../types/login'
+import { login, register } from '../api/login'
+import type { LoginResponse, RegisterResponese, UserInfo } from '../types/login'
 import { useUserInfoStore } from '../store/module/useUserStore'
 
-// 用户信息Store
 const userStore = useUserInfoStore()
 
-// ==================== 登录表单参数 ====================
 const loginParam = ref({
   userName: '',
   password: '',
 })
 
-// ==================== 注册表单参数 ====================
 const registerParam = ref({
   userName: '',
-  email: '',
-  emailCode: '',
   password: '',
   confirmPassword: '',
 })
 
-// ==================== 倒计时状态 ====================
-const cutdown = ref(0)
-
-// ==================== 当前模式：true=登录，false=注册 ====================
 const isLoginMode = ref(true)
 
-// ==================== 输入框焦点状态 ====================
 const loginFocused = reactive({
   userName: false,
   password: false,
@@ -316,48 +244,18 @@ const loginFocused = reactive({
 
 const registerFocused = reactive({
   userName: false,
-  email: false,
-  code: false,
   password: false,
+  confirmPassword: false,
 })
 
-// ==================== 邮箱格式校验 ====================
-const isEmail = computed(() => {
-  const reg = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return reg.test(registerParam.value.email)
-})
-
-// ==================== 发送验证码 ====================
-const sendCode = async () => {
-  if (!isEmail.value) {
-    ElMessage.error('请输入有效邮箱')
-    return
-  }
-
-  try {
-    const res = await getCode({ email: registerParam.value.email }) as CodeResponese
-    if (res.code === 0) {
-      ElMessage.success('验证码已发送')
-      cutdown.value = 60
-      const timer = setInterval(() => {
-        cutdown.value--
-        if (cutdown.value <= 0) {
-          clearInterval(timer)
-        }
-      }, 1000)
-    } else {
-      ElMessage.error(res.msg || '发送验证码失败')
-    }
-  } catch (error: any) {
-    ElMessage.error(error.message || '发送验证码失败，请重试')
-  }
-}
-
-// ==================== 用户登录 ====================
 const loging = async () => {
   try {
+    localStorage.removeItem('x-token')
+    localStorage.removeItem('user')
+    localStorage.removeItem('session-store')
+    userStore.clearUserInfo()
     const res = await login(loginParam.value) as LoginResponse
-    if (res.code === 0) {
+    if (res.code === 0 && res.data) {
       localStorage.setItem('x-token', res.data.token)
       userStore.setUserInfo(res.data as UserInfo)
       localStorage.setItem('user', JSON.stringify(res.data))
@@ -372,37 +270,31 @@ const loging = async () => {
   }
 }
 
-// ==================== 用户注册 ====================
 const registering = async () => {
-  if (
-    !registerParam.value.userName ||
-    !registerParam.value.email ||
-    !registerParam.value.password ||
-    !registerParam.value.emailCode
-  ) {
+  if (!registerParam.value.userName || !registerParam.value.password || !registerParam.value.confirmPassword) {
     ElMessage.error('请填写所有必填项')
     return
   }
 
-  if (!isEmail.value) {
-    ElMessage.error('请输入正确的邮箱格式')
+  if (registerParam.value.password !== registerParam.value.confirmPassword) {
+    ElMessage.error('两次输入的密码不一致')
     return
   }
 
   try {
+    localStorage.removeItem('x-token')
+    localStorage.removeItem('user')
+    localStorage.removeItem('session-store')
+    userStore.clearUserInfo()
     const res = await register({
       userName: registerParam.value.userName,
-      email: registerParam.value.email,
       password: registerParam.value.password,
-      emailCode: registerParam.value.emailCode,
     }) as RegisterResponese
 
     if (res.code === 0) {
       ElMessage.success('注册成功')
       registerParam.value = {
         userName: '',
-        email: '',
-        emailCode: '',
         password: '',
         confirmPassword: '',
       }
@@ -418,8 +310,6 @@ const registering = async () => {
 </script>
 
 <style scoped>
-/* ==================== 容器与背景 ==================== */
-/* 白色到蓝色渐变背景 */
 .auth-container {
   position: relative;
   min-height: 100vh;
@@ -427,7 +317,6 @@ const registering = async () => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  /* 从白色渐变到浅蓝色再到蓝色 */
   background: linear-gradient(
     135deg,
     #ffffff 0%,
@@ -437,8 +326,6 @@ const registering = async () => {
   );
 }
 
-/* ==================== 动态光晕效果 ==================== */
-/* 光晕基础样式 */
 .glow-orb {
   position: absolute;
   border-radius: 50%;
@@ -446,7 +333,6 @@ const registering = async () => {
   animation: float 8s ease-in-out infinite;
 }
 
-/* 右上角蓝色光晕 */
 .glow-orb-1 {
   width: 500px;
   height: 500px;
@@ -457,7 +343,6 @@ const registering = async () => {
   opacity: 0.8;
 }
 
-/* 左下角青色光晕 */
 .glow-orb-2 {
   width: 400px;
   height: 400px;
@@ -468,7 +353,6 @@ const registering = async () => {
   opacity: 0.6;
 }
 
-/* 中心紫色光晕 */
 .glow-orb-3 {
   width: 600px;
   height: 600px;
@@ -480,7 +364,6 @@ const registering = async () => {
   opacity: 0.5;
 }
 
-/* 光晕浮动动画 */
 @keyframes float {
   0%, 100% {
     transform: translate(0, 0) scale(1);
@@ -493,7 +376,6 @@ const registering = async () => {
   }
 }
 
-/* ==================== 装饰性网格点阵背景 ==================== */
 .grid-pattern {
   position: absolute;
   inset: 0;
@@ -503,7 +385,6 @@ const registering = async () => {
   pointer-events: none;
 }
 
-/* ==================== 主内容布局 ==================== */
 .auth-content {
   position: relative;
   z-index: 10;
@@ -516,7 +397,6 @@ const registering = async () => {
   align-items: center;
 }
 
-/* ==================== 左侧品牌区 ==================== */
 .brand-section {
   color: #1e40af;
 }
@@ -529,7 +409,6 @@ const registering = async () => {
   animation: fadeInUp 0.6s ease-out;
 }
 
-/* Logo图标 */
 .logo-icon {
   width: 48px;
   height: 48px;
@@ -537,7 +416,6 @@ const registering = async () => {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
-/* Logo图标脉冲发光动画 */
 @keyframes pulse-glow {
   0%, 100% {
     filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
@@ -559,7 +437,6 @@ const registering = async () => {
   color: #1e40af;
 }
 
-/* 品牌标题 */
 .brand-title {
   margin: 0 0 24px;
   font-size: 56px;
@@ -573,7 +450,6 @@ const registering = async () => {
   color: #1e40af;
 }
 
-/* 渐变文字效果 - 蓝色渐变 */
 .gradient-text {
   background: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #8b5cf6 100%);
   -webkit-background-clip: text;
@@ -581,7 +457,6 @@ const registering = async () => {
   background-clip: text;
 }
 
-/* 品牌描述 */
 .brand-desc {
   margin: 0 0 48px;
   font-size: 18px;
@@ -591,14 +466,12 @@ const registering = async () => {
   animation: fadeInUp 0.6s ease-out 0.2s both;
 }
 
-/* 浮动装饰卡片容器 */
 .floating-cards {
   position: relative;
   height: 120px;
   animation: fadeInUp 0.6s ease-out 0.3s both;
 }
 
-/* 浮动卡片基础样式 */
 .float-card {
   position: absolute;
   display: flex;
@@ -636,7 +509,6 @@ const registering = async () => {
   height: 100%;
 }
 
-/* 卡片位置与动画 */
 .float-card-1 {
   left: 0;
   top: 0;
@@ -656,7 +528,6 @@ const registering = async () => {
   animation: float3 4s ease-in-out infinite;
 }
 
-/* 浮动卡片动画 */
 @keyframes float1 {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
@@ -672,7 +543,6 @@ const registering = async () => {
   50% { transform: translateY(10px); }
 }
 
-/* 淡入上浮动画 */
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -684,12 +554,10 @@ const registering = async () => {
   }
 }
 
-/* ==================== 右侧玻璃态表单区 ==================== */
 .form-section {
   animation: fadeInUp 0.6s ease-out 0.2s both;
 }
 
-/* ==================== 玻璃态卡片 + 动态边框 ==================== */
 .glass-card {
   position: relative;
   width: 100%;
@@ -703,7 +571,6 @@ const registering = async () => {
   overflow: hidden;
 }
 
-/* 流光边框层 */
 .glass-card::before {
   content: '';
   position: absolute;
@@ -734,7 +601,7 @@ const registering = async () => {
     background-position: 200% 50%;
   }
 }
-/* ==================== 标签页切换器 ==================== */
+
 .tab-header {
   display: flex;
   gap: 8px;
@@ -764,9 +631,6 @@ const registering = async () => {
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
 }
 
-
-
-/* ==================== 表单样式 ==================== */
 .form-title {
   margin: 0 0 8px;
   font-size: 26px;
@@ -786,7 +650,6 @@ const registering = async () => {
   gap: 20px;
 }
 
-/* 输入框组 */
 .input-group {
   display: flex;
   flex-direction: column;
@@ -799,7 +662,6 @@ const registering = async () => {
   color: #475569;
 }
 
-/* 输入框包装器 */
 .input-wrapper {
   position: relative;
   display: flex;
@@ -816,7 +678,6 @@ const registering = async () => {
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
 }
 
-/* 输入框图标 */
 .input-icon {
   width: 20px;
   height: 20px;
@@ -830,7 +691,6 @@ const registering = async () => {
   color: #3b82f6;
 }
 
-/* 输入框字段 */
 .input-field {
   flex: 1;
   padding: 14px 14px 14px 10px;
@@ -845,44 +705,6 @@ const registering = async () => {
   color: #94a3b8;
 }
 
-/* 输入行（验证码场景） */
-.input-row {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-/* ==================== 验证码按钮 ==================== */
-.code-btn {
-  padding: 14px 18px;
-  border: 1.5px solid #3b82f6;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.1));
-  color: #3b82f6;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.3s ease;
-}
-
-.code-btn:not(.disabled):hover {
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
-  color: #ffffff;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.code-btn.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.countdown {
-  font-variant-numeric: tabular-nums;
-}
-
-/* ==================== 提交按钮 ==================== */
 .submit-btn {
   display: flex;
   align-items: center;
@@ -903,7 +725,6 @@ const registering = async () => {
   position: relative;
 }
 
-/* 按钮流光效果 */
 .submit-btn::before {
   content: '';
   position: absolute;
@@ -938,7 +759,6 @@ const registering = async () => {
   transform: translateX(4px);
 }
 
-/* ==================== 表单底部 ==================== */
 .form-footer {
   margin: 16px 0 0;
   text-align: center;
@@ -961,7 +781,6 @@ const registering = async () => {
   text-decoration: underline;
 }
 
-/* ==================== 表单切换动画 ==================== */
 .form-slide-enter-active,
 .form-slide-leave-active {
   transition: all 0.3s ease;
@@ -977,7 +796,6 @@ const registering = async () => {
   transform: translateX(-20px);
 }
 
-/* ==================== 响应式适配 ==================== */
 @media (max-width: 1024px) {
   .auth-content {
     grid-template-columns: 1fr;

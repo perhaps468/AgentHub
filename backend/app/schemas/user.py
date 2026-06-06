@@ -6,10 +6,15 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RegisterRequest(BaseModel):
+    userName: str
+    password: str
+
+
 class LoginResponseData(BaseModel):
     userId: int
     userName: str
-    email: str
+    email: str | None = None
     avatar: str | None
     type: str
     token: str

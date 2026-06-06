@@ -226,24 +226,14 @@ const currentWorkspace = ref<Workspace | null>(null)
 
 
 const sidebarAgents = computed(() => agentStore.agents)
+const hiddenAgentIds = new Set(['pm_agent', 'primary_pm_agent'])
+const hiddenAgentNames = new Set(['PM Agent', 'Primary PM Agent', '主 PM Agent'])
+const visibleSidebarAgents = computed(() =>
+  sidebarAgents.value.filter((agent) => !hiddenAgentIds.has(agent.id) && !hiddenAgentNames.has(agent.name)),
+)
 const primaryGroupAgent = computed(() => {
-  const groupHost = sidebarAgents.value.find((item) => item.id.startsWith('group_host_'))
-  if (groupHost) return groupHost
-
-  const current = agentStore.agent
-  if (!current) return null
-  return sidebarAgents.value.find((item) => item.id === current.id) || {
-    id: current.id,
-    name: current.name,
-    avatar: current.avatar_url || current.avatar || '',
-    capabilityTags: current.capabilityTags || current.capability_tags || [],
-    description: current.description,
-    platform: current.platform || 'custom',
-    isCustom: !current.is_builtin,
-    role: current.role,
-    model: current.model,
-    system_prompt: current.system_prompt,
-  }
+  const groupHost = visibleSidebarAgents.value.find((item) => item.id.startsWith('group_host_'))
+  return groupHost || null
 })
 
 // ==================== 计算属性 ====================
@@ -265,7 +255,6 @@ const currentUser = computed<SidebarUser>(() => ({
   id: userInfoStore.userId || 'user-1',
   name: userInfoStore.userName || '管理员',
   avatar: userInfoStore.avatar || '/msg10.jpg',
-  email: (userInfoStore as unknown as { email?: string }).email || 'admin@example.com',
   bio: (userInfoStore as unknown as { bio?: string }).bio || 'AgentHub 用户',
 }))
 
@@ -277,9 +266,9 @@ const isSendLoading = computed(() => !!sessionStore.currentSessionId && (isSendL
 
 /** Agent 列表过滤 */
 const filteredAgentList = computed(() => {
-  if (!agentSearchValue.value) return sidebarAgents.value
+  if (!agentSearchValue.value) return visibleSidebarAgents.value
   const q = agentSearchValue.value.toLowerCase()
-  return sidebarAgents.value.filter(
+  return visibleSidebarAgents.value.filter(
     (a) =>
       a.name.toLowerCase().includes(q) ||
       a.description?.toLowerCase().includes(q) ||
@@ -463,15 +452,22 @@ const handleCreateConversation = async (payload: {
     showToast('请先选择工作空间', true)
     return
   }
+  if (payload.mode === 'group' && !primaryGroupAgent.value?.id) {
+    showToast('群聊必须选择自建主 PM', true)
+    return
+  }
 
   try {
+    const participantAgentIds = payload.mode === 'group'
+      ? Array.from(new Set([primaryGroupAgent.value!.id, ...(payload.participantAgentIds || [])]))
+      : payload.participantAgentIds || []
     const session = await sessionStore.createSession({
       owner_id: userInfoStore.userId || 'dev_user',
       title: payload.title,
       mode: payload.mode,
       workspace_id: payload.workspace_id,
       agent_id: payload.agentId,
-      participant_agent_ids: payload.participantAgentIds || [],
+      participant_agent_ids: participantAgentIds,
     })
     if (session.workspace) {
       currentWorkspace.value = session.workspace as Workspace
@@ -565,20 +561,16 @@ const handleEditProfile = () => {
 /** 提交资料更新 */
 const handleProfileUpdate = async (data: Partial<SidebarUser>) => {
   if (data.name) userInfoStore.setUserName(data.name)
-  if (data.email) {
-    ;(userInfoStore as unknown as { setEmail: (value: string) => void }).setEmail(data.email)
-  }
   if (data.avatar !== undefined) userInfoStore.setUserAvatar(data.avatar)
 
   const saved = localStorage.getItem('user')
   const userData = saved ? JSON.parse(saved) : {}
   if (data.name) userData.userName = data.name
-  if (data.email) userData.email = data.email
   if (data.avatar !== undefined) userData.avatar = data.avatar
   localStorage.setItem('user', JSON.stringify(userData))
 
   try {
-    await userApi.update({ userName: data.name, avatar: data.avatar, email: data.email })
+    await userApi.update({ userName: data.name, avatar: data.avatar })
   } catch (e) {
     // silent fail
   }

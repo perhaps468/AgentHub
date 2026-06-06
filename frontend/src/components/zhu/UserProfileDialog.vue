@@ -1,7 +1,7 @@
 <template>
   <BaseDialog
     v-model="visible"
-    title="编辑资料"
+    title="缂栬緫璧勬枡"
     @confirm="handleConfirm"
   >
     <div class="dialog-content">
@@ -15,7 +15,7 @@
                 <el-icon :size="32" class="upload-icon">
                   <PictureRounded />
                 </el-icon>
-                <span class="upload-text">更换头像</span>
+                <span class="upload-text">鏇存崲澶村儚</span>
               </div>
             </label>
           </div>
@@ -29,24 +29,13 @@
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          用户名
+          鐢ㄦ埛鍚?
         </label>
         <el-input
           v-model="formData.name"
-          placeholder="请输入用户名"
+          placeholder="璇疯緭鍏ョ敤鎴峰悕"
           clearable
         />
-      </div>
-
-      <div class="form-section">
-        <label class="form-label">
-          <svg class="label-icon" width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <polyline points="22,6 12,13 2,6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          邮箱
-        </label>
-        <el-input v-model="formData.email" placeholder="请输入邮箱" clearable />
       </div>
 
       <div class="form-section">
@@ -57,13 +46,13 @@
             <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          个人简介
+          涓汉绠€浠?
         </label>
         <el-input
           v-model="formData.bio"
           type="textarea"
           :rows="3"
-          placeholder="AgentHub 用户"
+          placeholder="AgentHub 鐢ㄦ埛"
           maxlength="200"
           show-word-limit
         />
@@ -74,10 +63,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import BaseDialog from './BaseDialog.vue'
-import avatar from '@/veiws/img/avatar.vue'
-import type { SidebarUser } from '@/types/agenthub'
 import { PictureRounded } from '@element-plus/icons-vue'
+
+import type { SidebarUser } from '@/types/agenthub'
+import avatar from '@/veiws/img/avatar.vue'
+import BaseDialog from './BaseDialog.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -98,7 +88,6 @@ const formData = ref<SidebarUser>({
   id: '',
   name: '',
   avatar: '',
-  email: '',
   bio: '',
 })
 
@@ -129,7 +118,6 @@ const handleConfirm = () => {
   emit('confirm', {
     name: formData.value.name,
     avatar: formData.value.avatar,
-    email: formData.value.email,
     bio: formData.value.bio,
   })
   visible.value = false
@@ -143,7 +131,6 @@ const handleConfirm = () => {
   gap: 24px;
 }
 
-/* 头像区域 */
 .avatar-section {
   display: flex;
   flex-direction: column;
@@ -253,7 +240,6 @@ const handleConfirm = () => {
   background-clip: text;
 }
 
-/* 表单区域 */
 .form-section {
   display: flex;
   flex-direction: column;
@@ -275,7 +261,6 @@ const handleConfirm = () => {
   flex-shrink: 0;
 }
 
-/* Element Plus 输入框样式覆盖 */
 :deep(.el-input) {
   .el-input__wrapper {
     border-radius: 14px;
