@@ -327,6 +327,7 @@ const selectSession = async (item: ConversationItem) => {
   }
   sessionStore.setCurrentSessionId(item.id)
   await sessionStore.fetchSessionDetail(item.id)
+  await loadSessionWorkspace(sessionStore.currentSession)
   await sessionStore.fetchMessages(item.id, { page: 1, page_size: 20 })
   await sessionStore.fetchLatestRun(item.id)
   await restorePendingChangesForCurrentSession(item.id)
@@ -363,9 +364,9 @@ const handleDeleteSession = async (item: ConversationItem) => {
 }
 
 /** 重命名会话 */
-const handleRenameSession = async (item: ConversationItem, newTitle: string) => {
+const handleRenameSession = async (sessionId: string, newTitle: string) => {
   try {
-    await sessionStore.updateSession(item.id, { title: newTitle })
+    await sessionStore.updateSession(sessionId, { title: newTitle })
     showToast('会话已重命名')
   } catch {
     showToast('重命名失败', true)

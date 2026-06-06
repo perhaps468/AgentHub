@@ -27,7 +27,7 @@
         @toggle-pin="$emit('toggle-pin', $event)"
         @toggle-archive="$emit('toggle-archive', $event)"
         @delete-session="$emit('delete-session', $event)"
-        @rename-session="$emit('rename-session', $event)"
+        @rename-session="(id, title) => $emit('rename-session', id, title)"
         @toggle-collapse="$emit('toggle-collapse')"
       />
 
@@ -85,7 +85,7 @@ defineEmits<{
   (e: 'edit-agent', agent: SidebarAgent): void
   (e: 'delete-agent', agent: SidebarAgent): void
   (e: 'delete-session', item: ConversationItem): void
-  (e: 'rename-session', item: ConversationItem, newTitle: string): void
+  (e: 'rename-session', sessionId: string, newTitle: string): void
   (e: 'edit-profile'): void
   (e: 'logout'): void
   (e: 'toggle-collapse'): void

@@ -189,7 +189,7 @@ const emit = defineEmits<{
   (e: 'toggle-pin', item: ConversationItem): void
   (e: 'toggle-archive', item: ConversationItem): void
   (e: 'delete-session', item: ConversationItem): void
-  (e: 'rename-session', item: ConversationItem, newTitle: string): void
+  (e: 'rename-session', sessionId: string, newTitle: string): void
   (e: 'toggle-collapse'): void
 }>()
 
@@ -216,10 +216,7 @@ const startRename = (item: ConversationItem) => {
 
 const confirmRename = () => {
   if (renamingId.value && renamingValue.value.trim()) {
-    const item = props.filteredSessions.find(s => s.id === renamingId.value)
-    if (item) {
-      emit('rename-session', item, renamingValue.value.trim())
-    }
+    emit('rename-session', renamingId.value, renamingValue.value.trim())
   }
   cancelRename()
 }
