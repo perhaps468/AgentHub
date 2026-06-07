@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import create_access_token, CurrentUser
 from app.models.user import User
-from app.schemas.user import LoginRequest, LoginResponse
+from app.schemas.user import LoginRequest, LoginResponse, RegisterRequest
 from app.services.group_host_agent import ensure_user_group_host_agent
 
 router = APIRouter(prefix="/api/v1/user", tags=["auth"])
@@ -40,7 +40,7 @@ def login(body: LoginRequest, db: _db) -> LoginResponse:
 
 
 @router.post("/register")
-def register(body: LoginRequest, db: _db):
+def register(body: RegisterRequest, db: _db):
     existing = db.query(User).filter(User.username == body.userName).first()
     if existing is not None:
         return {"code": 409, "msg": "用户名已存在", "data": None}

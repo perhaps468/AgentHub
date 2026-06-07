@@ -219,7 +219,7 @@ class OrchestrationExecutor:
         prior_messages = (
             self.db.query(Message)
             .filter(Message.session_id == context.session_id)
-            .order_by(Message.created_at.asc())
+            .order_by(Message.created_at.asc(), Message.id.asc())
             .all()
         )
         for message in prior_messages:
@@ -536,7 +536,7 @@ class OrchestrationExecutor:
                 message
                 for message in self.db.query(Message)
                 .filter(Message.session_id == run.session_id)
-                .order_by(Message.created_at.asc())
+                .order_by(Message.created_at.asc(), Message.id.asc())
                 .all()
                 if (message.msg_metadata or {}).get("run_id") == run.id
                 and (message.msg_metadata or {}).get("is_host_completion") is True

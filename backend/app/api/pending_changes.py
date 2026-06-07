@@ -159,7 +159,7 @@ async def _push_orchestration_summary_message(
     run_messages = (
         db.query(Message)
         .filter(Message.session_id == session_id)
-        .order_by(Message.created_at.desc())
+        .order_by(Message.created_at.desc(), Message.id.desc())
         .all()
     )
     summary_message = next(

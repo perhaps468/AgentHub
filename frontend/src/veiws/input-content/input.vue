@@ -25,6 +25,7 @@
         ref="msgInputRef"
         v-model:value="localValue"
         :handlerSubmitMsg="props.handlerSubmitMsg"
+        :session-agent-options="props.sessionAgentOptions"
         :user="props.user"
         :is-at-popup="props.targetId === '1'"
         @input="updateValue"
@@ -38,7 +39,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
-import type { ComposerAgent, ComposerSubmitPayload } from '../../types/agenthub'
+import type { ComposerAgent, ComposerSubmitPayload, SessionAgentOption } from '../../types/agenthub'
 import { invite } from '../../api/file'
 import { currentTargetEventBus } from '../../utils/EventBus'
 import EventBus from '../../utils/EventBus'
@@ -76,6 +77,7 @@ const props = defineProps<{
   value?: string
   targetId?: string
   user?: object
+  sessionAgentOptions?: SessionAgentOption[]
   handlerSubmitMsg?: (payload: ComposerSubmitPayload) => void
 }>()
 

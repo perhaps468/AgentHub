@@ -1,5 +1,10 @@
 <template>
-  <BaseDialog v-model="visible" :title="isEdit ? '编辑 Agent' : '添加自建 Agent'" @confirm="confirmAdd">
+  <BaseDialog
+    v-model="visible"
+    :title="isEdit ? '编辑 Agent' : '添加自建 Agent'"
+    container-class="add-agent-dialog"
+    @confirm="confirmAdd"
+  >
     <el-form label-position="top" class="edit-profile-form">
       <el-form-item label="头像">
         <div class="avatar-picker">
@@ -36,7 +41,7 @@
       <el-form-item label="能力标签">
         <el-checkbox-group v-model="form.capabilityTags" class="tag-grid">
           <el-checkbox
-            v-for="tag in availableCapabilityTags"
+            v-for="tag in displayedCapabilityTags"
             :key="tag"
             :label="tag"
             :value="tag"
@@ -97,8 +102,6 @@ const visible = computed({
 })
 
 const availableImages = [
-  '/msg1.png',
-  '/msg6.png',
   '/msg9.png',
   '/msg7.png',
   '/msg4.png',
@@ -107,6 +110,7 @@ const availableImages = [
   '/msg5.png',
 ]
 
+const displayedCapabilityTags = computed(() => props.availableCapabilityTags.slice(0, 8))
 
 const form = reactive({
   name: '',
@@ -250,7 +254,7 @@ const confirmAdd = () => {
 
 .tag-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -276,12 +280,14 @@ const confirmAdd = () => {
 
 .avatar-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px 22px;
+  justify-items: center;
 }
 
 .avatar-option {
   position: relative;
+  width: 72%;
   aspect-ratio: 1;
   border-radius: 12px;
   overflow: hidden;
@@ -331,64 +337,8 @@ const confirmAdd = () => {
   }
 }
 
-.avatar-picker {
-  width: 100%;
+:global(.dialog-container.add-agent-dialog) {
+  width: 600px;
 }
 
-.avatar-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-}
-
-.avatar-option {
-  position: relative;
-  aspect-ratio: 1;
-  border-radius: 12px;
-  overflow: hidden;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: all 0.2s ease;
-  background: rgba(59, 130, 246, 0.05);
-
-  img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  &:hover {
-    border-color: rgba(59, 130, 246, 0.4);
-    transform: scale(1.05);
-  }
-
-  &.selected {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
-
-    .avatar-check {
-      opacity: 1;
-    }
-  }
-
-  .avatar-check {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #3b82f6;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-
-    .el-icon {
-      color: white;
-      font-size: 12px;
-    }
-  }
-}
 </style>

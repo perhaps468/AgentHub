@@ -4,16 +4,11 @@ export interface LoginResponse {
     data: {
         userId: number
         userName: string
-        email: string
+        email?: string
         avatar: string | null
         type: string
         token: string
     }
-}
-export interface CodeResponese {
-    code: number;
-    data: string;
-    msg: string;
 }
 export interface RegisterResponese {
     code: number;
@@ -23,7 +18,7 @@ export interface RegisterResponese {
 export interface UserInfo {
     userId: number
     userName: string
-    email: string
+    email?: string
     avatar: string | null
     type: string
 }

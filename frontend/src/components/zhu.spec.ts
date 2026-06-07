@@ -8,6 +8,7 @@ const {
   fetchSessionList,
   fetchSessionDetail,
   fetchMessages,
+  createSession,
   setConnectionState,
   updateTaskStatus,
   appendHumanMessage,
@@ -24,12 +25,15 @@ const {
   fetchAgentConfig,
   fetchDefaultAgent,
   fetchAgents,
+  updateAgent,
+  syncSessionTitlesForAgentRename,
   showToast,
   push,
 } = vi.hoisted(() => ({
   fetchSessionList: vi.fn(),
   fetchSessionDetail: vi.fn(),
   fetchMessages: vi.fn(),
+  createSession: vi.fn(),
   setConnectionState: vi.fn(),
   updateTaskStatus: vi.fn(),
   appendHumanMessage: vi.fn(),
@@ -46,6 +50,8 @@ const {
   fetchAgentConfig: vi.fn(),
   fetchDefaultAgent: vi.fn(),
   fetchAgents: vi.fn(),
+  updateAgent: vi.fn(),
+  syncSessionTitlesForAgentRename: vi.fn(),
   showToast: vi.fn(),
   push: vi.fn(),
 }))
@@ -58,6 +64,8 @@ const agentStore = reactive({
   fetchAgentConfig,
   fetchDefaultAgent,
   fetchAgents,
+  updateAgent,
+  syncSessionTitlesForAgentRename,
   createAgent: vi.fn(),
 })
 
@@ -71,6 +79,7 @@ const sessionStore = reactive({
   fetchSessionList,
   fetchSessionDetail,
   fetchMessages,
+  createSession,
   setConnectionState,
   updateTaskStatus,
   appendHumanMessage,
@@ -110,13 +119,14 @@ vi.mock('../store/module/useUserStore', () => ({
 }))
 
 vi.mock('../utils/ws-client', () => ({
-  wsClient: {
+  ws: {
     connect,
     disconnect,
     onStateChange,
     onReceiveMessage,
+    getConnectedSessions: vi.fn(() => []),
     manualRetry: vi.fn(),
-    sendMessage,
+    send: sendMessage,
   },
   getWsClientReconnectAttempt: () => 0,
 }))
@@ -149,6 +159,12 @@ describe('zhu', () => {
       total: 0,
       has_more: false,
     })
+    createSession.mockReset().mockResolvedValue({
+      id: 'session-created',
+      title: 'Created Session',
+      mode: 'group',
+      workspace: null,
+    })
     setConnectionState.mockReset()
     updateTaskStatus.mockReset()
     appendHumanMessage.mockReset()
@@ -176,6 +192,11 @@ describe('zhu', () => {
       capability_tags: ['瑙勫垝'],
     })
     fetchAgents.mockReset().mockResolvedValue([])
+    updateAgent.mockReset().mockResolvedValue({
+      previousAgentName: 'Old Agent',
+      updatedAgentName: 'New Agent',
+    })
+    syncSessionTitlesForAgentRename.mockReset().mockResolvedValue([])
     showToast.mockReset()
     push.mockReset()
     sessionStore.currentSessionId = 'session-1'
@@ -212,7 +233,7 @@ describe('zhu', () => {
 
   it('re-syncs pending changes after websocket reconnect succeeds', async () => {
     let stateChangeHandler: ((state: string) => void) | undefined
-    onStateChange.mockImplementation((cb) => {
+    onStateChange.mockImplementation((_sessionId, cb) => {
       stateChangeHandler = cb
       return vi.fn()
     })
@@ -237,7 +258,7 @@ describe('zhu', () => {
         stubs: {
           ChatWorkspace: {
             emits: ['send'],
-            template: '<button data-testid="send" @click="$emit(\'send\', \'hello\')">send</button>',
+            template: '<button data-testid="send" @click="$emit(\'send\', { text: \'hello\', targetAgentIds: [], selectedAgents: [], mentions: [], nodes: [{ type: \'text\', content: \'hello\' }] })">send</button>',
           },
           Search: true,
           avatar: true,
@@ -321,6 +342,193 @@ describe('zhu', () => {
     expect(dialog.props('agents')).toEqual([
       expect.objectContaining({ id: 'test' }),
     ])
+  })
+
+  it('does not fall back to the default builtin pm as a group primary agent', async () => {
+    agentStore.agent = {
+      id: 'pm_agent',
+      name: 'PM Agent',
+      capability_tags: ['pm'],
+      is_builtin: true,
+    }
+    agentStore.agents = [
+      {
+        id: 'coder-1',
+        name: 'Coder',
+        avatar: '',
+        capabilityTags: ['code'],
+        description: 'coder',
+        platform: 'custom',
+        isCustom: true,
+        role: 'Engineer',
+        model: 'qwen',
+        system_prompt: 'coder',
+      },
+    ]
+
+    const wrapper = shallowMount(Zhu, {
+      global: {
+        stubs: {
+          LeftSidebarArea: true,
+          ChatWorkspace: true,
+          PreviewPanel: true,
+          UserProfileDialog: true,
+          AddAgentDialog: true,
+          NewConversationDialog: {
+            name: 'NewConversationDialog',
+            props: ['primaryAgent', 'agents'],
+            template: '<div />',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    const dialog = wrapper.findComponent({ name: 'NewConversationDialog' })
+    expect(dialog.props('primaryAgent')).toBeNull()
+    expect(dialog.props('agents')).toEqual([
+      expect.objectContaining({ id: 'coder-1' }),
+    ])
+  })
+
+  it('filters builtin and legacy pm agents from the visible agent list', async () => {
+    agentStore.agents = [
+      {
+        id: 'pm_agent',
+        name: 'PM Agent',
+        avatar: '',
+        capabilityTags: ['pm'],
+        description: 'builtin pm',
+        platform: 'custom',
+        isCustom: false,
+        role: 'PM',
+        model: 'qwen',
+        system_prompt: 'pm',
+      },
+      {
+        id: 'primary_pm_agent',
+        name: 'Primary PM Agent',
+        avatar: '',
+        capabilityTags: ['pm'],
+        description: 'builtin primary pm',
+        platform: 'custom',
+        isCustom: false,
+        role: 'PM',
+        model: 'qwen',
+        system_prompt: 'primary',
+      },
+      {
+        id: 'group_host_user_1',
+        name: '群聊主Agent',
+        avatar: '',
+        capabilityTags: ['pm'],
+        description: 'group host',
+        platform: 'custom',
+        isCustom: true,
+        role: 'PM',
+        model: 'qwen',
+        system_prompt: 'host',
+      },
+      {
+        id: 'user_pm_agent',
+        name: 'PM Agent',
+        avatar: '',
+        capabilityTags: ['pm'],
+        description: 'legacy custom pm',
+        platform: 'custom',
+        isCustom: true,
+        role: 'PM',
+        model: 'qwen',
+        system_prompt: 'legacy',
+      },
+    ]
+
+    const wrapper = shallowMount(Zhu, {
+      global: {
+        stubs: {
+          LeftSidebarArea: {
+            name: 'LeftSidebarArea',
+            props: ['filteredAgents'],
+            template: '<div />',
+          },
+          ChatWorkspace: true,
+          PreviewPanel: true,
+          UserProfileDialog: true,
+          AddAgentDialog: true,
+          NewConversationDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const sidebar = wrapper.findComponent({ name: 'LeftSidebarArea' })
+    expect(sidebar.props('filteredAgents')).toEqual([
+      expect.objectContaining({ id: 'group_host_user_1' }),
+    ])
+  })
+
+  it('includes the group host agent in group creation payloads', async () => {
+    agentStore.agent = {
+      id: 'group_host_user_1',
+      name: 'Group Host',
+      capability_tags: ['pm'],
+    }
+    agentStore.agents = [
+      {
+        id: 'group_host_user_1',
+        name: 'Group Host',
+        avatar: '',
+        capabilityTags: ['pm'],
+        description: 'group host',
+        platform: 'custom',
+        isCustom: true,
+        role: 'PM',
+        model: 'qwen',
+        system_prompt: 'host',
+      },
+      {
+        id: 'coder-1',
+        name: 'Coder',
+        avatar: '',
+        capabilityTags: ['code'],
+        description: 'coder',
+        platform: 'custom',
+        isCustom: true,
+        role: 'Engineer',
+        model: 'qwen',
+        system_prompt: 'coder',
+      },
+    ]
+
+    const wrapper = shallowMount(Zhu, {
+      global: {
+        stubs: {
+          LeftSidebarArea: true,
+          ChatWorkspace: true,
+          PreviewPanel: true,
+          UserProfileDialog: true,
+          AddAgentDialog: true,
+          NewConversationDialog: {
+            name: 'NewConversationDialog',
+            emits: ['confirm'],
+            template: '<button data-testid="confirm-group" @click="$emit(\'confirm\', { mode: \'group\', title: \'Group\', participantAgentIds: [\'coder-1\'], workspace_id: \'ws-1\' })">create</button>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="confirm-group"]').trigger('click')
+    await flushPromises()
+
+    expect(createSession).toHaveBeenCalledWith({
+      owner_id: 'dev_user',
+      title: 'Group',
+      mode: 'group',
+      workspace_id: 'ws-1',
+      agent_id: undefined,
+      participant_agent_ids: ['group_host_user_1', 'coder-1'],
+    })
   })
 
   it('keeps parallel task completions as separate messages when message_id is missing', async () => {
@@ -424,5 +632,72 @@ describe('zhu', () => {
       }),
     )
     expect(fetchMessages).not.toHaveBeenCalled()
+  })
+
+  it('preserves current session members when syncing renamed agent session titles', async () => {
+    sessionStore.sessionList = [
+      {
+        id: 'session-1',
+        title: 'Old Agent',
+        mode: 'group',
+      },
+    ]
+    sessionStore.currentSession = {
+      id: 'session-1',
+      title: 'Old Agent',
+      mode: 'group',
+      members: [
+        {
+          id: 'member-1',
+          session_id: 'session-1',
+          member_type: 'agent',
+          member_id: 'agent-1',
+          is_primary: true,
+          status: 'online',
+          agent_name: 'Old Agent',
+          agent_avatar: null,
+          agent_role: 'PM',
+          created_at: '2026-06-06T00:00:00Z',
+        },
+      ],
+    }
+    syncSessionTitlesForAgentRename.mockResolvedValue([
+      {
+        id: 'session-1',
+        title: 'New Agent',
+        mode: 'group',
+      },
+    ])
+
+    const wrapper = shallowMount(Zhu, {
+      global: {
+        stubs: {
+          LeftSidebarArea: true,
+          ChatWorkspace: true,
+          PreviewPanel: true,
+          UserProfileDialog: true,
+          AddAgentDialog: {
+            emits: ['confirm-edit', 'update:modelValue'],
+            template: '<button data-testid="confirm-edit" @click="$emit(\'confirm-edit\', { id: \'agent-1\', name: \'New Agent\', model: \'qwen\', platform: \'custom\', description: \'\', avatar: \'\', capabilityTags: [] })">edit</button>',
+          },
+          NewConversationDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    await wrapper.findAll('[data-testid="confirm-edit"]')[1].trigger('click')
+    await flushPromises()
+
+    expect(sessionStore.currentSession).toMatchObject({
+      id: 'session-1',
+      title: 'New Agent',
+    })
+    expect(sessionStore.currentSession.members).toEqual([
+      expect.objectContaining({
+        member_id: 'agent-1',
+        agent_name: 'Old Agent',
+      }),
+    ])
   })
 })
