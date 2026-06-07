@@ -1,57 +1,29 @@
 <template>
   <span v-if="isArrayContents" class="text-msg">
-    <template v-for="item in contents" :key="item.id">
+    <template v-for="item in (contents as MessageContentItem[])" :key="item.id">
       <span v-if="item.type === TextContentType.At" class="text-msg-at">
         {{ `@${getUserInfo(item.content).name}` }}
       </span>
       <span
         v-else-if="item.type === TextContentType.Text"
-        v-html="parseMarkdown(item.content)"
+        v-html="parseMarkdown(typeof item.content === 'string' ? item.content : '')"
       ></span>
     </template>
   </span>
   <div v-else-if="hasDiffPreview" class="diff-wrapper">
+    <div v-if="nonDiffContent && parsedDiffs.length > 0" v-html="parseMarkdown(nonDiffContent)" class="non-diff-content"></div>
     <DiffPreview
-      v-for="diff in parsedDiffs"
+      v-for="diff in normalizedDiffs"
       :key="diff.change_id"
       :change="diff"
+      :contentHtml="parsedDiffs.length > 0 ? '' : parseMarkdown(displayContent)"
       @confirm="handleConfirmDiff"
       @cancel="handleCancelDiff"
       @preview="handlePreviewDiff"
     />
-    <div v-if="nonDiffContent" v-html="parseMarkdown(nonDiffContent)"></div>
   </div>
   <div v-else>
     <div v-html="parseMarkdown(displayContent)"></div>
-    <div v-if="pendingReviewInfo" class="pending-review-card">
-      <div class="pending-review-meta">
-        <div class="pending-review-title">待确认写入</div>
-        <div class="pending-review-file">{{ pendingReviewInfo.fileName }}</div>
-        <div class="pending-review-id">变更 ID: {{ pendingReviewInfo.changeId }}</div>
-      </div>
-      <div class="pending-review-actions">
-        <button
-          v-if="pendingReviewStatus === 'pending_confirmation'"
-          class="pending-review-confirm"
-          type="button"
-          :disabled="pendingReviewLoading"
-          @click.stop.prevent="handleConfirmPendingReview"
-        >
-          {{ pendingReviewLoading ? '应用中...' : '确认写入' }}
-        </button>
-        <button
-          v-if="pendingReviewStatus === 'pending_confirmation'"
-          class="pending-review-cancel"
-          type="button"
-          @click.stop.prevent="handleCancelPendingReview"
-        >
-          取消
-        </button>
-        <span v-else-if="pendingReviewStatus === 'applied'" class="pending-review-status success">已写入</span>
-        <span v-else-if="pendingReviewStatus === 'rejected'" class="pending-review-status muted">已取消</span>
-        <span v-else-if="pendingReviewStatus === 'failed'" class="pending-review-status error">写入失败</span>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -64,7 +36,7 @@ import { applyPendingChange, rejectPendingChange } from '@/api/modules/pendingCh
 import { useSessionStore } from '@/store/module/useSessionStore'
 import { TextContentType } from '../../types/textContentType'
 import { normalizeRuntimeTextForDisplay, accumulateAndFilterStreaming, isLowSignalChunk } from '../../utils/runtime-text'
-import type { PendingChange } from '../../types/agenthub'
+import type { PendingChange, PendingChangeStatus } from '../../types/agenthub'
 import DiffPreview from './DiffPreview.vue'
 
 marked.setOptions({
@@ -72,13 +44,15 @@ marked.setOptions({
   gfm: true,
 })
 
-const parseMarkdown = (text) => {
+const parseMarkdown = (text?: string): string => {
   if (!text) return ''
 
   try {
     const normalizedText = normalizeRuntimeTextForDisplay(text)
     const rawHtml = marked.parse(normalizedText)
-    return DOMPurify.sanitize(rawHtml)
+    return typeof rawHtml === 'string'
+      ? DOMPurify.sanitize(rawHtml)
+      : normalizedText
   } catch {
     return normalizeRuntimeTextForDisplay(text)
   }
@@ -92,7 +66,7 @@ const props = defineProps<{
   right?: boolean
 }>()
 
-const contents = ref()
+const contents = ref<MessageContentItem[] | string>()
 const _rawMessage = ref('')
 const pendingReviewLoading = ref(false)
 const sessionStore = useSessionStore()
@@ -101,14 +75,14 @@ const sessionStore = useSessionStore()
  * Parse diff content from message text.
  * Detects unified diff format in the message and extracts pending change info.
  */
-interface ParsedDiff {
-  change_id: string
-  operation: 'create' | 'update' | 'delete'
-  path: string
-  unified_diff: string
-  status: 'pending_confirmation' | 'applied' | 'rejected'
-  stream_id?: string
-  message_id?: string
+type MessageContentItem = {
+  id?: string | number
+  type: (typeof TextContentType)[keyof typeof TextContentType]
+  content: string | Record<string, unknown>
+}
+
+interface ParsedDiff extends PendingChange {
+  status: PendingChangeStatus
 }
 
 const parseDiffsFromText = (text: string): ParsedDiff[] => {
@@ -119,7 +93,7 @@ const parseDiffsFromText = (text: string): ParsedDiff[] => {
   let match
 
   while ((match = diffPattern.exec(text)) !== null) {
-    const operation = match[1].toLowerCase() as 'create' | 'update' | 'delete'
+    const operation = match[1].toLowerCase() as PendingChange['operation']
     const diffContent = match[2].trim()
 
     // Extract file path from diff (looks for +++ b/path pattern)
@@ -135,6 +109,7 @@ const parseDiffsFromText = (text: string): ParsedDiff[] => {
 
     diffs.push({
       change_id,
+      session_id: sessionStore.currentSessionId || '',
       operation,
       path,
       unified_diff: diffContent,
@@ -145,19 +120,18 @@ const parseDiffsFromText = (text: string): ParsedDiff[] => {
   return diffs
 }
 
-// Check if message has diff content
+// Check if message should render a diff preview card
 const hasDiffPreview = computed(() => {
   if (props.msg?.pending_diffs?.length) return true
-  const text = props.msg?.message || ''
-  return /\[(CREATE|UPDATE|DELETE)\]/i.test(text) && /(\+\+\+ b\/|--- \/dev\/null)/.test(text)
+  return !!pendingReviewInfo.value
 })
-
 // Parse diffs from props or text
 const parsedDiffs = computed((): ParsedDiff[] => {
   // First check for explicit pending_diffs
   if (props.msg?.pending_diffs?.length) {
     return props.msg.pending_diffs.map(d => ({
       change_id: d.change_id,
+      session_id: d.session_id || sessionStore.currentSessionId || '',
       operation: d.operation,
       path: d.path,
       unified_diff: d.unified_diff,
@@ -191,8 +165,8 @@ const displayContent = computed(() => {
   const raw = _rawMessage.value
   if (!raw) return ''
 
-  // If we have diffs, don't show the raw diff text
-  if (hasDiffPreview.value) return ''
+  // If we have real diffs, don't show the raw diff text
+  if (parsedDiffs.value.length > 0) return ''
 
   const chunks = Array.from(raw)
   const filtered = chunks.reduce((acc, chunk) => {
@@ -242,15 +216,32 @@ const pendingReviewInfo = computed(() => {
   }
 })
 
-const pendingReviewStatus = ref<PendingChange['status']>('pending_confirmation')
+const pendingReviewStatus = ref<PendingChangeStatus>('pending_confirmation')
 
-// Sync local pendingReviewStatus with stream state (handles page refresh / reconnect)
+const normalizedDiffs = computed<PendingChange[]>(() => {
+  if (parsedDiffs.value.length > 0) {
+    return parsedDiffs.value
+  }
+
+  const info = pendingReviewInfo.value
+  if (!info) return []
+
+  return [{
+    change_id: info.changeId,
+    session_id: sessionStore.currentSessionId || '',
+    operation: 'update',
+    path: info.fileName,
+    unified_diff: '',
+    status: pendingReviewStatus.value,
+  }]
+})
+
 watch(
   () => {
     const changeId = pendingReviewInfo.value?.changeId
     if (!changeId) return 'pending_confirmation'
     // Defensive: ensure streamState and pendingChanges are available
-    const pendingMap = sessionStore?.streamState?.pendingChanges?.value
+    const pendingMap = sessionStore?.streamState?.pendingChanges
     if (!pendingMap) return 'pending_confirmation'
     const storedStatus = pendingMap.get(changeId)?.status
     // If not in pendingChanges map, default to pending_confirmation
@@ -270,7 +261,7 @@ watch(
   (msg) => {
     _rawMessage.value = ''
     try {
-      contents.value = JSON.parse(msg?.message).map((item) => {
+      contents.value = JSON.parse(msg?.message || '[]').map((item: MessageContentItem) => {
         if (typeof item.content === 'string') {
           try {
             item.content = JSON.parse(item.content)
@@ -291,14 +282,14 @@ watch(
 
 const isArrayContents = computed(() => Array.isArray(contents.value))
 
-const getUserInfo = (content) => {
+const getUserInfo = (content: unknown) => {
   try {
-    if (typeof content === 'object') {
-      return content
+    if (content && typeof content === 'object') {
+      return content as { name?: string }
     }
-    return JSON.parse(content)
+    return JSON.parse(String(content)) as { name?: string }
   } catch {
-    return content
+    return { name: String(content ?? '') }
   }
 }
 
@@ -336,6 +327,22 @@ const handleCancelDiff = async (changeId: string) => {
 
 // M6: Handle preview button click - set preview diff state
 const handlePreviewDiff = (change: PendingChange) => {
+  sessionStore.streamState?.setPreviewDiff(change)
+}
+
+const handlePreviewPendingReview = () => {
+  const info = pendingReviewInfo.value
+  if (!info) return
+
+  const change: PendingChange = {
+    change_id: info.changeId,
+    session_id: sessionStore.currentSessionId || '',
+    operation: 'update',
+    path: info.fileName,
+    unified_diff: _rawMessage.value || displayContent.value || '',
+    status: pendingReviewStatus.value,
+  }
+
   sessionStore.streamState?.setPreviewDiff(change)
 }
 
