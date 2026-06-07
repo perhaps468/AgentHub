@@ -2191,6 +2191,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             target_agent_ids = [aid for aid in payload.get("target_agent_ids", []) if isinstance(aid, str)]
             if not target_agent_ids and mentions:
                 target_agent_ids = [item["agent_id"] for item in mentions if item.get("agent_id")]
+            reference = payload.get("reference")
             if session.mode == "group" and target_agent_ids:
                 if not validate_target_agents_in_session(db, session_id, target_agent_ids):
                     await _send_error(
@@ -2201,6 +2202,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         agent_role=agent_name,
                     )
                     continue
+            msg_metadata = {
+                "mentioned_agents": mentions,
+                "target_agent_ids": target_agent_ids,
+            }
+            if reference:
+                msg_metadata["reference"] = reference
             human_message = Message(
                 session_id=session_id,
                 sender_type="human",
@@ -2209,10 +2216,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 type="text",
                 status="completed",
                 payload={"text": content},
-                metadata={
-                    "mentioned_agents": mentions,
-                    "target_agent_ids": target_agent_ids,
-                },
+                metadata=msg_metadata,
             )
             db.add(human_message)
             session.updated_at = utcnow()

@@ -23,7 +23,15 @@
               <span class="streaming-dot"></span>
             </div>
           </div>
-          <msg_content :right="isOwn" :msg="props.msg" />
+          <div class="msg-bubble-wrap">
+            <msg_content :right="isOwn" :msg="props.msg" />
+            <button class="quote-btn" type="button" aria-label="引用" @click="handleQuote">
+              <span class="quote-btn-tooltip">引用</span>
+              <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 6h5M4 9h3M10 6h5M10 9h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </template>
@@ -35,6 +43,7 @@ import { computed } from 'vue'
 import { MessageSource } from '../../types/messageSource'
 import { useAgentStore } from '../../store/module/useAgentStore'
 import { useUserInfoStore } from '../../store/module/useUserStore'
+import { useChatMsgStore } from '../../store/module/useChatMsgStore'
 import Avatar from '../img/avatar.vue'
 import msg_content from '../message-content/msg_content .vue'
 import TimeMsg from '../message-content/TimeMsg.vue'
@@ -46,6 +55,7 @@ const props = defineProps({
 
 const userStore = useUserInfoStore()
 const agentStore = useAgentStore()
+const chatMsgStore = useChatMsgStore()
 const isOwn = computed(() => props.msg?.fromId === userStore.userId)
 const isGroup = computed(() => props.msg?.source === MessageSource.Group)
 const displayUser = computed(() => props.user || props.msg?.fromInfo)
@@ -64,6 +74,16 @@ const displayAvatarStyle = computed(() => {
 const roleLabel = computed(() => {
   return agentStore.agent?.role ?? '成员'
 })
+
+const handleQuote = () => {
+  if (!props.msg) return
+  chatMsgStore.setReferenceMsg(props.msg)
+  const composer = document.querySelector('.chat-input-area .msg-input-wrap textarea')
+  if (composer) {
+    composer.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setTimeout(() => composer.focus(), 300)
+  }
+}
 </script>
 
 <style scoped>
@@ -178,6 +198,78 @@ const roleLabel = computed(() => {
   border-radius: 50%;
   background: rgb(var(--primary-color));
   animation: pulse 1.5s ease-in-out infinite;
+}
+
+.msg-bubble-wrap {
+  position: relative;
+}
+
+.msg-bubble-wrap:hover .quote-btn {
+  opacity: 1;
+}
+
+.quote-btn {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(0, 0, 0, 0.06);
+  color: rgb(var(--text-secondary));
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.is-own .quote-btn {
+  right: 0;
+  left: auto;
+}
+
+.quote-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.quote-btn:hover {
+  background: rgba(var(--primary-color), 0.12);
+  color: rgb(var(--primary-color));
+}
+
+.quote-btn-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 10;
+}
+
+.quote-btn-tooltip::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: rgba(0, 0, 0, 0.75);
+}
+
+.quote-btn:hover .quote-btn-tooltip {
+  opacity: 1;
 }
 
 @keyframes pulse {

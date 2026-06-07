@@ -130,6 +130,11 @@ class WsClient {
     content: string
     targetAgentIds?: string[]
     mentions?: ComposerMention[]
+    reference?: {
+      msg_id: string
+      content: string
+      sender: string
+    }
   }): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.warn('[WsClient] Cannot send — not connected')
@@ -147,6 +152,9 @@ class WsClient {
     }
     if (payload.mentions && payload.mentions.length > 0) {
       out.mentions = payload.mentions
+    }
+    if (payload.reference) {
+      out.reference = payload.reference
     }
 
     try {
@@ -342,7 +350,7 @@ class MultiWsManager {
 
   send(
     sessionId: string,
-    payload: { content: string; targetAgentIds?: string[]; mentions?: ComposerMention[] },
+    payload: { content: string; targetAgentIds?: string[]; mentions?: ComposerMention[]; reference?: { msg_id: string; content: string; sender: string } },
   ): boolean {
     const client = this.clients.get(sessionId)
     if (!client) {
@@ -406,7 +414,7 @@ const _manager = new MultiWsManager()
 export const ws = {
   connect: (sessionId: string) => _manager.connect(sessionId),
   disconnect: (sessionId?: string) => _manager.disconnect(sessionId),
-  send: (sessionId: string, payload: { content: string; targetAgentIds?: string[]; mentions?: ComposerMention[] }) =>
+  send: (sessionId: string, payload: { content: string; targetAgentIds?: string[]; mentions?: ComposerMention[]; reference?: { msg_id: string; content: string; sender: string } }) =>
     _manager.send(sessionId, payload),
   getState: (sessionId: string) => _manager.getState(sessionId),
   getStatus: (sessionId: string) => _manager.getStatus(sessionId),

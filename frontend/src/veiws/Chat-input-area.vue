@@ -6,8 +6,8 @@
           <path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <div class="ref-content">
-          <span class="reference-label">{{ referenceMsg.from }}</span>
-          <span class="reference-text">{{ referenceMsg.text }}</span>
+          <span class="reference-label">{{ referenceMsg.fromInfo?.name || '未知' }}</span>
+          <span class="reference-text">{{ referenceMsg.message }}</span>
         </div>
       </div>
       <button class="reference-clear" type="button" aria-label="取消引用" @click="clearRef">
@@ -70,6 +70,7 @@ import { computed, ref } from 'vue'
 import type { ComposerAgent, ComposerSubmitPayload, SessionAgentOption } from '../types/agenthub'
 import emojis from '../utils/emoji/emoji'
 import Input from './input-content/input.vue'
+import { useChatMsgStore } from '../store/module/useChatMsgStore'
 
 const props = defineProps<{
   sessionId: string
@@ -82,16 +83,18 @@ const emit = defineEmits<{
   'selection-change': [agents: ComposerAgent[]]
 }>()
 
+const chatMsgStore = useChatMsgStore()
 const msgContent = ref('')
 const showEmoji = ref(false)
-const referenceMsg = ref<{ from: string; text: string } | null>(null)
 const msgInputRef = ref<any>(null)
 const selectedAgents = ref<ComposerAgent[]>([])
+
+const referenceMsg = computed(() => chatMsgStore.referenceMsg)
 
 const canSend = computed(() => msgContent.value.toString().trim().length > 0)
 
 const clearRef = () => {
-  referenceMsg.value = null
+  chatMsgStore.setReferenceMsg(null as any)
 }
 
 const handleComposerPayload = (payload: ComposerSubmitPayload) => {
@@ -130,7 +133,7 @@ const handlerSubmitMsg = (payload?: ComposerSubmitPayload) => {
   msgContent.value = ''
   clearComposerSelection()
   msgInputRef.value?.clear?.()
-  referenceMsg.value = null
+  chatMsgStore.setReferenceMsg(null as any)
 }
 
 const insertEmoji = (emoji: string) => {
