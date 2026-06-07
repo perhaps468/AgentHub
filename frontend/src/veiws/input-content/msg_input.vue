@@ -33,6 +33,19 @@
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </span>
+          <span class="tool-ripple"></span>
+        </button>
+        
+        <!-- Send button -->
+        <button
+          type="button"
+          class="send-btn"
+          :class="{ active: hasContent }"
+          :disabled="!hasContent"
+          aria-label="发送消息"
+          @click="handleSendClick"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3125 0.981587C8.66767 1.0545 8.97902 1.20558 9.2627 1.43374C9.48724 1.61438 9.73029 1.85933 9.97949 2.10854L14.707 6.83608L13.293 8.25014L9 3.95717V15.0431H7V3.95717L2.70703 8.25014L1.29297 6.83608L6.02051 2.10854C6.26971 1.85933 6.51277 1.61438 6.7373 1.43374C6.97662 1.24126 7.28445 1.04542 7.6875 0.981587C7.8973 0.94841 8.1031 0.956564 8.3125 0.981587Z" fill="currentColor"></path></svg>
         </button>
       </div>
     </div>
@@ -601,52 +614,22 @@ function handleFileSelect(event: Event) {
   if (files && files.length > 0) {
     emit('file-selected', Array.from(files))
   }
-  target.value = ''
+  // 清空 input 以便再次选择相同文件
+  event.target.value = ''
 }
 
-watch(
-  () => inputValue.value,
-  (value) => {
-    if (!inputRef.value) return
-    const currentText = getStructuredValue().text
-    if (!value) {
-      clear()
-      return
-    }
-    if (nodes.value.length === 0 && currentText !== value) {
-      inputRef.value.textContent = value
-      syncFromDom()
-    }
-  },
-)
-
-watch(
-  () => filteredSessionAgentOptions.value.length,
-  (length) => {
-    if (!showMentionPanel.value) return
-    if (length === 0) {
-      closeMentionPanel()
-      return
-    }
-    if (selectedMentionIndex.value >= length) {
-      selectedMentionIndex.value = 0
-    }
-    void nextTick().then(updateMentionPanelPosition)
-  },
-)
-
-defineExpose({
-  getStructuredValue,
-  insertAgentChip,
-  removeAgentChip,
-  clear,
-  insertEmoji,
-  openAgentPicker: () => {
-    mentionKeyword.value = ''
-    selectedMentionIndex.value = 0
-    void openMentionPanel()
-  },
-})
+// 发送按钮点击处理
+const handleSendClick = () => {
+  if (!hasContent.value) return
+  // 构建消息数据
+  const messageData = buildMessageData()
+  emit('send', messageData)
+  // 清空输入框
+  inputValue.value = ''
+  inputRef.value.innerHTML = ''
+  nodeList = []
+  hasContent.value = false
+}
 </script>
 
 <style scoped lang="less">
@@ -655,87 +638,168 @@ defineExpose({
   width: 100%;
 }
 
-.input-block {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  background: rgb(var(--surface-color));
-  border-radius: var(--radius-lg);
-  border: 1px solid rgb(var(--border-color));
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  .input-block {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background: rgb(var(--surface-color));
+    border-radius: var(--radius-lg);
+    border: 1px solid rgb(var(--border-color));
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    &:focus-within {
+      border-color: rgba(0, 112, 243, 0.4);
+      box-shadow:
+        0 0 0 3px rgba(0, 112, 243, 0.08),
+        0 4px 12px rgba(0, 112, 243, 0.1);
+          }
+        }
 
-  &:focus-within {
-    border-color: rgba(0, 112, 243, 0.4);
-    box-shadow:
-      0 0 0 3px rgba(0, 112, 243, 0.08),
-      0 4px 12px rgba(0, 112, 243, 0.1);
+  .msg-input {
+    flex: 1;
+    min-height: 40px;
+    max-height: 140px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-left: 10px;
+    border-radius: var(--radius-md);
+    border: none;
+    background: transparent;
+    color: rgb(var(--text-color));
+    font-size: 14px;
+    line-height: 1.6;
+    outline: none;
+    resize: none;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    word-break: break-all;
+    transition: all 0.15s ease;
+    cursor: text;
   }
-}
 
-.msg-input {
-  flex: 1;
-  min-height: 40px;
-  max-height: 140px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 10px 10px;
-  border-radius: var(--radius-md);
-  border: none;
-  background: transparent;
-  color: rgb(var(--text-color));
-  font-size: 14px;
-  line-height: 1.6;
-  outline: none;
-  resize: none;
-  white-space: pre-wrap;
-  word-break: break-word;
-  cursor: text;
+  /* Toolbar */
+  .composer-toolbar {
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+    flex-shrink: 0;
+    padding: 4px 2px;
+  }
 
-  &.is-empty::before {
-    content: attr(data-placeholder);
+  .tool-btn {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin-top: 4px;
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
     color: rgb(var(--text-muted));
-    pointer-events: none;
-  }
-}
-
-.composer-toolbar {
-  display: flex;
-  flex-direction: row;
-  gap: 2px;
-  flex-shrink: 0;
-  padding: 4px 2px;
-}
-
-.tool-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 20px;
-  color: rgb(var(--text-muted));
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    color: rgb(var(--primary-color));
-    background: rgba(0, 112, 243, 0.08);
-  }
-}
 
 .tool-icon {
   display: flex;
   align-items: center;
   justify-content: center;
 
-  svg {
-    width: 18px;
-    height: 18px;
-  }
-}
+      svg {
+        width: 30px;
+        height: 30px;
+        transition: transform 0.2s ease;
+      }
+    }
 
+    .tool-ripple {
+      position: absolute;
+      inset: 0;
+      border-radius: 10px;
+      opacity: 0;
+      transform: scale(0.8);
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 10px;
+      opacity: 0;
+      transform: scale(0);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    &:hover {
+      color: rgb(var(--primary-color));
+      border: 1px solid rgba(0, 112, 243, 0.4);
+      transform: translateY(-1px);
+
+      .tool-icon svg {
+        transform: scale(1.1);
+      }
+
+      .tool-ripple {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      &::before {
+        opacity: 0.5;
+        transform: scale(1);
+      }
+    }
+
+    &:active {
+      transform: translateY(0) scale(0.96);
+
+      .tool-icon svg {
+        transform: scale(0.95);
+      }
+    }
+  }
+
+  /* Send button */
+  .send-btn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
+    background: rgb(var(--text-muted));
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    margin: 4px;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    &.active {
+      background: rgb(var(--primary-color));
+    }
+
+    &:hover {
+      &.active {
+        background: rgb(var(--primary-strong));
+        transform: scale(1.05);
+      }
+    }
+
+    &:active {
+      &.active {
+        transform: scale(0.95);
+      }
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+  }
+
+/* 隐藏的文件上传 input */
 .file-input-hidden {
   position: absolute;
   width: 0;
@@ -746,8 +810,9 @@ defineExpose({
 
 .emoji-panel {
   position: fixed;
-  right: 10%;
-  bottom: 100px;
+  right: -5%;
+  bottom: 90px;
+  transform: translateX(-50%);
   z-index: 9999;
   width: 340px;
   max-height: 320px;

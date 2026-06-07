@@ -11,12 +11,31 @@
       <pre class="diff-code"><code>{{ unifiedDiff }}</code></pre>
     </div>
 
+    <!-- 科技风按钮区域 -->
     <div v-if="status === 'pending_confirmation'" class="diff-actions">
-      <button class="btn-confirm" type="button" :disabled="isLoading" @click="handleConfirm">
-        {{ isLoading ? '应用中...' : '确认写入' }}
-      </button>
-      <button class="btn-cancel" type="button" @click="handleCancel">取消</button>
-      <button class="btn-preview" type="button" @click="handlePreview">预览</button>
+      <div class="action-left">
+        <button class="btn btn-confirm" type="button" :disabled="isLoading" @click="handleConfirm">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12l5 5L20 7"/>
+          </svg>
+          {{ isLoading ? '应用中...' : '确认写入' }}
+        </button>
+      </div>
+      <div class="action-right">
+        <button class="btn btn-preview" type="button" @click="handlePreview" title="预览">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          预览
+        </button>
+        <button class="btn btn-cancel" type="button" @click="handleCancel" title="取消">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+          取消
+        </button>
+      </div>
     </div>
 
     <div v-else-if="status === 'applied'" class="diff-result success">
@@ -79,8 +98,6 @@ const handleConfirm = async () => {
   if (isLoading.value || isConfirmed.value) return
   isLoading.value = true
   emit('confirm', props.change.change_id)
-  // Don't reset isLoading — it will naturally hide when status changes
-  // from 'pending_confirmation' to 'applied'/'failed'.
 }
 
 const handleCancel = () => {
@@ -97,19 +114,19 @@ const handlePreview = () => {
 .diff-preview {
   margin: 8px 0;
   overflow: hidden;
-  border: 1px solid rgb(var(--border-color));
+  border: 1px solid rgba(var(--primary-color), 0.2);
   border-radius: 12px;
   background: rgb(var(--surface-color));
 }
 
 .diff-preview.is-confirmed {
-  border-color: rgba(34, 197, 94, 0.5);
-  background: rgba(34, 197, 94, 0.05);
+  border-color: rgba(0, 212, 255, 0.3);
+  background: rgba(0, 212, 255, 0.03);
 }
 
 .diff-preview.is-rejected {
-  border-color: rgba(239, 68, 68, 0.5);
-  background: rgba(239, 68, 68, 0.05);
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.03);
 }
 
 .diff-header {
@@ -130,8 +147,8 @@ const handlePreview = () => {
 }
 
 .diff-operation.create {
-  background: rgba(34, 197, 94, 0.15);
-  color: rgb(34, 197, 94);
+  background: rgba(16, 185, 129, 0.15);
+  color: rgb(16, 185, 129);
 }
 
 .diff-operation.update {
@@ -157,6 +174,27 @@ const handlePreview = () => {
   max-height: 300px;
   overflow: auto;
   padding: 12px 14px;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+  }
+
+   /* 滚动条滑块（蓝色） */
+   &::-webkit-scrollbar-thumb {
+    background:#7fabf0;       /* 明亮的蓝色 */
+    border-radius: 3px;
+  }
+
+  /* 滑块 hover 效果 */
+  &::-webkit-scrollbar-thumb:hover {
+    background: #2563eb;       /* 深一点的蓝 */
+  }
 }
 
 .diff-code {
@@ -169,29 +207,92 @@ const handlePreview = () => {
   word-break: break-all;
 }
 
+/* ========== 科技风按钮 ========== */
 .diff-actions {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 10px;
   padding: 12px 14px;
   border-top: 1px solid rgb(var(--border-color));
-  background: rgba(var(--surface-secondary), 0.3);
+  position: relative;
 }
 
-.btn-confirm {
+.action-left {
   flex: 1;
-  padding: 8px 16px;
-  border: none;
+}
+
+.action-right {
+  display: flex;
+  gap: 10px;
+}
+
+
+.btn {
   border-radius: 8px;
-  background: rgb(var(--primary-color));
-  color: white;
-  font-size: 13px;
-  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  font-family: inherit;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* 确认按钮占满左侧 */
+.action-left .btn {
+  flex: 1;
+  max-width: 200px;
+}
+
+.btn-icon {
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between; 
+  align-items: center; 
+}
+
+/* 光效扫过动效 */
+.btn-confirm::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(15, 15, 15, 0.08),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.btn:hover::before {
+  left: 100%;
+}
+
+/* 主按钮 - 渐变发光 */
+.btn-confirm {
+  border: none;
+  padding: 10px 16px;
+  background:  rgb(var(--primary-color));
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(0, 150, 255, 0.2);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .btn-confirm:hover:not(:disabled) {
-  filter: brightness(1.1);
+  background-color: rgba(0, 150, 255, 0.8);;
+  transform: translateY(-2px);
+}
+
+.btn-confirm:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .btn-confirm:disabled {
@@ -199,59 +300,64 @@ const handlePreview = () => {
   opacity: 0.6;
 }
 
+/* 取消按钮 - 毛玻璃描边 */
 .btn-cancel {
-  padding: 8px 16px;
-  border: 1px solid rgb(var(--border-color));
-  border-radius: 8px;
-  background: transparent;
-  color: rgb(var(--text-secondary));
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  color:  #111111;
 }
-
 .btn-cancel:hover {
-  border-color: rgb(var(--text-muted));
-  color: rgb(var(--text-color));
+  color: #fa5a5a;
+  
 }
 
+
+/* 预览按钮 - 科技蓝边框 */
 .btn-preview {
-  padding: 8px 16px;
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  border-radius: 8px;
-  background: rgba(59, 130, 246, 0.08);
-  color: rgb(59, 130, 246);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  color:  #111111;
 }
-
 .btn-preview:hover {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: rgba(59, 130, 246, 0.5);
+  color:  #7fabf0;
 }
 
+
+/* ========== 状态提示条 ========== */
 .diff-result {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: 10px;
+  padding: 12px 14px;
   font-size: 13px;
   font-weight: 500;
+  border-top: 1px solid rgba(0, 212, 255, 0.08);
 }
 
 .diff-result.success {
-  color: rgb(34, 197, 94);
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.05);
+  border-top-color: rgba(16, 185, 129, 0.15);
 }
 
 .diff-result.error {
-  color: rgb(239, 68, 68);
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.05);
+  border-top-color: rgba(248, 113, 113, 0.15);
 }
 
 .result-icon {
-  font-size: 16px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
   font-weight: 700;
+}
+
+.diff-result.success .result-icon {
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.diff-result.error .result-icon {
+  background: rgba(248, 113, 113, 0.15);
 }
 </style>
