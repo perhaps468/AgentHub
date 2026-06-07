@@ -1,166 +1,157 @@
 # AgentHub
 
-AgentHub 是一个 IM 聊天式多 Agent 协作平台。当前实现 P1-1 阶段：单 Provider（千问 OpenAI 兼容接口）+ 单内置 PM Agent + WebSocket 真实消息链路。
+AgentHub 是一个面向 AI 协作场景设计的 IM 式多 Agent 协作平台。它尝试把复杂的 Agent 调度、任务拆解、上下文承接与产物交付，收敛到用户最熟悉的聊天式交互中: 用户可以像使用即时通讯工具一样新建会话、切换会话、并行推进多个任务，也可以在同一会话里组织多个 Agent 协同完成复杂工作。项目当前默认接入阿里云百炼的 OpenAI-compatible 接口，围绕统一适配层设计，后续可平滑扩展到更多主流模型与 Agent 平台。
 
-## 目录职责
+## 项目亮点
 
-- `frontend`: Vue + Vite 前端应用。
-- `backend`: FastAPI 后端服务，提供会话、消息历史、WebSocket 真实 Agent 消息和 Agent 身份接口。
-- `shared`: 前后端共享类型和协议定义。
-- `openspec`: 产品规划、阶段说明和变更文档。
+- IM 式多 Agent 协作体验: 仿照即时通讯聊天形式打造多 Agent 操作界面，以独立会话承载不同任务，支持多会话并行运行，大幅降低 AI 复杂工作流的使用与理解门槛。
+- 实时通信：基于 WebSocket 搭建专属实时消息链路，内置连接校验、心跳保活机制，保障会话内消息收发稳定、低延迟。
+- 多会话并行: 同时开启多个对话窗口，分别与不同 Agent 交流不同任务，形成类似 IM 多聊天窗口的并行工作体验。
+- 群聊化协作思路: 采用调度中心 + 多 Agent 群聊协作架构，可将复杂需求自动拆分为多项子任务，并分发给对应角色 Agent 协同处理，适配各类复杂工作场景。
+- 上下文连续与多轮迭代: 每个会话都保留独立消息历史，使 Agent 可以基于上下文持续理解用户意图，支撑多轮追问、补充与修改。
+- 产物内联: Agent 的回复不仅限于文本，还可以内联展示代码 Diff、网页预览卡片、文件附件等富媒体产物，用户可直接在聊天流中预览与操作。
+- 统一接入主流 Agent 平台: 通过统一适配器层屏蔽不同 API 的调用差异，并逐步支持用户自建 Agent 与自定义能力配置。
 
-## 后端环境变量
+## 技术栈
 
-复制 `backend/.env.example` 为 `backend/.env` 后按本地环境修改。真实密钥只放本地 `.env`，不要提交到 GitHub。
+- 前端: Vue 3、TypeScript、Vite
+- 后端: FastAPI、Python、MySQL、asyncio
+- 实时通信: WebSocket
 
-```bash
-# Database
-DATABASE_URL=mysql+pymysql://root:password@127.0.0.1:3306/agenthub
+## 目录结构
 
-# Server
-HOST=127.0.0.1
-PORT=8088
-
-# Qwen Provider (千问 OpenAI 兼容接口)
-QWEN_API_KEY=your_qwen_api_key_here
-QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-QWEN_MODEL=qwen-plus
+```text
+frontend/    前端应用
+backend/     后端服务
+shared/      前后端共享协议与类型定义
+openspec/    产品规划、路线图与阶段文档
+tests/       测试相关内容
 ```
 
-未配置 `QWEN_API_KEY` 时后端仍可启动，但发送消息会返回 `provider_not_configured` 错误。
+## 快速启动
 
-## 本地启动
+### 1. 拉取代码
 
-安装前端 workspace 依赖：
+```bash
+git clone https://github.com/perhaps468/AgentHub.git
+cd AgentHub
+```
+
+### 2. 安装前端依赖
 
 ```bash
 pnpm install
 ```
 
-安装后端 Python 依赖：
+### 3. 安装后端依赖
 
 ```bash
-python -m pip install -r backend/requirements.txt
+pip install -r backend/requirements.txt
 ```
 
-初始化 MySQL 数据库：
+### 4. 配置后端环境变量
+
+复制示例配置文件:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+然后根据本地环境修改 `backend/.env` 中的数据库、模型和服务配置。
+
+### 5. 初始化数据库
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS agenthub CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-mysql -u root -p agenthub < backend/sql/001_mvp3_schema.sql
+mysql -u root -p < backend/sql/agenthub.sql
 ```
 
-启动前端开发服务：
-
-```bash
-pnpm dev:frontend
-```
-
-启动后端开发服务：
+### 6. 启动后端
 
 ```bash
 pnpm dev:backend
 ```
 
-默认后端监听 `http://127.0.0.1:8000`，健康检查地址为 `http://127.0.0.1:8000/health`。
+默认监听地址:
 
-## 后端接口
-
-当前后端提供：
-
-- `GET /`
-- `GET /health`
-- `GET /api/health`
-- `POST /api/sessions`
-- `GET /api/sessions`
-- `GET /api/sessions/{session_id}`
-- `PATCH /api/sessions/{session_id}`
-- `DELETE /api/sessions/{session_id}`
-- `GET /api/agents/default`
-- `GET /api/sessions/{session_id}/messages`
-- `WS /ws/{session_id}`
-
-`DELETE /api/sessions/{session_id}` 是兼容接口，行为等价于设置 `is_archived=true`，不会物理删除会话或消息。
-
-## WebSocket 契约
-
-`WS /ws/{session_id}` 使用真实 PM Agent 响应，不再使用 Echo。
-
-- 连接到存在的 `session_id` 后，客户端可以发送 `{"type":"ping"}`，服务端会返回 `{"type":"pong"}`。
-- `ping/pong` 只用于连接保活，不会写入消息历史，也不会触发 Agent 回复。
-- 业务消息继续使用：
-
-```json
-{
-  "action": "send_message",
-  "session_id": "<session_id>",
-  "content": "hello"
-}
+```text
+http://127.0.0.1:8088
 ```
 
-- 服务端错误统一返回：
-
-```json
-{
-  "type": "error",
-  "error_code": "invalid_request",
-  "error_message": "Invalid request"
-}
-```
-
-当前稳定错误码包括：
-
-- `session_not_found`：目标会话不存在。
-- `invalid_request`：消息体不是合法的 `ping` 或 `send_message` 契约。
-- `provider_not_configured`：QWEN_API_KEY 未配置。
-- `provider_request_failed`：上游调用失败。
-- `provider_response_invalid`：上游响应无有效内容。
-- `unknown`：服务端出现未预期异常。
-
-默认 Agent 为 `PM Agent`，可通过 `GET /api/agents/default` 获取身份信息（不包含模型名）。
-
-## 验证命令
-
-健康检查：
+### 7. 启动前端
 
 ```bash
-curl http://127.0.0.1:8000/
-curl http://127.0.0.1:8000/health
+pnpm dev:frontend
 ```
 
-创建会话：
+启动后即可在浏览器中访问前端页面，并通过前后端联调体验基础会话与消息能力。
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/sessions -H "Content-Type: application/json" -d "{\"owner_id\":\"dev_user\",\"title\":\"New Session\",\"mode\":\"single\"}"
+## 配置说明
+
+### 阿里云百炼 API Key
+
+当前默认接入阿里云百炼，后续可扩展其他 OpenAI-compatible provider。
+
+后端核心配置文件位于:
+
+```text
+backend/.env
 ```
 
-查询会话列表：
+关键字段说明:
 
-```bash
-curl "http://127.0.0.1:8000/api/sessions?owner_id=dev_user"
+```env
+QWEN_API_KEY=your_qwen_api_key_here
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_MODEL=qwen-plus
 ```
 
-归档会话：
+- `QWEN_API_KEY`: 阿里云百炼 API Key
+- `QWEN_BASE_URL`: OpenAI-compatible 接口基地址
+- `QWEN_MODEL`: 默认使用的模型名称
 
-```bash
-curl -X PATCH http://127.0.0.1:8000/api/sessions/<session_id> -H "Content-Type: application/json" -d "{\"is_archived\":true}"
+如果未正确配置 `QWEN_API_KEY`，后端虽然可以启动，但在实际发送消息时会返回 provider 未配置相关错误。
+
+### 接口地址修改位置
+
+前端请求后端服务地址与 WebSocket 地址通过环境变量控制，核心入口位于:
+
+- `frontend/src/api/client.ts`
+
+对应变量为:
+
+```text
+VITE_HTTP_URL
+VITE_WS_URL
 ```
 
-查询默认 Agent 信息：
+说明:
 
-```bash
-curl http://127.0.0.1:8000/api/agents/default
+- `VITE_HTTP_URL` 用于拼接前端请求的 HTTP API 地址
+- `VITE_WS_URL` 用于拼接前端连接的 WebSocket 地址
+
+后端服务监听地址配置位于:
+
+- `backend/.env.example`
+- `backend/.env`
+
+对应字段为:
+
+```env
+HOST=127.0.0.1
+PORT=8088
 ```
 
-查询消息历史：
+如果需要切换本地端口、局域网访问地址或对接其他环境，只需要同步修改以上配置项即可。
 
-```bash
-curl "http://127.0.0.1:8000/api/sessions/<session_id>/messages?page=1&page_size=20"
-```
+## 项目阶段与后续规划
 
-运行后端测试：
+当前版本已经完成了 AgentHub 的基础会话模型、消息链路、WebSocket 实时通信与默认 Agent 接入能力，能够支撑一个可运行的 IM 式 Agent 对话雏形。相比单纯的 Demo 页，这一版本更强调平台骨架的建立，包括统一 provider 接入、消息协议、会话边界和后续多 Agent 演进空间。
 
-```bash
-cd backend
-python -m pytest tests -p no:cacheprovider
-```
+后续会重点完善以下能力:
+
+- 代码版本历史
+- 对话式局部修改
+- 一键部署发布
+- 更完整的多 Agent 编排与群聊协作体验
+- 更丰富的产物预览、编辑与交付链路
