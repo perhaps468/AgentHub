@@ -54,6 +54,7 @@
       <template v-else>
         <!-- 选择会话后显示聊天工作区 -->
         <ChatWorkspace
+          ref="chatWorkspaceRef"
           :current-session="sessionStore.currentSession"
           :current-session-id="sessionStore.currentSessionId || ''"
           :connection-state="sessionStore.connectionState"
@@ -65,6 +66,7 @@
           @open-left="showLeft = true"
           @retry="handleRetry"
           @send="handleSend"
+          @pick-agent="handlePickAgent"
         />
       </template>
 
@@ -129,6 +131,7 @@ import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
 import type {
   AgentDraft,
+  ComposerAgent,
   ComposerSubmitPayload,
   ConversationItem,
   ConversationMode,
@@ -219,6 +222,16 @@ const showPreviewPanel = computed(() => previewState.value.type !== 'empty')
 // ==================== Agent 列表选中 ====================
 /** 当前选中的 Agent ID（用于高亮） */
 const selectedAgentId = ref('')
+
+/** ChatWorkspace 组件引用 */
+const chatWorkspaceRef = ref<{
+  insertAgentChip?: (agent: ComposerAgent) => void
+} | null>(null)
+
+/** 处理从 ChatHeader 选中的 Agent */
+function handlePickAgent(agent: ComposerAgent) {
+  chatWorkspaceRef.value?.insertAgentChip?.(agent)
+}
 
 // ==================== 工作空间 ====================
 /** 当前会话的工作空间 */
@@ -333,6 +346,18 @@ function startPreviewResize(event: MouseEvent) {
 }
 
 // ==================== 工具函数 ====================
+
+function buildContentFromNodes(nodes: ComposerSubmitPayload['nodes']): string {
+  if (!nodes || nodes.length === 0) return ''
+  return nodes
+    .map((node) => {
+      if (node.type === 'text') return node.content
+      if (node.type === 'agent-chip') return `@${node.agent.name}`
+      return ''
+    })
+    .join('')
+    .trim()
+}
 
 /**
  * 格式化 ISO 时间字符串为"月日 时:分"格式
@@ -516,7 +541,7 @@ const handleSend = async (payload: ComposerSubmitPayload) => {
     return
   }
 
-  const content = payload.text.trim()
+  const content = buildContentFromNodes(payload.nodes)
   if (!content) {
     return
   }

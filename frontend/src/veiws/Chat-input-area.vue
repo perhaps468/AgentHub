@@ -1,6 +1,5 @@
 <template>
   <div class="chat-input-area">
-    <!-- Reference bar -->
     <div v-if="referenceMsg" class="reference-msg">
       <div class="reference-copy">
         <svg class="ref-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -18,10 +17,21 @@
       </button>
     </div>
 
-    <!-- Main composer -->
-    <div class="composer-row">
+    <div v-if="selectedAgents.length > 0" class="selected-agent-strip">
+      <span class="selected-agent-label">已选 Agent</span>
+      <div class="selected-agent-list">
+        <span
+          v-for="agent in selectedAgents"
+          :key="agent.id"
+          class="selected-agent-pill"
+        >
+          <span class="selected-agent-dot" :class="`status-${agent.status}`"></span>
+          <span class="selected-agent-name">@{{ agent.name }}</span>
+        </span>
+      </div>
+    </div>
 
-      <!-- Input editor -->
+    <div class="composer-row">
       <div class="composer-editor-wrap">
         <Input
           ref="msgInputRef"
@@ -35,7 +45,6 @@
       </div>
     </div>
 
-    <!-- Emoji panel -->
     <transition name="emoji-slide">
       <div v-if="showEmoji" class="emoji-panel">
         <div class="emoji-grid">
@@ -96,8 +105,24 @@ const clearComposerSelection = () => {
   emit('selection-change', [])
 }
 
+const getStructuredValue = () => msgInputRef.value?.getStructuredValue?.()
+
+const insertAgentChip = (agent: ComposerAgent) => {
+  msgInputRef.value?.insertAgentChip?.(agent)
+  const payload = getStructuredValue()
+  if (payload) {
+    handleComposerPayload(payload)
+  }
+}
+
+const clearComposer = () => {
+  msgContent.value = ''
+  clearComposerSelection()
+  msgInputRef.value?.clear?.()
+}
+
 const handlerSubmitMsg = (payload?: ComposerSubmitPayload) => {
-  const nextPayload = payload ?? msgInputRef.value?.getStructuredValue?.()
+  const nextPayload = payload ?? getStructuredValue()
   if (!nextPayload || props.disabled) return
   handleComposerPayload(nextPayload)
   if (!nextPayload.text.trim()) return
@@ -114,13 +139,9 @@ const insertEmoji = (emoji: string) => {
 }
 
 defineExpose({
-  getStructuredValue: () => msgInputRef.value?.getStructuredValue?.(),
-  insertAgentChip: (agent: ComposerAgent) => msgInputRef.value?.insertAgentChip?.(agent),
-  clear: () => {
-    msgContent.value = ''
-    clearComposerSelection()
-    msgInputRef.value?.clear?.()
-  },
+  getStructuredValue,
+  insertAgentChip,
+  clear: clearComposer,
 })
 </script>
 
@@ -133,7 +154,6 @@ defineExpose({
   background: rgb(var(--surface-color));
 }
 
-/* Reference bar */
 .reference-msg {
   display: flex;
   align-items: center;
@@ -204,7 +224,6 @@ defineExpose({
   background: rgba(239, 68, 68, 0.08);
 }
 
-/* Composer row */
 .composer-row {
   display: flex;
   align-items: flex-end;
@@ -213,7 +232,64 @@ defineExpose({
   background: rgb(var(--surface-color));
 }
 
-/* Toolbar */
+.selected-agent-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 80px 0;
+  background: rgb(var(--surface-color));
+}
+
+.selected-agent-label {
+  flex-shrink: 0;
+  color: rgb(var(--text-muted));
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.selected-agent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.selected-agent-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 112, 243, 0.1);
+  color: rgb(var(--primary-color));
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.selected-agent-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.selected-agent-dot.status-online {
+  background: #22c55e;
+}
+
+.selected-agent-dot.status-busy {
+  background: #f59e0b;
+}
+
+.selected-agent-dot.status-offline {
+  background: #94a3b8;
+}
+
+.selected-agent-name {
+  white-space: nowrap;
+}
+
 .composer-toolbar {
   display: flex;
   align-items: center;
@@ -243,13 +319,11 @@ defineExpose({
   background: rgb(var(--primary-soft));
 }
 
-/* Editor wrapper */
 .composer-editor-wrap {
   flex: 1;
   min-width: 0;
 }
 
-/* Emoji panel */
 .emoji-panel {
   position: absolute;
   left: 16px;
@@ -292,7 +366,6 @@ defineExpose({
   transform: scale(0.92);
 }
 
-/* Emoji panel animation */
 .emoji-slide-enter-active,
 .emoji-slide-leave-active {
   transition: opacity 0.18s ease, transform 0.18s ease;

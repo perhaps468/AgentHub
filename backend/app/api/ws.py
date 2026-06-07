@@ -1287,6 +1287,112 @@ async def _create_orchestration_plan(
     return _restrict_run_tasks_to_allowed_agents(db, run.id, allowed_agent_ids)
 
 
+async def _run_orchestration_in_background(
+    db,
+    websocket,
+    session_id: str,
+    session,
+    selected_agent,
+    content: str,
+    human_message,
+    allowed_agent_ids: list[str] | None,
+    stream_id: str,
+    agent_name: str,
+    thinking_msg_id: str,
+) -> None:
+    """Run full orchestration flow in background, sending WS events as it progresses.
+
+    Sends runtime_state(thinking) BEFORE starting plan generation so the user
+    immediately sees feedback. Then runs plan -> tasks -> summary in the
+    background and sends corresponding events as they complete.
+    """
+    try:
+        run = await _create_orchestration_plan(
+            db,
+            session,
+            selected_agent,
+            content,
+            human_message,
+            allowed_agent_ids=allowed_agent_ids,
+        )
+        if run is None:
+            return
+
+        plan_message = (
+            db.query(Message)
+            .filter(
+                Message.session_id == session_id,
+                Message.sender_type == "agent",
+                Message.msg_metadata["run_id"].as_string() == run.id,
+            )
+            .order_by(Message.created_at.desc(), Message.id.desc())
+            .first()
+        )
+        if plan_message is not None:
+            _GROUP_CHAT_AUDIT.record_plan_published(
+                session_id=session_id,
+                run_id=run.id,
+                planner_agent_id=selected_agent.id,
+                planner_role=agent_name,
+                plan_message_id=plan_message.id,
+                summary=plan_message.content,
+            )
+            await ws_send_message_start(
+                websocket,
+                agent_role=agent_name,
+                stream_id=stream_id,
+                message=plan_message,
+                run_id=run.id,
+            )
+            await ws_send_message_end(
+                websocket,
+                agent_role=agent_name,
+                stream_id=stream_id,
+                message_id=plan_message.id,
+                status="completed",
+                final_content=plan_message.content,
+            )
+
+        await _execute_orchestration_tasks(db, websocket, session_id, run)
+        refreshed_run = OrchestrationService(db).get_run(run.id)
+        if refreshed_run is not None:
+            finalized_run = OrchestrationExecutor(db).finalize_run(refreshed_run.id)
+            if finalized_run is not None and finalized_run.status in {
+                "completed",
+                "partial",
+                "cancelled",
+                "failed",
+            }:
+                await _send_orchestration_summary_message(
+                    websocket=websocket,
+                    db=db,
+                    session_id=session_id,
+                    run_id=finalized_run.id,
+                    agent_role=agent_name,
+                )
+                await ws_send_run_finished(
+                    websocket,
+                    run_id=finalized_run.id,
+                    session_id=session_id,
+                    status=finalized_run.status,
+                    summary=finalized_run.summary,
+                )
+    except Exception as exc:
+        import traceback
+
+        traceback.print_exc()
+        try:
+            await _safe_send_json(websocket, {
+                "type": "error",
+                "stream_id": stream_id,
+                "message_id": thinking_msg_id,
+                "error_code": "orchestration_error",
+                "error_message": str(exc),
+            })
+        except Exception:
+            pass
+
+
 def _restrict_run_tasks_to_allowed_agents(
     db,
     run_id: str,
@@ -2054,63 +2160,30 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
             try:
                 if _should_use_orchestration(session.mode, content, target_agent_ids, mentions):
-                    run = await _create_orchestration_plan(
-                        db,
-                        session,
-                        selected_agent,
-                        content,
-                        human_message,
-                        allowed_agent_ids=target_agent_ids or None,
+                    thinking_msg_id = str(uuid.uuid4())
+                    await ws_send_runtime_state(
+                        websocket,
+                        stream_id=stream_id,
+                        message_id=thinking_msg_id,
+                        state="thinking",
+                        timestamp=utcnow().isoformat(),
                     )
-                    if run is not None:
-                        plan_message = (
-                            db.query(Message)
-                            .filter(
-                                Message.session_id == session_id,
-                                Message.sender_type == "agent",
-                                Message.msg_metadata["run_id"].as_string() == run.id,
-                            )
-                            .order_by(Message.created_at.desc(), Message.id.desc())
-                            .first()
+                    asyncio.create_task(
+                        _run_orchestration_in_background(
+                            db=db,
+                            websocket=websocket,
+                            session_id=session_id,
+                            session=session,
+                            selected_agent=selected_agent,
+                            content=content,
+                            human_message=human_message,
+                            allowed_agent_ids=target_agent_ids or None,
+                            stream_id=stream_id,
+                            agent_name=agent_name,
+                            thinking_msg_id=thinking_msg_id,
                         )
-                        if plan_message is not None:
-                            _GROUP_CHAT_AUDIT.record_plan_published(
-                                session_id=session_id,
-                                run_id=run.id,
-                                planner_agent_id=selected_agent.id,
-                                planner_role=agent_name,
-                                plan_message_id=plan_message.id,
-                                summary=plan_message.content,
-                            )
-                            await ws_send_message_start(websocket, agent_role=agent_name, stream_id=stream_id, message=plan_message, run_id=run.id)
-                            await ws_send_message_end(websocket, agent_role=agent_name, stream_id=stream_id, message_id=plan_message.id, status="completed", final_content=plan_message.content)
-
-                        # Execute all planned tasks
-                        await _execute_orchestration_tasks(db, websocket, session_id, run)
-                        refreshed_run = OrchestrationService(db).get_run(run.id)
-                        if refreshed_run is not None:
-                            finalized_run = OrchestrationExecutor(db).finalize_run(refreshed_run.id)
-                            if finalized_run is not None and finalized_run.status in {
-                                "completed",
-                                "partial",
-                                "cancelled",
-                                "failed",
-                            }:
-                                await _send_orchestration_summary_message(
-                                    websocket=websocket,
-                                    db=db,
-                                    session_id=session_id,
-                                    run_id=finalized_run.id,
-                                    agent_role=agent_name,
-                                )
-                                await ws_send_run_finished(
-                                    websocket,
-                                    run_id=finalized_run.id,
-                                    session_id=session_id,
-                                    status=finalized_run.status,
-                                    summary=finalized_run.summary,
-                                )
-                        continue
+                    )
+                    continue
 
                 if session.mode == "group" and _is_workspace_listing_request(content):
                     listing_reply = _build_workspace_listing_reply(db, session)
