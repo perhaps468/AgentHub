@@ -3,7 +3,12 @@
     <div class="chat-header-main">
       <div class="chat-header-left">
         <div class="session-avatar-shell">
-          <avatar :info="{ name: currentSession?.title, avatar: currentAgentAvatar }" size="20px" />
+          <template v-if="currentSession?.mode === 'group'">
+          <avatar :info="{ name: '群', avatar: '' }" size="32px" :style="groupConversationAvatarStyle" />
+        </template>
+        <template v-else>
+          <avatar :info="sessionAvatarInfo" size="32px" />
+        </template>
         </div>
 
         <div class="chat-header-copy">
@@ -92,6 +97,7 @@
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
+import { useAgentStore } from '../../store/module/useAgentStore'
 import ConnectionStatus from '../ConnectionStatus.vue'
 import type {
   ComposerAgent,
@@ -130,6 +136,8 @@ const emit = defineEmits<{
 
 const isPanelOpen = ref(false)
 const summaryRootRef = ref<HTMLElement | null>(null)
+
+const agentStore = useAgentStore()
 
 const statusRank: Record<SessionMemberStatus, number> = {
   online: 0,
@@ -193,9 +201,23 @@ const summaryMetaTone = computed<SessionMemberStatus>(() => {
 
 const selectedAgentIds = computed(() => new Set((props.selectedAgents ?? []).map((agent) => agent.id)))
 
-const currentAgentAvatar = computed(() => {
+const groupConversationAvatarStyle = {
+  background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
+  color: '#fff',
+}
+
+const sessionAvatarInfo = computed(() => {
+  if (props.currentSession?.mode === 'group') {
+    return { name: '群', avatar: '' }
+  }
+  const agentId = props.currentSession?.agent_id
+  if (agentId) {
+    const agent = agentStore.agents.find((a) => a.id === agentId)
+    if (agent?.avatar) return { name: props.currentSession?.title ?? '', avatar: agent.avatar }
+  }
   const primary = summaryAgents.value.find((agent) => agent.isPrimary)
-  return primary?.avatar || summaryAgents.value[0]?.avatar || ''
+  const avatar = primary?.avatar || summaryAgents.value[0]?.avatar || ''
+  return { name: props.currentSession?.title ?? '', avatar }
 })
 
 function handleDocumentPointerDown(event: PointerEvent) {
