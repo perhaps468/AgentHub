@@ -212,6 +212,11 @@ export interface SendMessagePayload {
   content: string
   target_agent_ids?: string[]
   mentions?: ComposerMention[]
+  reference?: {
+    msg_id: string
+    content: string
+    sender: string
+  }
 }
 
 export type PreviewState =

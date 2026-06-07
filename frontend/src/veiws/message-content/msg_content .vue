@@ -5,6 +5,12 @@
       :class="{ 'is-own': props.right }"
       @contextmenu.prevent="handleContextMenu"
     >
+      <!-- 引用消息标注 -->
+      <div v-if="referenceInfo" class="msg-reference">
+        <span class="msg-reference-icon">"</span>
+        <span class="msg-reference-text">引用: {{ referenceInfo }}</span>
+      </div>
+
       <div v-if="props.msg.type === MessageType.Text">
         <text-msg :msg="props.msg" :right="right" />
       </div>
@@ -40,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref, computed } from 'vue'
 
 import { useChatMsgStore } from '../../store/module/useChatMsgStore'
 import type { MessageRecord } from '../../types/message'
@@ -69,6 +75,16 @@ const props = withDefaults(
 )
 
 const right = props.right
+
+const referenceInfo = computed(() => {
+  const meta = (props.msg as MessageRecord)?.metadata as Record<string, unknown> | undefined
+  const ref = meta?.reference as { content?: string; sender?: string } | undefined
+  if (!ref) return null
+  const raw = ref.content
+  const text = typeof raw === 'string' ? raw : (raw != null ? JSON.stringify(raw) : '')
+  const display = text.slice(0, 60) + (text.length > 60 ? '...' : '')
+  return display || null
+})
 const menuVisible = ref(false)
 const menuStyle = ref<Record<string, string>>({})
 
@@ -184,6 +200,32 @@ onBeforeUnmount(() => {
 .msg-content.is-own {
   background: rgba(var(--primary-color), 0.1);
   border-color: rgba(var(--primary-color), 0);
+}
+
+.msg-reference {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(var(--border-color), 0.5);
+}
+
+.msg-reference-icon {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgb(var(--primary-color));
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+.msg-reference-text {
+  font-size: 12px;
+  color: rgb(var(--text-secondary));
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
 

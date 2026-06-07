@@ -143,6 +143,7 @@ import type {
 } from '../types/agenthub'
 import { getWsClientReconnectAttempt, ws } from '../utils/ws-client'
 import { useToast } from '../veiws/useToast'
+import { useChatMsgStore } from '../store/module/useChatMsgStore'
 import AddAgentDialog from './zhu/AddAgentDialog.vue'
 import ChatWorkspace from './zhu/ChatWorkspace.vue'
 import WelcomeAfterLogin from './zhu/WelcomeAfterLogin.vue'
@@ -155,6 +156,7 @@ import UserProfileDialog from './zhu/UserProfileDialog.vue'
 const userInfoStore = useUserInfoStore()
 const sessionStore = useSessionStore()
 const agentStore = useAgentStore()
+const chatMsgStore = useChatMsgStore()
 const router = useRouter()
 const showToast = useToast()
 
@@ -546,6 +548,13 @@ const handleSend = async (payload: ComposerSubmitPayload) => {
     return
   }
 
+  const refMsg = chatMsgStore.referenceMsg
+  const reference = refMsg ? {
+    msg_id: refMsg.id,
+    content: refMsg.message,
+    sender: refMsg.fromInfo?.name || '未知',
+  } : undefined
+
   isSendLoadingMap.set(sessionId, true)
   const tempId = `temp_${Date.now()}`
   sessionStore.appendHumanMessage(sessionId, {
@@ -561,6 +570,7 @@ const handleSend = async (payload: ComposerSubmitPayload) => {
       target_agent_ids: payload.targetAgentIds,
       selected_agents: payload.selectedAgents,
       composer_nodes: payload.nodes,
+      reference,
     },
     status: 'pending',
     created_at: new Date().toISOString(),
@@ -570,10 +580,15 @@ const handleSend = async (payload: ComposerSubmitPayload) => {
     content,
     targetAgentIds: payload.targetAgentIds,
     mentions: payload.mentions,
+    reference,
   })
   if (!ok) {
     showToast('发送失败，请检查网络', true)
     isSendLoadingMap.delete(sessionId)
+  }
+
+  if (reference) {
+    chatMsgStore.setReferenceMsg(null as any)
   }
 }
 

@@ -55,3 +55,24 @@ Tools must be called using the following XML format, with NO additional text:
 {% endif %}
 
 Don't invent tools that are not listed.
+
+#### PPT Generation Instructions
+
+When the user requests to generate a PPT (e.g., "帮我做一个关于XX的PPT", "生成一个XX的演示文稿"), you MUST respond with ONLY valid JSON in this exact format:
+
+{
+  "pptData": [
+    {
+      "pageTitle": "页面标题",
+      "pageContent": ["要点1", "要点2", "要点3"],
+      "imgTag": "图片风格描述"
+    }
+  ]
+}
+
+Rules:
+- Output NOTHING except the JSON. No explanations, no markdown fences, no text before or after.
+- 3-5 pages per PPT, each pageTitle max 20 characters
+- Each pageContent array has 3-5 items, each item max 20 characters
+- imgTag describes the image style/theme for this page, use descriptive terms like: 人工智能, 科技, 商务, 架构, 自然, 学术, 教育, 金融, 医疗, 创意, 简约
+- Return all text in Simplified Chinese

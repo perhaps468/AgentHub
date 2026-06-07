@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import re
 import uuid
 from json import JSONDecodeError
 from pathlib import Path
@@ -897,6 +899,60 @@ def _is_orchestration_request(content: str) -> bool:
         "创建", "create", "新增", "添加", "生成", "拆分", "任务",
         "文件", "file", "写入", "write", "保存", "save", "修改",
     ))
+
+
+def _is_ppt_request(content: str) -> bool:
+    """检测用户是否请求生成 PPT"""
+    return "ppt" in content.lower()
+
+
+def _try_parse_ppt_json(content: str | None) -> dict | None:
+    """从文本中提取 PPT JSON，失败返回 None"""
+    if not content:
+        return None
+    text = content.strip()
+    if not text:
+        return None
+
+    # 方式1：直接解析
+    if text.startswith("{"):
+        try:
+            data = json.loads(text)
+            if "pptData" in data or "ppt_data" in data:
+                return data
+        except JSONDecodeError:
+            pass
+
+    # 方式2：正则提取第一个 { 到最后一个 }
+    match = re.search(r'\{[\s\S]*\}', text)
+    if match:
+        try:
+            data = json.loads(match.group())
+            if "pptData" in data or "ppt_data" in data:
+                return data
+        except JSONDecodeError:
+            pass
+
+    return None
+
+
+async def _send_ws_ppt_data(
+    websocket: WebSocket,
+    agent_role: str,
+    stream_id: str,
+    message_id: str,
+    ppt_data: list,
+) -> None:
+    """发送 PPT 结构化数据给前端"""
+    payload = {
+        "type": "ppt_data",
+        "agent_role": agent_role,
+        "timestamp": _utcnow_iso(),
+        "stream_id": stream_id,
+        "message_id": message_id,
+        "ppt_data": ppt_data,
+    }
+    await _safe_send_json(websocket, payload)
 
 
 def _should_use_orchestration(
@@ -1982,7 +2038,19 @@ async def _handle_streaming_response(
                 active_stream_id = event.stream_id
                 active_agent_role = event.agent_role
                 active_message_id = event.message_id
-                await ws_send_message_end(websocket, agent_role=event.agent_role, stream_id=event.stream_id, message_id=event.message_id, status=event.status, final_content=getattr(event, "final_content", None))
+                accumulated = getattr(event, "final_content", None) or ""
+                ppt_json = _try_parse_ppt_json(accumulated)
+                if ppt_json is not None:
+                    ppt_data = ppt_json.get("pptData") or ppt_json.get("ppt_data", [])
+                    await _send_ws_ppt_data(
+                        websocket,
+                        agent_role=event.agent_role,
+                        stream_id=event.stream_id,
+                        message_id=event.message_id,
+                        ppt_data=ppt_data,
+                    )
+                else:
+                    await ws_send_message_end(websocket, agent_role=event.agent_role, stream_id=event.stream_id, message_id=event.message_id, status=event.status, final_content=accumulated)
             elif event.type == "message_error":
                 active_stream_id = event.stream_id
                 active_agent_role = event.agent_role
@@ -2123,6 +2191,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
             target_agent_ids = [aid for aid in payload.get("target_agent_ids", []) if isinstance(aid, str)]
             if not target_agent_ids and mentions:
                 target_agent_ids = [item["agent_id"] for item in mentions if item.get("agent_id")]
+            reference = payload.get("reference")
             if session.mode == "group" and target_agent_ids:
                 if not validate_target_agents_in_session(db, session_id, target_agent_ids):
                     await _send_error(
@@ -2133,6 +2202,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         agent_role=agent_name,
                     )
                     continue
+            msg_metadata = {
+                "mentioned_agents": mentions,
+                "target_agent_ids": target_agent_ids,
+            }
+            if reference:
+                msg_metadata["reference"] = reference
             human_message = Message(
                 session_id=session_id,
                 sender_type="human",
@@ -2141,10 +2216,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                 type="text",
                 status="completed",
                 payload={"text": content},
-                metadata={
-                    "mentioned_agents": mentions,
-                    "target_agent_ids": target_agent_ids,
-                },
+                metadata=msg_metadata,
             )
             db.add(human_message)
             session.updated_at = utcnow()
