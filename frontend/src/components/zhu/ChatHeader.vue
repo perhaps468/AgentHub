@@ -443,7 +443,7 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
 
 .agent-panel {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 4px);
   left: 50%;
   right: auto;
   z-index: 40;
@@ -452,7 +452,7 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   padding: 8px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.8);
   box-shadow: 0 20px 50px -28px rgba(15, 23, 42, 0.4);
   backdrop-filter: blur(14px);
 }

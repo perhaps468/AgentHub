@@ -181,6 +181,8 @@ ehthumbs.db:*.log
 
 # Memory bank (planning docs, design docs)
 memory-bank/
+.claude/
+.codex/skills/
 
 # VFS output directory (generated at runtime)
 tmp/
@@ -234,6 +236,11 @@ backend/tests/
 
 # OpenSpec / migration docs
 openspec/docs/
+
+# One-off local helper scripts
+setup-branch.ps1
+setup-branch.py
+write-batch.ps1
 
 # Secrets (MUST NEVER be committed)
 *.pem
