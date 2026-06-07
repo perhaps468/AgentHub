@@ -36,7 +36,7 @@
           <!-- P6-7: Fixed primary agent card (always selected, disabled) -->
           <div v-if="primaryAgent" class="agent-picker-item primary-agent-card selected">
             <input type="checkbox" checked disabled />
-            <avatar :info="{ name: primaryAgent.name, avatar: primaryAgent.avatar }" size="32px" :style="getAgentAvatarStyle(primaryAgent)" title="primaryAgent.name" />
+            <avatar :info="{ name: primaryAgentDisplayName, avatar: primaryAgent.avatar }" size="32px" :style="getAgentAvatarStyle(primaryAgent)" />
             <div class="agent-picker-meta">
               <span class="agent-picker-name">{{ primaryAgent.name }}</span>
               <span class="primary-agent-badge">主 Agent</span>
@@ -244,6 +244,15 @@ const primaryAgent = computed(() => {
   return matchedGroupHost || props.primaryAgent
 })
 
+const primaryAgentDisplayName = computed(() => {
+  const pa = primaryAgent.value
+  if (!pa) return ''
+  if (pa.id.startsWith('group_host_') || pa.name === '群聊主Agent') {
+    return '群'
+  }
+  return pa.name
+})
+
 const agentsWithoutPrimary = computed(() => {
   const primaryAgentId = primaryAgent.value?.id
   return props.agents.filter((agent) => {
@@ -264,7 +273,6 @@ function getAgentAvatarStyle(agent: SidebarAgent) {
   if (agent.avatar) {
     return undefined
   }
-
   return {
     background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)',
     color: '#fff',
