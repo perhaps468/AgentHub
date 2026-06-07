@@ -644,10 +644,8 @@ defineExpose({
   border: 1px solid rgb(var(--border-color));
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   &:focus-within {
-    border-color: rgba(0, 112, 243, 0.4);
-    box-shadow:
-      0 0 0 3px rgba(0, 112, 243, 0.08),
-      0 4px 12px rgba(0, 112, 243, 0.1);
+    border-color: rgba(var(--primary-color), 0.42);
+    box-shadow: 0 0 0 2px rgba(var(--primary-color), 0.12);
   }
 }
 
@@ -671,6 +669,12 @@ defineExpose({
   word-break: break-all;
   transition: all 0.15s ease;
   cursor: text;
+}
+
+.msg-input:focus,
+.msg-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .composer-toolbar {

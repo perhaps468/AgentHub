@@ -9,7 +9,7 @@
         <div class="chat-header-copy">
           <div class="chat-header-title-row">
             <h2>{{ currentSession?.title || '选择或新建会话' }}</h2>
-            <span v-if="currentSession?.mode === 'group'" class="session-mode-badge">Group</span>
+            <span v-if="currentSession?.mode" class="session-mode-badge">{{ sessionModeLabel }}</span>
           </div>
 
           <div class="chat-header-meta-row">
@@ -143,6 +143,8 @@ const workspaceRootName = computed(() => {
   return parts[parts.length - 1] || props.workspace.root_path
 })
 
+const sessionModeLabel = computed(() => (props.currentSession?.mode === 'group' ? 'Group' : 'Direct'))
+
 const summaryAgents = computed<HeaderAgentSummaryItem[]>(() => {
   const members = props.currentSession?.members ?? []
 
@@ -262,12 +264,11 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   position: relative;
   z-index: 20;
   gap: 16px;
-  min-height: 84px;
-  padding: 18px 24px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.74));
-  backdrop-filter: blur(14px);
+  min-height: 92px;
+  padding: 18px 24px 16px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.86);
+  background: rgba(248, 250, 252, 0.96);
+  backdrop-filter: blur(10px);
   overflow: visible;
 }
 
@@ -278,40 +279,41 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   gap: 16px;
   min-width: 0;
   width: 100%;
-  padding-right: 8px;
   overflow: visible;
 }
 
 .chat-header-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   min-width: 0;
   flex: 1;
 }
 
 .session-avatar-shell {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.14), rgba(34, 197, 94, 0.12));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  flex-shrink: 0;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 10px;
+  background: #eef4ff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
 .chat-header-copy {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
 }
 
 .chat-header-title-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   min-width: 0;
 }
 
@@ -322,20 +324,25 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   font-weight: 700;
   color: #1e293b;
   line-height: 1.15;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-mode-badge {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
-  color: #475569;
+  flex-shrink: 0;
+  height: 21px;
+  padding: 0 8px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 6px;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -349,27 +356,29 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
 .agent-summary-shell {
   position: relative;
   z-index: 30;
+  flex-shrink: 0;
   margin-left: auto;
-  margin-right: 0;
-  transform: translateX(-332px);
+  transform: translateX(-400px);
 }
 
 .agent-summary-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px 6px 6px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 10px 24px -20px rgba(15, 23, 42, 0.5);
-  transition: all 0.18s ease;
+  gap: 12px;
+  min-height: 44px;
+  padding: 7px 12px 7px 8px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px -20px rgba(15, 23, 42, 0.45);
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
 .agent-summary-trigger:hover {
-  transform: translateY(-1px);
-  border-color: rgba(59, 130, 246, 0.24);
-  box-shadow: 0 16px 30px -24px rgba(37, 99, 235, 0.42);
+  border-color: rgba(37, 99, 235, 0.28);
+  background: #f8fbff;
+  box-shadow: 0 14px 26px -22px rgba(37, 99, 235, 0.46);
 }
 
 .agent-summary-avatars {
@@ -386,7 +395,7 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   justify-content: center;
   overflow: hidden;
   border-radius: 999px;
-  background: linear-gradient(135deg, #2563eb, #22c55e);
+  background: #2563eb;
   color: #fff;
   font-size: 11px;
   font-weight: 700;
@@ -419,8 +428,9 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
 
 .agent-summary-title {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   color: #64748b;
+  text-transform: uppercase;
 }
 
 .agent-summary-meta {
@@ -443,18 +453,15 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
 
 .agent-panel {
   position: absolute;
-  top: calc(100% + 4px);
-  left: 50%;
-  right: auto;
+  top: calc(100% + 8px);
+  right: 0;
   z-index: 40;
-  transform: translateX(-58%);
   min-width: 280px;
   padding: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 20px 50px -28px rgba(15, 23, 42, 0.4);
-  backdrop-filter: blur(14px);
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 20px 46px -30px rgba(15, 23, 42, 0.5);
 }
 
 .agent-panel-item {
@@ -463,7 +470,7 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   align-items: center;
   gap: 12px;
   padding: 10px;
-  border-radius: 14px;
+  border-radius: 8px;
   transition: background 0.18s ease;
 }
 
@@ -533,18 +540,21 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
 .workspace-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(37, 99, 235, 0.08);
-  color: #2563eb;
+  gap: 7px;
+  min-width: 0;
+  padding: 5px 9px;
+  border: 1px solid rgba(203, 213, 225, 0.88);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #475569;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   width: fit-content;
 }
 
 .workspace-icon {
   font-size: 12px;
+  flex-shrink: 0;
 }
 
 .workspace-name {
@@ -560,20 +570,35 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
     padding: 16px;
   }
 
-  .chat-header-main,
+  .chat-header-main {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
   .chat-header-left {
     align-items: flex-start;
+    width: 100%;
   }
 
   .chat-header h2 {
     font-size: 16px;
   }
 
+  .agent-summary-shell {
+    width: 100%;
+    margin-left: 56px;
+    transform: none;
+  }
+
   .agent-summary-trigger {
+    justify-content: space-between;
     max-width: 100%;
+    width: 100%;
   }
 
   .agent-panel {
+    right: auto;
+    left: 0;
     min-width: min(280px, calc(100vw - 32px));
   }
 }

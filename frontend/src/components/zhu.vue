@@ -973,58 +973,63 @@ onUnmounted(() => {
   position: relative;
   height: 100vh;
   overflow: hidden;
-  background: linear-gradient(135deg, #ffffff 0%, #f0f4ff 50%, #e8f0fe 100%);
+  background:
+    radial-gradient(circle at top right, rgba(var(--primary-color), 0.06), transparent 26%),
+    linear-gradient(180deg, rgb(var(--background-color)) 0%, rgb(var(--surface-muted)) 100%);
 }
 
 /* ==================== 动态光晕效果 ==================== */
 .glow-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(100px);
-  animation: float 10s ease-in-out infinite;
+  filter: blur(130px);
+  animation: float 16s ease-in-out infinite;
+  opacity: 0.7;
   pointer-events: none;
 }
 
 .glow-orb-1 {
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
-  top: -200px;
-  right: -100px;
+  width: 520px;
+  height: 520px;
+  background: radial-gradient(circle, rgba(var(--primary-color), 0.08) 0%, transparent 72%);
+  top: -230px;
+  right: -170px;
   animation-delay: 0s;
 }
 
 .glow-orb-2 {
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, transparent 70%);
-  bottom: -150px;
-  left: -100px;
+  width: 440px;
+  height: 440px;
+  background: radial-gradient(circle, rgba(var(--text-muted), 0.08) 0%, transparent 72%);
+  bottom: -180px;
+  left: -140px;
   animation-delay: -4s;
 }
 
 .glow-orb-3 {
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(6, 182, 212, 0.1) 0%, transparent 70%);
-  top: 40%;
-  left: 30%;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(var(--primary-color), 0.05) 0%, transparent 74%);
+  top: 38%;
+  left: 32%;
   transform: translate(-50%, -50%);
   animation-delay: -7s;
 }
 
 @keyframes float {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(40px, -40px) scale(1.08); }
-  66% { transform: translate(-30px, 30px) scale(0.95); }
+  33% { transform: translate(16px, -22px) scale(1.02); }
+  66% { transform: translate(-12px, 14px) scale(0.98); }
 }
 
 /* ==================== 装饰性网格点阵 ==================== */
 .grid-pattern {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.06) 1px, transparent 0);
-  background-size: 50px 50px;
+  background-image: radial-gradient(circle at 1px 1px, rgba(var(--text-muted), 0.08) 1px, transparent 0);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.18), transparent 72%);
+  opacity: 0.3;
   pointer-events: none;
 }
 
@@ -1051,15 +1056,14 @@ onUnmounted(() => {
 }
 
 .glass-container > :deep(*) {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
+  background: rgba(var(--surface-color), 0.92);
+  backdrop-filter: blur(12px);
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(var(--border-color), 0.92);
   box-shadow:
-    0 8px 32px rgba(59, 130, 246, 0.08),
-    0 2px 8px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  transition: box-shadow 0.3s ease, transform 0.3s ease;
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .glass-container > .preview-resize-handle {
@@ -1071,10 +1075,11 @@ onUnmounted(() => {
 }
 
 .glass-container > :deep(*):hover {
+  background: rgba(var(--surface-color), 0.96);
+  border-color: rgba(var(--border-strong), 0.95);
   box-shadow:
-    0 12px 40px rgba(59, 130, 246, 0.12),
-    0 4px 12px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    0 16px 28px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.46);
 }
 
 /* ==================== 侧边栏收起状态 ==================== */
@@ -1144,23 +1149,21 @@ onUnmounted(() => {
 /* ==================== Element Plus 弹窗样式覆盖 ==================== */
 :deep(.el-dialog) {
   border-radius: 20px;
-  backdrop-filter: blur(20px);
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(59, 130, 246, 0.1);
-  box-shadow:
-    0 25px 50px rgba(59, 130, 246, 0.15),
-    0 10px 20px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(12px);
+  background: rgba(var(--surface-color), 0.98);
+  border: 1px solid rgba(var(--border-color), 0.9);
+  box-shadow: var(--shadow-lg);
 }
 
 :deep(.el-dialog__header) {
   padding: 20px 24px 16px;
-  border-bottom: 1px solid rgba(59, 130, 246, 0.08);
+  border-bottom: 1px solid rgba(var(--border-color), 0.9);
 }
 
 :deep(.el-dialog__title) {
   font-size: 18px;
   font-weight: 600;
-  color: #1e40af;
+  color: rgb(var(--text-color));
 }
 
 :deep(.el-dialog__body) {
@@ -1169,19 +1172,18 @@ onUnmounted(() => {
 
 :deep(.el-dialog__footer) {
   padding: 16px 24px;
-  border-top: 1px solid rgba(59, 130, 246, 0.08);
+  border-top: 1px solid rgba(var(--border-color), 0.9);
 }
 
 :deep(.el-button--primary) {
-  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  background: rgb(var(--primary-color));
   border-color: transparent;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-  transition: all 0.3s ease;
+  box-shadow: 0 10px 24px rgba(var(--primary-color), 0.18);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 :deep(.el-button--primary:hover) {
-  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
-  transform: translateY(-1px);
+  background: rgb(var(--primary-strong));
+  box-shadow: 0 14px 26px rgba(var(--primary-color), 0.22);
 }
 </style>

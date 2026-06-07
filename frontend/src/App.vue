@@ -51,7 +51,5 @@ const handlerLogout = () => {
 <style scoped lang="scss">
 .app-shell {
   min-height: 100vh;
-  background: rgb(var(--background-color));
-  color: rgb(var(--text-color));
 }
 </style>

@@ -584,9 +584,9 @@ document.addEventListener('click', () => {
 }
 
 .mode-tag.group {
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.15), rgba(249, 115, 22, 0.1));
-  color: #ea580c;
-  border: 1px solid rgba(251, 146, 60, 0.2);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(37, 99, 235, 0.1));
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.24);
 }
 
 .mode-tag.archived {

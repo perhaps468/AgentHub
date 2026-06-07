@@ -343,8 +343,9 @@ const getAgentAvatarStyle = (agent: SidebarAgent) => {
 }
 
 .agent-badge.custom {
-  background: rgba(249, 115, 22, 0.12);
-  color: #c2410c;
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.2);
 }
 
 .agent-desc {
