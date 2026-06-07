@@ -334,6 +334,18 @@ function startPreviewResize(event: MouseEvent) {
 
 // ==================== 工具函数 ====================
 
+function buildContentFromNodes(nodes: ComposerSubmitPayload['nodes']): string {
+  if (!nodes || nodes.length === 0) return ''
+  return nodes
+    .map((node) => {
+      if (node.type === 'text') return node.content
+      if (node.type === 'agent-chip') return `@${node.agent.name}`
+      return ''
+    })
+    .join('')
+    .trim()
+}
+
 /**
  * 格式化 ISO 时间字符串为"月日 时:分"格式
  */
@@ -516,7 +528,7 @@ const handleSend = async (payload: ComposerSubmitPayload) => {
     return
   }
 
-  const content = payload.text.trim()
+  const content = buildContentFromNodes(payload.nodes)
   if (!content) {
     return
   }
