@@ -36,7 +36,6 @@
           <span class="tool-ripple"></span>
         </button>
         
-        <!-- Send button -->
         <button
           type="button"
           class="send-btn"
@@ -265,6 +264,10 @@ function getStructuredValue(): ComposerSubmitPayload {
   }
 }
 
+function buildMessageData(): ComposerSubmitPayload {
+  return getStructuredValue()
+}
+
 function syncFromDom() {
   nodes.value = buildNodesFromDom()
   const payload = getStructuredValue()
@@ -326,6 +329,7 @@ function insertTextAtCaret(text: string) {
 
 function insertAgentChip(agent: ComposerAgent) {
   if (!inputRef.value) return
+  focusComposer()
   const normalized = normalizeAgent(agent)
   const exists = nodes.value.some(
     (node) => node.type === 'agent-chip' && node.agent.id === normalized.id,
@@ -333,28 +337,9 @@ function insertAgentChip(agent: ComposerAgent) {
   if (exists) return
 
   const chip = createAgentChipElement(normalized)
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0) {
-    inputRef.value.appendChild(chip)
-    inputRef.value.appendChild(document.createTextNode(' '))
-    placeCaretAtEnd()
-    syncFromDom()
-    return
-  }
-
-  const range = selection.getRangeAt(0)
-  if (!inputRef.value.contains(range.startContainer)) {
-    inputRef.value.appendChild(chip)
-    inputRef.value.appendChild(document.createTextNode(' '))
-    placeCaretAtEnd()
-    syncFromDom()
-    return
-  }
-
-  range.deleteContents()
-  range.insertNode(document.createTextNode(' '))
-  range.insertNode(chip)
-  placeCaretAfter(chip.nextSibling ?? chip)
+  inputRef.value.appendChild(chip)
+  inputRef.value.appendChild(document.createTextNode(' '))
+  placeCaretAtEnd()
   syncFromDom()
 }
 
@@ -544,6 +529,12 @@ function handleKeyDown(event: KeyboardEvent) {
     const payload = getStructuredValue()
     if (!payload.text.trim()) return
     emit('send', payload)
+    inputValue.value = ''
+    if (inputRef.value) {
+      inputRef.value.innerHTML = ''
+    }
+    nodes.value = []
+    hasContent.value = false
     return
   }
 
@@ -614,22 +605,28 @@ function handleFileSelect(event: Event) {
   if (files && files.length > 0) {
     emit('file-selected', Array.from(files))
   }
-  // 清空 input 以便再次选择相同文件
-  event.target.value = ''
+  target.value = ''
 }
 
-// 发送按钮点击处理
 const handleSendClick = () => {
   if (!hasContent.value) return
-  // 构建消息数据
-  const messageData = buildMessageData()
-  emit('send', messageData)
-  // 清空输入框
+  const payload = buildMessageData()
+  emit('send', payload)
   inputValue.value = ''
-  inputRef.value.innerHTML = ''
-  nodeList = []
+  if (inputRef.value) {
+    inputRef.value.innerHTML = ''
+  }
+  nodes.value = []
   hasContent.value = false
 }
+
+defineExpose({
+  getStructuredValue,
+  insertAgentChip,
+  insertEmoji,
+  removeAgentChip,
+  clear,
+})
 </script>
 
 <style scoped lang="less">
@@ -638,168 +635,165 @@ const handleSendClick = () => {
   width: 100%;
 }
 
-  .input-block {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    background: rgb(var(--surface-color));
-    border-radius: var(--radius-lg);
-    border: 1px solid rgb(var(--border-color));
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    &:focus-within {
-      border-color: rgba(0, 112, 243, 0.4);
-      box-shadow:
-        0 0 0 3px rgba(0, 112, 243, 0.08),
-        0 4px 12px rgba(0, 112, 243, 0.1);
-          }
-        }
-
-  .msg-input {
-    flex: 1;
-    min-height: 40px;
-    max-height: 140px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding-left: 10px;
-    border-radius: var(--radius-md);
-    border: none;
-    background: transparent;
-    color: rgb(var(--text-color));
-    font-size: 14px;
-    line-height: 1.6;
-    outline: none;
-    resize: none;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    word-break: break-all;
-    transition: all 0.15s ease;
-    cursor: text;
-  }
-
-  /* Toolbar */
-  .composer-toolbar {
-    display: flex;
-    flex-direction: row;
-    gap: 2px;
-    flex-shrink: 0;
-    padding: 4px 2px;
-  }
-
-  .tool-btn {
-    position: relative;
-    display: flex;
-    justify-content: center;
-    margin-top: 4px;
-    width: 40px;
-    height: 40px;
-    border-radius: 20px;
-    color: rgb(var(--text-muted));
-
-.tool-icon {
+.input-block {
   display: flex;
-  align-items: center;
-  justify-content: center;
-
-      svg {
-        width: 30px;
-        height: 30px;
-        transition: transform 0.2s ease;
-      }
-    }
-
-    .tool-ripple {
-      position: absolute;
-      inset: 0;
-      border-radius: 10px;
-      opacity: 0;
-      transform: scale(0.8);
-      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    &::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border-radius: 10px;
-      opacity: 0;
-      transform: scale(0);
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    &:hover {
-      color: rgb(var(--primary-color));
-      border: 1px solid rgba(0, 112, 243, 0.4);
-      transform: translateY(-1px);
-
-      .tool-icon svg {
-        transform: scale(1.1);
-      }
-
-      .tool-ripple {
-        opacity: 1;
-        transform: scale(1);
-      }
-
-      &::before {
-        opacity: 0.5;
-        transform: scale(1);
-      }
-    }
-
-    &:active {
-      transform: translateY(0) scale(0.96);
-
-      .tool-icon svg {
-        transform: scale(0.95);
-      }
-    }
+  align-items: flex-end;
+  gap: 8px;
+  background: rgb(var(--surface-color));
+  border-radius: var(--radius-lg);
+  border: 1px solid rgb(var(--border-color));
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  &:focus-within {
+    border-color: rgba(0, 112, 243, 0.4);
+    box-shadow:
+      0 0 0 3px rgba(0, 112, 243, 0.08),
+      0 4px 12px rgba(0, 112, 243, 0.1);
   }
+}
 
-  /* Send button */
-  .send-btn {
-    flex-shrink: 0;
+.msg-input {
+  flex: 1;
+  min-height: 40px;
+  max-height: 140px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-left: 10px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: rgb(var(--text-color));
+  font-size: 14px;
+  line-height: 1.6;
+  outline: none;
+  resize: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  word-break: break-all;
+  transition: all 0.15s ease;
+  cursor: text;
+}
+
+.composer-toolbar {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 4px 2px;
+}
+
+.tool-btn {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  color: rgb(var(--text-muted));
+
+  .tool-icon {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 20px;
-    background: rgb(var(--text-muted));
-    color: #fff;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    margin: 4px;
 
     svg {
-      width: 18px;
-      height: 18px;
-    }
-
-    &.active {
-      background: rgb(var(--primary-color));
-    }
-
-    &:hover {
-      &.active {
-        background: rgb(var(--primary-strong));
-        transform: scale(1.05);
-      }
-    }
-
-    &:active {
-      &.active {
-        transform: scale(0.95);
-      }
-    }
-
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.6;
+      width: 30px;
+      height: 30px;
+      transition: transform 0.2s ease;
     }
   }
 
-/* 隐藏的文件上传 input */
+  .tool-ripple {
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    opacity: 0;
+    transform: scale(0.8);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    opacity: 0;
+    transform: scale(0);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  &:hover {
+    color: rgb(var(--primary-color));
+    border: 1px solid rgba(0, 112, 243, 0.4);
+    transform: translateY(-1px);
+
+    .tool-icon svg {
+      transform: scale(1.1);
+    }
+
+    .tool-ripple {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    &::before {
+      opacity: 0.5;
+      transform: scale(1);
+    }
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.96);
+
+    .tool-icon svg {
+      transform: scale(0.95);
+    }
+  }
+}
+
+.send-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background: rgb(var(--text-muted));
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin: 4px;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  &.active {
+    background: rgb(var(--primary-color));
+  }
+
+  &:hover {
+    &.active {
+      background: rgb(var(--primary-strong));
+      transform: scale(1.05);
+    }
+  }
+
+  &:active {
+    &.active {
+      transform: scale(0.95);
+    }
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
 .file-input-hidden {
   position: absolute;
   width: 0;

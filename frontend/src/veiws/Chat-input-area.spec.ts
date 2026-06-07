@@ -78,6 +78,52 @@ describe('ChatInputArea', () => {
     ])
   })
 
+  it('shows selected agent feedback immediately when insertAgentChip is called through the exposed API', async () => {
+    const wrapper = mount(ChatInputArea, {
+      props: {
+        sessionId: 'session-1',
+      },
+      global: {
+        stubs: {
+          Input: {
+            props: ['value', 'sessionAgentOptions', 'handlerSubmitMsg'],
+            template: '<div class="input-stub"></div>',
+            methods: {
+              insertAgentChip() {},
+              getStructuredValue() {
+                return {
+                  text: '',
+                  targetAgentIds: ['agent-a'],
+                  selectedAgents: [
+                    { id: 'agent-a', name: 'Alpha', avatar: null, status: 'online', role: 'frontend' },
+                  ],
+                  nodes: [
+                    { type: 'agent-chip', agent: { id: 'agent-a', name: 'Alpha', avatar: null, status: 'online', role: 'frontend' } },
+                  ],
+                }
+              },
+            },
+          },
+        },
+      },
+    })
+
+    ;(wrapper.vm as unknown as { insertAgentChip: (agent: any) => void }).insertAgentChip({
+      id: 'agent-a',
+      name: 'Alpha',
+      avatar: null,
+      status: 'online',
+      role: 'frontend',
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.findAll('.selected-agent-pill')).toHaveLength(1)
+    expect(wrapper.find('.selected-agent-pill').text()).toContain('@Alpha')
+    expect(wrapper.emitted('selection-change')?.at(-1)).toEqual([
+      [{ id: 'agent-a', name: 'Alpha', avatar: null, status: 'online', role: 'frontend' }],
+    ])
+  })
+
   it('emits the structured send payload and clears selection after submit', async () => {
     const wrapper = mount(ChatInputArea, {
       props: {

@@ -68,6 +68,7 @@ const emit = defineEmits<{
   (e: 'open-left'): void
   (e: 'retry'): void
   (e: 'send', payload: ComposerSubmitPayload): void
+  (e: 'pick-agent', agent: ComposerAgent): void
 }>()
 
 const chatRef = ref<{
@@ -104,11 +105,17 @@ const sessionAgentOptions = computed<SessionAgentOption[]>(() => {
 
 function handlePickAgent(agent: ComposerAgent) {
   chatRef.value?.insertAgentChip?.(agent)
+  emit('pick-agent', agent)
 }
 
 function handleSelectionChange(agents: ComposerAgent[]) {
   selectedAgents.value = agents
 }
+
+defineExpose({
+  insertAgentChip: (agent: ComposerAgent) => chatRef.value?.insertAgentChip?.(agent),
+  getStructuredValue: () => chatRef.value?.getStructuredValue?.(),
+})
 </script>
 
 <style scoped>
