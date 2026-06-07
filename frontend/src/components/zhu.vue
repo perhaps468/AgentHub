@@ -772,6 +772,8 @@ async function restoreCurrentSession() {
 
 /** 关闭预览区 */
 const closePreview = () => {
+  activeSidebarPanel.value = 'messages'
+  isCollapsed.value = false
   previewState.value = { type: 'empty', title: '' }
   sessionStore.streamState?.clearPreviewDiff()
 }
