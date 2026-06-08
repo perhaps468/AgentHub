@@ -380,13 +380,14 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   z-index: 30;
   flex-shrink: 0;
   margin-left: auto;
-  transform: translateX(-400px);
+  max-width: 100%;
 }
 
 .agent-summary-trigger {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+  max-width: 100%;
   min-height: 44px;
   padding: 7px 12px 7px 8px;
   border: 1px solid rgba(203, 213, 225, 0.9);
@@ -446,6 +447,7 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   align-items: flex-start;
   gap: 1px;
   line-height: 1.1;
+  min-width: 0;
 }
 
 .agent-summary-title {
@@ -478,7 +480,7 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   top: calc(100% + 8px);
   right: 0;
   z-index: 40;
-  min-width: 280px;
+  width: min(280px, calc(100vw - 32px));
   padding: 8px;
   border: 1px solid rgba(203, 213, 225, 0.92);
   border-radius: 12px;
@@ -609,7 +611,6 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   .agent-summary-shell {
     width: 100%;
     margin-left: 56px;
-    transform: none;
   }
 
   .agent-summary-trigger {

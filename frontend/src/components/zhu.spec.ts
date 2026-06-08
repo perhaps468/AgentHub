@@ -110,12 +110,21 @@ const userInfoStore = reactive({
   clearUserInfo: vi.fn(),
 })
 
+const chatMsgStore = reactive({
+  referenceMsg: null as any,
+  setReferenceMsg: vi.fn(),
+})
+
 vi.mock('../store/module/useSessionStore', () => ({
   useSessionStore: () => sessionStore,
 }))
 
 vi.mock('../store/module/useUserStore', () => ({
   useUserInfoStore: () => userInfoStore,
+}))
+
+vi.mock('../store/module/useChatMsgStore', () => ({
+  useChatMsgStore: () => chatMsgStore,
 }))
 
 vi.mock('../utils/ws-client', () => ({
@@ -260,6 +269,10 @@ describe('zhu', () => {
             emits: ['send'],
             template: '<button data-testid="send" @click="$emit(\'send\', { text: \'hello\', targetAgentIds: [], selectedAgents: [], mentions: [], nodes: [{ type: \'text\', content: \'hello\' }] })">send</button>',
           },
+          WelcomeAfterLogin: {
+            emits: ['enter-chat'],
+            template: '<button data-testid="enter-chat" @click="$emit(\'enter-chat\')">enter</button>',
+          },
           Search: true,
           avatar: true,
           dot_hint: true,
@@ -274,6 +287,7 @@ describe('zhu', () => {
     })
     await flushPromises()
 
+    await wrapper.get('[data-testid="enter-chat"]').trigger('click')
     sendMessage.mockReturnValue(false)
 
     await wrapper.get('[data-testid="send"]').trigger('click')
@@ -699,5 +713,45 @@ describe('zhu', () => {
         agent_name: 'Old Agent',
       }),
     ])
+  })
+
+  it('lets the preview panel width be resized by dragging its left edge', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1400,
+    })
+
+    const wrapper = shallowMount(Zhu, {
+      global: {
+        stubs: {
+          LeftSidebarArea: true,
+          ChatWorkspace: true,
+          PreviewPanel: true,
+          UserProfileDialog: true,
+          AddAgentDialog: true,
+          NewConversationDialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    onReceiveMessage.mock.calls[0][0]({
+      type: 'preview_result',
+      preview_url: 'http://localhost:3000',
+      status: 'ready',
+    })
+    await flushPromises()
+
+    const container = wrapper.get('.glass-container')
+    expect(container.attributes('style')).toContain('650px')
+
+    await wrapper.get('[data-testid="preview-resize-handle"]').trigger('mousedown', {
+      clientX: 900,
+    })
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 700 }))
+    document.dispatchEvent(new MouseEvent('mouseup'))
+    await flushPromises()
+
+    expect(container.attributes('style')).toContain('677px')
   })
 })

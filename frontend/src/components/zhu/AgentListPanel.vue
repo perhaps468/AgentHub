@@ -52,12 +52,12 @@
           </div>
         </button>
         <div v-if="agent.isCustom" class="agent-actions">
-          <el-button size="small" circle @click.stop="$emit('edit-agent', agent)">
+          <button class="agent-action-btn edit" type="button" aria-label="编辑 Agent" @click.stop="$emit('edit-agent', agent)">
             <el-icon><Edit /></el-icon>
-          </el-button>
-          <el-button size="small" circle type="danger" @click.stop="$emit('delete-agent', agent)">
+          </button>
+          <button class="agent-action-btn delete" type="button" aria-label="删除 Agent" @click.stop="$emit('delete-agent', agent)">
             <el-icon><Delete /></el-icon>
-          </el-button>
+          </button>
         </div>
       </div>
       <div v-if="visibleAgents.length === 0" class="empty-hint">
@@ -289,24 +289,59 @@ const getAgentAvatarStyle = (agent: SidebarAgent) => {
 /* ==================== 操作按钮 ==================== */
 .agent-actions {
   position: absolute;
-  top: 50%;
-  right: 12px;
-  transform: translateY(-50%);
+  top: 10px;
+  right: 10px;
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 3px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
   opacity: 0;
-  transition: opacity 0.2s ease;
+  pointer-events: none;
+  transition: opacity 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
-.agent-item-wrapper:hover .agent-actions {
+.agent-item-wrapper:hover .agent-actions,
+.agent-actions:focus-within {
   opacity: 1;
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.1);
 }
 
-.agent-actions .el-button {
-  width: 28px;
-  height: 28px;
+.agent-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   padding: 0;
+  border: none;
   border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.agent-action-btn:hover,
+.agent-action-btn:focus-visible {
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+  outline: none;
+}
+
+.agent-action-btn.delete:hover,
+.agent-action-btn.delete:focus-visible {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+.agent-action-btn .el-icon {
+  font-size: 14px;
 }
 
 /* ==================== Agent 信息 ==================== */

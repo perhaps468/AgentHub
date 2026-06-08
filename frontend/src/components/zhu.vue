@@ -10,7 +10,11 @@
     <div class="grid-pattern"></div>
 
     <!-- 玻璃态主容器 -->
-    <div class="glass-container" :class="{ 'sidebar-collapsed': isCollapsed, 'show-preview': showPreviewPanel }">
+    <div
+      class="glass-container"
+      :class="{ 'sidebar-collapsed': isCollapsed, 'show-preview': showPreviewPanel, 'preview-is-resizing': isResizingPreview }"
+      :style="glassContainerStyle"
+    >
       <!-- 左侧列表区 -->
       <LeftSidebarArea
         :show-left="showLeft"
@@ -71,6 +75,15 @@
       </template>
 
       <!-- 右侧预览区 - 只有点击预览按钮后才显示 -->
+      <div
+        v-if="showPreviewPanel"
+        class="preview-resize-handle"
+        data-testid="preview-resize-handle"
+        title="调整预览区宽度"
+        @mousedown="startPreviewResize"
+      >
+        <span class="preview-resize-grip"></span>
+      </div>
       <PreviewPanel
         v-if="showPreviewPanel"
         :preview-state="previewState"
@@ -164,7 +177,7 @@ const showToast = useToast()
 /** 左侧栏显示开关（移动端控制） */
 const showLeft = ref(true)
 
-const DEFAULT_PREVIEW_WIDTH = 340
+const DEFAULT_PREVIEW_WIDTH = 650
 const MIN_PREVIEW_WIDTH = 280
 const MAX_PREVIEW_WIDTH = 1400
 const PREVIEW_RESIZE_HANDLE_WIDTH = 8
@@ -307,11 +320,17 @@ const groupSelectableAgents = computed(() => {
 
 const glassContainerStyle = computed(() => {
   const sidebarWidth = isCollapsed.value ? 72 : 400
-  const previewTrackWidth = PREVIEW_RESIZE_HANDLE_WIDTH + previewWidth.value
+  if (!showPreviewPanel.value) {
+    return {
+      gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr) 0px`,
+      '--preview-width': `${previewWidth.value}px`,
+      '--preview-handle-width': `${PREVIEW_RESIZE_HANDLE_WIDTH}px`,
+    }
+  }
+
   return {
-    gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr) ${previewTrackWidth}px`,
+    gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr) ${PREVIEW_RESIZE_HANDLE_WIDTH}px ${previewWidth.value}px`,
     '--preview-width': `${previewWidth.value}px`,
-    '--preview-track-width': `${previewTrackWidth}px`,
     '--preview-handle-width': `${PREVIEW_RESIZE_HANDLE_WIDTH}px`,
   }
 })
@@ -319,7 +338,11 @@ const glassContainerStyle = computed(() => {
 // ==================== 工具函数 ====================
 
 function clampPreviewWidth(nextWidth: number) {
-  return Math.min(MAX_PREVIEW_WIDTH, Math.max(MIN_PREVIEW_WIDTH, nextWidth))
+  const sidebarWidth = isCollapsed.value ? 72 : 400
+  const availableWidth = Math.max(MIN_PREVIEW_WIDTH, window.innerWidth - sidebarWidth - 32)
+  const responsiveMaxWidth = Math.floor(availableWidth * 0.7)
+  const maxWidth = Math.max(MIN_PREVIEW_WIDTH, Math.min(MAX_PREVIEW_WIDTH, responsiveMaxWidth))
+  return Math.min(maxWidth, Math.max(MIN_PREVIEW_WIDTH, nextWidth))
 }
 
 function stopPreviewResize() {
@@ -1068,10 +1091,6 @@ onUnmounted(() => {
 }
 
 /* 显示预览区时：左侧展开(400px) | 中间(剩余空间) | 右侧(340px) */
-.glass-container.show-preview {
-  grid-template-columns: 400px 1fr 800px;
-}
-
 .glass-container > :deep(*) {
   background: rgba(var(--surface-color), 0.92);
   backdrop-filter: blur(12px);
@@ -1084,11 +1103,37 @@ onUnmounted(() => {
 }
 
 .glass-container > .preview-resize-handle {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   backdrop-filter: none;
   border: none;
   border-radius: 0;
   box-shadow: none;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.preview-resize-grip {
+  width: 3px;
+  height: 56px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.24);
+  transition: background-color 0.18s ease, height 0.18s ease;
+}
+
+.preview-resize-handle:hover .preview-resize-grip,
+.preview-is-resizing .preview-resize-grip {
+  height: 80px;
+  background: rgba(37, 99, 235, 0.5);
+}
+
+:global(body.preview-resizing) {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .glass-container > :deep(*):hover {
@@ -1106,40 +1151,16 @@ onUnmounted(() => {
 }
 
 /* 左侧收起 | 中间固定(700px) | 右侧(340px) */
-.glass-container.sidebar-collapsed.show-preview {
-  grid-template-columns: 72px 700px minmax(0, 1fr);
-}
-
 /* ==================== 响应式断点 ==================== */
 @media (max-width: 1400px) {
   .glass-container {
-    grid-template-columns: 300px 1fr 0;
     padding: 12px;
-  }
-  .glass-container.show-preview {
-    grid-template-columns: 300px 1fr 300px;
-  }
-  .glass-container.sidebar-collapsed {
-    grid-template-columns: 72px 1fr 0;
-  }
-  .glass-container.sidebar-collapsed.show-preview {
-    grid-template-columns: 72px 600px 300px;
   }
 }
 
 @media (max-width: 1200px) {
   .glass-container {
-    grid-template-columns: 280px 1fr 0;
     padding: 12px;
-  }
-  .glass-container.show-preview {
-    grid-template-columns: 280px 1fr 280px;
-  }
-  .glass-container.sidebar-collapsed {
-    grid-template-columns: 72px 1fr 0;
-  }
-  .glass-container.sidebar-collapsed.show-preview {
-    grid-template-columns: 72px 600px 280px;
   }
 }
 
