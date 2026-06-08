@@ -1,68 +1,70 @@
 <template>
-  <div class="diff-preview" :class="{ 'is-confirmed': isConfirmed, 'is-rejected': isRejected }">
+  <div class="diff-preview" :class="{ 'is-confirmed': isConfirmed, 'is-rejected': isRejected, 'is-pending-review-only': isPendingReviewOnly }">
     <div class="diff-header">
       <span class="diff-operation" :class="operation">
         {{ operationLabel }}
       </span>
       <span class="diff-path" :title="path">{{ fileName }}</span>
     </div>
-
-    <div class="diff-content">
-      <pre class="diff-code"><code>{{ unifiedDiff }}</code></pre>
-    </div>
-
-    <!-- 科技风按钮区域 -->
-    <div v-if="status === 'pending_confirmation'" class="diff-actions">
-      <div class="action-left">
-        <button class="btn btn-confirm" type="button" :disabled="isLoading" @click="handleConfirm">
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 12l5 5L20 7"/>
-          </svg>
-          {{ isLoading ? '应用中...' : '确认写入' }}
-        </button>
+    <div v-if="pendingReviewInfo" class="pending-review-card">
+      <div v-if="contentHtml" v-html="contentHtml" class="pending-review-html"></div>
+      <div class="pending-review-meta">
+        <div class="pending-review-title">待确认写入</div>
+        <div class="pending-review-file">{{ pendingReviewInfo.fileName }}</div>
+        <div class="pending-review-id">变更 ID: {{ pendingReviewInfo.changeId }}</div>
       </div>
-      <div class="action-right">
-        <button class="btn btn-preview" type="button" @click="handlePreview" title="预览">
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
-          预览
-        </button>
-        <button class="btn btn-cancel" type="button" @click="handleCancel" title="取消">
-          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-          取消
-        </button>
+      <!-- 科技风按钮区域 -->
+      <div v-if="status === 'pending_confirmation'" class="diff-actions">
+        <div class="action-left">
+          <button class="btn btn-confirm" type="button" :disabled="isLoading" @click="handleConfirm">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12l5 5L20 7"/>
+            </svg>
+            {{ isLoading ? '应用中...' : '确认写入' }}
+          </button>
+        </div>
+        <div class="action-right">
+          <button class="btn btn-preview" type="button" @click="handlePreview" title="预览">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            预览
+          </button>
+          <button class="btn btn-cancel" type="button" @click="handleCancel" title="取消">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+            取消
+          </button>
+        </div>
       </div>
-    </div>
 
-    <div v-else-if="status === 'applied'" class="diff-result success">
-      <span class="result-icon">&#10003;</span>
-      <span>已写入成功 {{ path }}</span>
-    </div>
+      <div v-else-if="status === 'applied'" class="diff-result success">
+        <span class="result-icon">&#10003;</span>
+        <span>已写入成功 {{ path }}</span>
+      </div>
 
-    <div v-else-if="status === 'rejected'" class="diff-result error">
-      <span class="result-icon">&#10007;</span>
-      <span>写入已取消</span>
-    </div>
+      <div v-else-if="status === 'rejected'" class="diff-result error">
+        <span class="result-icon">&#10007;</span>
+        <span>写入已取消</span>
+      </div>
 
-    <div v-else-if="status === 'failed'" class="diff-result error">
-      <span class="result-icon">&#10007;</span>
-      <span>写入失败</span>
+      <div v-else-if="status === 'failed'" class="diff-result error">
+        <span class="result-icon">&#10007;</span>
+        <span>写入失败</span>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
+import { applyPendingChange, rejectPendingChange } from '@/api/modules/pendingChanges'
+import { useSessionStore } from '@/store/module/useSessionStore'
+import { normalizeRuntimeTextForDisplay } from '../../utils/runtime-text'
 import type { PendingChange } from '../../types/agenthub'
-
-const props = defineProps<{
-  change: PendingChange
-}>()
 
 const emit = defineEmits<{
   (e: 'confirm', changeId: string): void
@@ -70,7 +72,15 @@ const emit = defineEmits<{
   (e: 'preview', change: PendingChange): void
 }>()
 
+const props = defineProps<{
+  change: PendingChange
+  contentHtml?: string
+}>()
+
+const sessionStore = useSessionStore()
 const isLoading = ref(false)
+const pendingReviewLoading = ref(false)
+const pendingReviewStatus = ref<PendingChange['status']>('pending_confirmation')
 
 const operationLabel = computed(() => {
   const labels: Record<string, string> = {
@@ -90,9 +100,25 @@ const operation = computed(() => props.change.operation)
 const path = computed(() => props.change.path)
 const unifiedDiff = computed(() => props.change.unified_diff)
 const status = computed(() => props.change.status)
+const isPendingReviewOnly = computed(() => !props.change.unified_diff?.trim())
 
 const isConfirmed = computed(() => status.value === 'applied')
 const isRejected = computed(() => status.value === 'rejected')
+
+watch(
+  () => props.change.status,
+  (newStatus) => {
+    if (newStatus) {
+      pendingReviewStatus.value = newStatus
+    }
+  },
+  { immediate: true },
+)
+
+const pendingReviewInfo = computed(() => ({
+  changeId: props.change.change_id,
+  fileName: props.change.path.split(/[/\\]/).pop() || 'target file',
+}))
 
 const handleConfirm = async () => {
   if (isLoading.value || isConfirmed.value) return
@@ -107,6 +133,40 @@ const handleCancel = () => {
 
 const handlePreview = () => {
   emit('preview', props.change)
+}
+
+const handleConfirmPendingReview = async () => {
+  const changeId = pendingReviewInfo.value.changeId
+  if (!changeId || pendingReviewLoading.value) return
+
+  pendingReviewLoading.value = true
+  try {
+    const sessionId = sessionStore.currentSessionId || undefined
+    const result = await applyPendingChange({ change_id: changeId, session_id: sessionId })
+    if (result.success || result.status === 'applied') {
+      pendingReviewStatus.value = 'applied'
+    } else {
+      pendingReviewStatus.value = 'failed'
+    }
+  } catch (error) {
+    console.error('确认写入失败', error)
+    pendingReviewStatus.value = 'failed'
+  } finally {
+    pendingReviewLoading.value = false
+  }
+}
+
+const handleCancelPendingReview = async () => {
+  const changeId = pendingReviewInfo.value.changeId
+  if (!changeId) return
+
+  try {
+    const sessionId = sessionStore.currentSessionId || undefined
+    await rejectPendingChange({ change_id: changeId, session_id: sessionId })
+    pendingReviewStatus.value = 'rejected'
+  } catch {
+    pendingReviewStatus.value = 'rejected'
+  }
 }
 </script>
 
@@ -197,6 +257,10 @@ const handlePreview = () => {
   }
 }
 
+.diff-preview.is-pending-review-only .pending-review-card {
+  margin-top: 0;
+}
+
 .diff-code {
   margin: 0;
   color: rgb(var(--text-color));
@@ -213,13 +277,14 @@ const handlePreview = () => {
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 5px 5px;
   border-top: 1px solid rgb(var(--border-color));
   position: relative;
 }
 
 .action-left {
   flex: 1;
+  margin-right: 30px;
 }
 
 .action-right {
@@ -359,5 +424,92 @@ const handlePreview = () => {
 
 .diff-result.error .result-icon {
   background: rgba(248, 113, 113, 0.15);
+}
+
+.pending-review-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--border-color), 0.9);
+  border-radius: 14px;
+  background: rgba(var(--surface-secondary), 0.55);
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.pending-review-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pending-review-title {
+  color: rgb(var(--text-color));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pending-review-file {
+  color: rgb(var(--text-color));
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pending-review-id {
+  color: rgb(var(--text-secondary));
+  font-size: 12px;
+}
+
+.pending-review-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pending-review-confirm,
+.pending-review-cancel {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.pending-review-confirm {
+  background: rgb(var(--primary-color));
+  color: #fff;
+}
+
+.pending-review-confirm:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.pending-review-cancel {
+  background: rgba(var(--surface-color), 0.9);
+  color: rgb(var(--text-secondary));
+  border: 1px solid rgba(var(--border-color), 0.9);
+}
+
+.pending-review-status {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pending-review-status.success {
+  color: rgb(34, 197, 94);
+}
+
+.pending-review-status.error {
+  color: rgb(239, 68, 68);
+}
+
+.pending-review-status.muted {
+  color: rgb(var(--text-secondary));
 }
 </style>

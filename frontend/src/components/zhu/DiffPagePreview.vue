@@ -272,16 +272,16 @@ const formattedDiff = computed(() => {
     return lines
       .filter(line => !line.startsWith('---') && !line.startsWith('+++') && !line.startsWith('@@') && !line.startsWith('diff '))
       .map(line => `<span class="diff-context">${line}</span>`)
-      .join('\n')
+      .join('')
   }
 
   return changeLines
     .map(line => {
       if (line.startsWith('+')) return `<span class="diff-add">${line}</span>`
       if (line.startsWith('-')) return `<span class="diff-del">${line}</span>`
-      return line
+      return `<span class="diff-context">${line}</span>`
     })
-    .join('\n')
+    .join('')
 })
 </script>
 
