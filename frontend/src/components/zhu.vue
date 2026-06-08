@@ -10,7 +10,11 @@
     <div class="grid-pattern"></div>
 
     <!-- 玻璃态主容器 -->
-    <div class="glass-container" :class="{ 'sidebar-collapsed': isCollapsed, 'show-preview': showPreviewPanel }">
+    <div
+      class="glass-container"
+      :class="{ 'sidebar-collapsed': isCollapsed, 'show-preview': showPreviewPanel, 'preview-is-resizing': isResizingPreview }"
+      :style="glassContainerStyle"
+    >
       <!-- 左侧列表区 -->
       <LeftSidebarArea
         :show-left="showLeft"
@@ -71,6 +75,15 @@
       </template>
 
       <!-- 右侧预览区 - 只有点击预览按钮后才显示 -->
+      <div
+        v-if="showPreviewPanel"
+        class="preview-resize-handle"
+        data-testid="preview-resize-handle"
+        title="调整预览区宽度"
+        @mousedown="startPreviewResize"
+      >
+        <span class="preview-resize-grip"></span>
+      </div>
       <PreviewPanel
         v-if="showPreviewPanel"
         :preview-state="previewState"
@@ -143,6 +156,7 @@ import type {
 } from '../types/agenthub'
 import { getWsClientReconnectAttempt, ws } from '../utils/ws-client'
 import { useToast } from '../veiws/useToast'
+import { useChatMsgStore } from '../store/module/useChatMsgStore'
 import AddAgentDialog from './zhu/AddAgentDialog.vue'
 import ChatWorkspace from './zhu/ChatWorkspace.vue'
 import WelcomeAfterLogin from './zhu/WelcomeAfterLogin.vue'
@@ -155,6 +169,7 @@ import UserProfileDialog from './zhu/UserProfileDialog.vue'
 const userInfoStore = useUserInfoStore()
 const sessionStore = useSessionStore()
 const agentStore = useAgentStore()
+const chatMsgStore = useChatMsgStore()
 const router = useRouter()
 const showToast = useToast()
 
@@ -162,7 +177,7 @@ const showToast = useToast()
 /** 左侧栏显示开关（移动端控制） */
 const showLeft = ref(true)
 
-const DEFAULT_PREVIEW_WIDTH = 340
+const DEFAULT_PREVIEW_WIDTH = 650
 const MIN_PREVIEW_WIDTH = 280
 const MAX_PREVIEW_WIDTH = 1400
 const PREVIEW_RESIZE_HANDLE_WIDTH = 8
@@ -305,11 +320,17 @@ const groupSelectableAgents = computed(() => {
 
 const glassContainerStyle = computed(() => {
   const sidebarWidth = isCollapsed.value ? 72 : 400
-  const previewTrackWidth = PREVIEW_RESIZE_HANDLE_WIDTH + previewWidth.value
+  if (!showPreviewPanel.value) {
+    return {
+      gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr) 0px`,
+      '--preview-width': `${previewWidth.value}px`,
+      '--preview-handle-width': `${PREVIEW_RESIZE_HANDLE_WIDTH}px`,
+    }
+  }
+
   return {
-    gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr) ${previewTrackWidth}px`,
+    gridTemplateColumns: `${sidebarWidth}px minmax(0, 1fr) ${PREVIEW_RESIZE_HANDLE_WIDTH}px ${previewWidth.value}px`,
     '--preview-width': `${previewWidth.value}px`,
-    '--preview-track-width': `${previewTrackWidth}px`,
     '--preview-handle-width': `${PREVIEW_RESIZE_HANDLE_WIDTH}px`,
   }
 })
@@ -317,7 +338,11 @@ const glassContainerStyle = computed(() => {
 // ==================== 工具函数 ====================
 
 function clampPreviewWidth(nextWidth: number) {
-  return Math.min(MAX_PREVIEW_WIDTH, Math.max(MIN_PREVIEW_WIDTH, nextWidth))
+  const sidebarWidth = isCollapsed.value ? 72 : 400
+  const availableWidth = Math.max(MIN_PREVIEW_WIDTH, window.innerWidth - sidebarWidth - 32)
+  const responsiveMaxWidth = Math.floor(availableWidth * 0.7)
+  const maxWidth = Math.max(MIN_PREVIEW_WIDTH, Math.min(MAX_PREVIEW_WIDTH, responsiveMaxWidth))
+  return Math.min(maxWidth, Math.max(MIN_PREVIEW_WIDTH, nextWidth))
 }
 
 function stopPreviewResize() {
@@ -546,6 +571,13 @@ const handleSend = async (payload: ComposerSubmitPayload) => {
     return
   }
 
+  const refMsg = chatMsgStore.referenceMsg
+  const reference = refMsg ? {
+    msg_id: refMsg.id,
+    content: refMsg.message,
+    sender: refMsg.fromInfo?.name || '未知',
+  } : undefined
+
   isSendLoadingMap.set(sessionId, true)
   const tempId = `temp_${Date.now()}`
   sessionStore.appendHumanMessage(sessionId, {
@@ -561,6 +593,7 @@ const handleSend = async (payload: ComposerSubmitPayload) => {
       target_agent_ids: payload.targetAgentIds,
       selected_agents: payload.selectedAgents,
       composer_nodes: payload.nodes,
+      reference,
     },
     status: 'pending',
     created_at: new Date().toISOString(),
@@ -570,10 +603,15 @@ const handleSend = async (payload: ComposerSubmitPayload) => {
     content,
     targetAgentIds: payload.targetAgentIds,
     mentions: payload.mentions,
+    reference,
   })
   if (!ok) {
     showToast('发送失败，请检查网络', true)
     isSendLoadingMap.delete(sessionId)
+  }
+
+  if (reference) {
+    chatMsgStore.setReferenceMsg(null as any)
   }
 }
 
@@ -1001,58 +1039,63 @@ onUnmounted(() => {
   position: relative;
   height: 100vh;
   overflow: hidden;
-  background: linear-gradient(135deg, #ffffff 0%, #f0f4ff 50%, #e8f0fe 100%);
+  background:
+    radial-gradient(circle at top right, rgba(var(--primary-color), 0.06), transparent 26%),
+    linear-gradient(180deg, rgb(var(--background-color)) 0%, rgb(var(--surface-muted)) 100%);
 }
 
 /* ==================== 动态光晕效果 ==================== */
 .glow-orb {
   position: absolute;
   border-radius: 50%;
-  filter: blur(100px);
-  animation: float 10s ease-in-out infinite;
+  filter: blur(130px);
+  animation: float 16s ease-in-out infinite;
+  opacity: 0.7;
   pointer-events: none;
 }
 
 .glow-orb-1 {
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
-  top: -200px;
-  right: -100px;
+  width: 520px;
+  height: 520px;
+  background: radial-gradient(circle, rgba(var(--primary-color), 0.08) 0%, transparent 72%);
+  top: -230px;
+  right: -170px;
   animation-delay: 0s;
 }
 
 .glow-orb-2 {
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, transparent 70%);
-  bottom: -150px;
-  left: -100px;
+  width: 440px;
+  height: 440px;
+  background: radial-gradient(circle, rgba(var(--text-muted), 0.08) 0%, transparent 72%);
+  bottom: -180px;
+  left: -140px;
   animation-delay: -4s;
 }
 
 .glow-orb-3 {
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(6, 182, 212, 0.1) 0%, transparent 70%);
-  top: 40%;
-  left: 30%;
+  width: 360px;
+  height: 360px;
+  background: radial-gradient(circle, rgba(var(--primary-color), 0.05) 0%, transparent 74%);
+  top: 38%;
+  left: 32%;
   transform: translate(-50%, -50%);
   animation-delay: -7s;
 }
 
 @keyframes float {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(40px, -40px) scale(1.08); }
-  66% { transform: translate(-30px, 30px) scale(0.95); }
+  33% { transform: translate(16px, -22px) scale(1.02); }
+  66% { transform: translate(-12px, 14px) scale(0.98); }
 }
 
 /* ==================== 装饰性网格点阵 ==================== */
 .grid-pattern {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.06) 1px, transparent 0);
-  background-size: 50px 50px;
+  background-image: radial-gradient(circle at 1px 1px, rgba(var(--text-muted), 0.08) 1px, transparent 0);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.18), transparent 72%);
+  opacity: 0.3;
   pointer-events: none;
 }
 
@@ -1074,35 +1117,57 @@ onUnmounted(() => {
 }
 
 /* 显示预览区时：左侧展开(400px) | 中间(剩余空间) | 右侧(340px) */
-.glass-container.show-preview {
-  grid-template-columns: 400px 1fr 800px;
-}
-
 .glass-container > :deep(*) {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(20px);
+  background: rgba(var(--surface-color), 0.92);
+  backdrop-filter: blur(12px);
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(var(--border-color), 0.92);
   box-shadow:
-    0 8px 32px rgba(59, 130, 246, 0.08),
-    0 2px 8px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  transition: box-shadow 0.3s ease, transform 0.3s ease;
+    var(--shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .glass-container > .preview-resize-handle {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   backdrop-filter: none;
   border: none;
   border-radius: 0;
   box-shadow: none;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.preview-resize-grip {
+  width: 3px;
+  height: 56px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.24);
+  transition: background-color 0.18s ease, height 0.18s ease;
+}
+
+.preview-resize-handle:hover .preview-resize-grip,
+.preview-is-resizing .preview-resize-grip {
+  height: 80px;
+  background: rgba(37, 99, 235, 0.5);
+}
+
+:global(body.preview-resizing) {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .glass-container > :deep(*):hover {
+  background: rgba(var(--surface-color), 0.96);
+  border-color: rgba(var(--border-strong), 0.95);
   box-shadow:
-    0 12px 40px rgba(59, 130, 246, 0.12),
-    0 4px 12px rgba(0, 0, 0, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    0 16px 28px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.46);
 }
 
 /* ==================== 侧边栏收起状态 ==================== */
@@ -1112,40 +1177,16 @@ onUnmounted(() => {
 }
 
 /* 左侧收起 | 中间固定(700px) | 右侧(340px) */
-.glass-container.sidebar-collapsed.show-preview {
-  grid-template-columns: 72px 700px minmax(0, 1fr);
-}
-
 /* ==================== 响应式断点 ==================== */
 @media (max-width: 1400px) {
   .glass-container {
-    grid-template-columns: 300px 1fr 0;
     padding: 12px;
-  }
-  .glass-container.show-preview {
-    grid-template-columns: 300px 1fr 300px;
-  }
-  .glass-container.sidebar-collapsed {
-    grid-template-columns: 72px 1fr 0;
-  }
-  .glass-container.sidebar-collapsed.show-preview {
-    grid-template-columns: 72px 600px 300px;
   }
 }
 
 @media (max-width: 1200px) {
   .glass-container {
-    grid-template-columns: 280px 1fr 0;
     padding: 12px;
-  }
-  .glass-container.show-preview {
-    grid-template-columns: 280px 1fr 280px;
-  }
-  .glass-container.sidebar-collapsed {
-    grid-template-columns: 72px 1fr 0;
-  }
-  .glass-container.sidebar-collapsed.show-preview {
-    grid-template-columns: 72px 600px 280px;
   }
 }
 
@@ -1172,23 +1213,21 @@ onUnmounted(() => {
 /* ==================== Element Plus 弹窗样式覆盖 ==================== */
 :deep(.el-dialog) {
   border-radius: 20px;
-  backdrop-filter: blur(20px);
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid rgba(59, 130, 246, 0.1);
-  box-shadow:
-    0 25px 50px rgba(59, 130, 246, 0.15),
-    0 10px 20px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(12px);
+  background: rgba(var(--surface-color), 0.98);
+  border: 1px solid rgba(var(--border-color), 0.9);
+  box-shadow: var(--shadow-lg);
 }
 
 :deep(.el-dialog__header) {
   padding: 20px 24px 16px;
-  border-bottom: 1px solid rgba(59, 130, 246, 0.08);
+  border-bottom: 1px solid rgba(var(--border-color), 0.9);
 }
 
 :deep(.el-dialog__title) {
   font-size: 18px;
   font-weight: 600;
-  color: #1e40af;
+  color: rgb(var(--text-color));
 }
 
 :deep(.el-dialog__body) {
@@ -1197,19 +1236,18 @@ onUnmounted(() => {
 
 :deep(.el-dialog__footer) {
   padding: 16px 24px;
-  border-top: 1px solid rgba(59, 130, 246, 0.08);
+  border-top: 1px solid rgba(var(--border-color), 0.9);
 }
 
 :deep(.el-button--primary) {
-  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  background: rgb(var(--primary-color));
   border-color: transparent;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-  transition: all 0.3s ease;
+  box-shadow: 0 10px 24px rgba(var(--primary-color), 0.18);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 :deep(.el-button--primary:hover) {
-  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
-  transform: translateY(-1px);
+  background: rgb(var(--primary-strong));
+  box-shadow: 0 14px 26px rgba(var(--primary-color), 0.22);
 }
 </style>

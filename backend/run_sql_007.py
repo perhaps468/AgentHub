@@ -6,24 +6,19 @@ conn = pymysql.connect(
     port=3306,
     user='root',
     password='710802',
-    database='agenthub',
-    charset='utf8mb4'
+    charset='utf8mb4',
+    multi_statements=True,
 )
 
-with open('sql/007_p6_orchestration_runs_and_tasks.sql', 'r', encoding='utf-8') as f:
+with open('sql/agenthub.sql', 'r', encoding='utf-8') as f:
     sql_content = f.read()
 
 cursor = conn.cursor()
-for statement in sql_content.split(';'):
-    stmt = statement.strip()
-    if stmt:
-        try:
-            cursor.execute(stmt)
-            print(f'OK: {stmt[:80]}')
-        except Exception as e:
-            print(f'ERROR: {e}')
-
-conn.commit()
-cursor.close()
-conn.close()
-print('Done!')
+try:
+    for _ in cursor.execute(sql_content, multi=True):
+        pass
+    conn.commit()
+    print('Executed sql/agenthub.sql')
+finally:
+    cursor.close()
+    conn.close()

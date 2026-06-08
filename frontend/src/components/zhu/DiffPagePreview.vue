@@ -156,7 +156,6 @@ function applyMarkupDiff(diff: string): string {
   for (const line of lines) {
     if (line.startsWith('--- ') || line.startsWith('+++ ') || line.startsWith('diff ')) continue
     if (line.startsWith('@@')) {
-      result.push(`... (${line}) ...`)
       continue
     }
     if (line.includes('No newline at end of file') || /^-+$/.test(line)) continue

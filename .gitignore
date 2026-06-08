@@ -127,6 +127,7 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+frontend/.vite/
 
 # npm/pnpm debug logs
 npm-debug.log*
@@ -212,6 +213,7 @@ uploads/
 logs/
 .cursor/*.log
 */backend/.audit/
+backend/backend/.audit/*.jsonl
 
 # Alembic ini (auto-generated)
 alembic.ini

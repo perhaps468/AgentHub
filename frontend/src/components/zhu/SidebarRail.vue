@@ -92,87 +92,101 @@ const handleToggleCollapse = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 20px 12px;
-  background: transparent;
-  border-right: 1px solid rgba(59, 130, 246, 0.2);
+  gap: 12px;
+  width: 70px;
+  padding: 18px 10px;
+  background: rgba(var(--surface-color), 0.72);
+  border-right: 1px solid rgb(var(--border-color));
 }
 
 /* ==================== 头像容器 ==================== */
 .rail-avatar-wrapper {
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(var(--border-color), 0.78);
 }
 
 /* 按钮组容器 */
 .rail-button-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 /* ==================== 按钮基础样式 ==================== */
 .rail-button,.rail-avatar {
-  width: 46px;
-  height: 46px;
+  width: 42px;
+  height: 42px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
-  color: #64748b;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(59, 130, 246, 0.1);
+  border-radius: 10px;
+  color: rgb(var(--text-muted));
+  background: transparent;
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .rail-button :deep(svg) {
-  width: 22px;
-  height: 22px;
+  width: 19px;
+  height: 19px;
 }
 
 /* ==================== 激活与悬停状态 ==================== */
 .rail-button.active,
-.rail-button.is-collapsed,
+.rail-button.is-collapsed {
+  background: rgb(var(--primary-soft));
+  color: rgb(var(--primary-strong));
+  border-color: rgba(var(--primary-color), 0.18);
+  box-shadow: inset 3px 0 0 rgb(var(--primary-color));
+}
+
 .rail-button:hover {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(99, 102, 241, 0.1));
-  color: #3b82f6;
-  border-color: rgba(59, 130, 246, 0.3);
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+  background: rgba(var(--surface-muted), 0.84);
+  color: rgb(var(--text-secondary));
+  border-color: rgba(var(--border-color), 0.9);
+}
+
+.rail-button.active:hover,
+.rail-button.is-collapsed:hover {
+  background: rgb(var(--primary-soft));
+  color: rgb(var(--primary-strong));
 }
 
 .rail-avatar:hover {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.15));
-  border-color: rgba(59, 130, 246, 0.4);
-  transform: scale(1.08);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.25);
+  background: rgba(var(--surface-muted), 0.8);
+  border-color: rgba(var(--border-color), 0.9);
+  box-shadow: var(--shadow-soft);
 }
 
 /* ==================== 用户信息弹框 ==================== */
 .user-popover {
   position: absolute;
-  top: 0;
-  left: 58px;
+  top: 8px;
+  left: 62px;
   z-index: 100;
-  width: 280px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: 20px;
-  box-shadow:
-    0 20px 50px rgba(59, 130, 246, 0.15),
-    0 8px 16px rgba(0, 0, 0, 0.08);
-  padding: 24px;
-  border: 1px solid rgba(59, 130, 246, 0.1);
-  animation: popoverFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 268px;
+  background: rgb(var(--surface-color));
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  padding: 18px;
+  border: 1px solid rgb(var(--border-color));
+  animation: popoverFadeIn 0.18s ease;
 }
 
 @keyframes popoverFadeIn {
   from {
     opacity: 0;
-    transform: translateX(-12px) scale(0.95);
+    transform: translateX(-6px);
   }
   to {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateX(0);
   }
 }
 
@@ -180,10 +194,10 @@ const handleToggleCollapse = () => {
 .user-popover-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+  gap: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgb(var(--border-color));
 }
 
 .user-popover-info {
@@ -195,13 +209,13 @@ const handleToggleCollapse = () => {
 
 .user-popover-name {
   font-size: 16px;
-  font-weight: 600;
-  color: #1e293b;
+  font-weight: var(--font-weight-strong);
+  color: rgb(var(--text-color));
 }
 
 .user-popover-email {
-  font-size: 13px;
-  color: #94a3b8;
+  font-size: 12px;
+  color: rgb(var(--text-muted));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -211,27 +225,29 @@ const handleToggleCollapse = () => {
 .user-popover-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .user-popover-btn {
   width: 100%;
-  padding: 12px 18px;
-  border-radius: 12px;
-  border: 1px solid rgba(59, 130, 246, 0.15);
-  background: rgba(59, 130, 246, 0.05);
-  color: #475569;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgb(var(--border-color));
+  background: rgb(var(--surface-elevated));
+  color: rgb(var(--text-secondary));
+  font-size: 13px;
+  font-weight: var(--font-weight-strong);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
 }
 
 .user-popover-btn:hover {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(99, 102, 241, 0.08));
-  border-color: rgba(59, 130, 246, 0.3);
-  color: #3b82f6;
-  transform: translateY(-1px);
+  background: rgb(var(--primary-soft));
+  border-color: rgba(var(--primary-color), 0.24);
+  color: rgb(var(--primary-strong));
 }
 
 .user-popover-btn.logout {
@@ -249,12 +265,14 @@ const handleToggleCollapse = () => {
 /* ==================== 弹框过渡动画 ==================== */
 .popover-fade-enter-active,
 .popover-fade-leave-active {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
 }
 
 .popover-fade-enter-from,
 .popover-fade-leave-to {
   opacity: 0;
-  transform: translateX(-12px) scale(0.95);
+  transform: translateX(-6px);
 }
 </style>

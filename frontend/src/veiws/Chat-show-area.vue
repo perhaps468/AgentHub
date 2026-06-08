@@ -119,7 +119,7 @@ const msgRecord = computed(() => {
         badge: null,
       },
       message: m.content,
-      referenceMsg: m.reference ?? null,
+      referenceMsg: (m.metadata && (m.metadata as any).reference) ? (m.metadata as any).reference : null,
       atUser: null,
       isShowTime: false,
       type: m.type ?? 'text',

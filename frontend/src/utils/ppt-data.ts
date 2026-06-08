@@ -7,7 +7,7 @@
  * 3. 为每一页补齐本地图片地址
  */
 import type { PptPageItem, PptMessageData } from '../types/message'
-import type { PptSlideViewModel } from '../types/agenthub'
+import type { PptPreviewModel, PptSlideViewModel } from '../types/agenthub'
 import { resolvePptImage } from '../constants/ppt-image-map'
 
 /** 默认 PPT 标题（当后端未提供时使用） */
