@@ -1,15 +1,12 @@
 <template>
-  <span v-if="isArrayContents" class="text-msg">
-    <template v-for="item in (contents as MessageContentItem[])" :key="item.id">
-      <span v-if="item.type === TextContentType.At" class="text-msg-at">
-        {{ `@${getUserInfo(item.content).name}` }}
-      </span>
-      <span
-        v-else-if="item.type === TextContentType.Text"
-        v-html="parseMarkdown(typeof item.content === 'string' ? item.content : '')"
-      ></span>
-    </template>
-  </span>
+  <!-- PPT 数据优先渲染（包含在普通文本 JSON 里的 ppt_data） -->
+  <PptMsg
+    v-if="hasPptData"
+    :msg="props.msg"
+    :right="right"
+    @preview="handlePreviewPpt"
+  />
+  <!-- Diff 变更卡片 -->
   <div v-else-if="hasDiffPreview" class="diff-wrapper">
     <div v-if="nonDiffContent && parsedDiffs.length > 0" v-html="parseMarkdown(nonDiffContent)" class="non-diff-content"></div>
     <DiffPreview
@@ -22,6 +19,18 @@
       @preview="handlePreviewDiff"
     />
   </div>
+  <!-- 普通文本渲染 -->
+  <span v-else-if="isArrayContents" class="text-msg">
+    <template v-for="item in (contents as MessageContentItem[])" :key="item.id">
+      <span v-if="item.type === TextContentType.At" class="text-msg-at">
+        {{ `@${getUserInfo(item.content).name}` }}
+      </span>
+      <span
+        v-else-if="item.type === TextContentType.Text"
+        v-html="parseMarkdown(typeof item.content === 'string' ? item.content : '')"
+      ></span>
+    </template>
+  </span>
   <div v-else>
     <div v-html="parseMarkdown(displayContent)"></div>
   </div>
@@ -36,8 +45,9 @@ import { applyPendingChange, rejectPendingChange } from '@/api/modules/pendingCh
 import { useSessionStore } from '@/store/module/useSessionStore'
 import { TextContentType } from '../../types/textContentType'
 import { normalizeRuntimeTextForDisplay, accumulateAndFilterStreaming, isLowSignalChunk } from '../../utils/runtime-text'
-import type { PendingChange, PendingChangeStatus } from '../../types/agenthub'
+import type { PendingChange, PendingChangeStatus, PptPreviewModel } from '../../types/agenthub'
 import DiffPreview from './DiffPreview.vue'
+import PptMsg from './PptMsg.vue'
 
 marked.setOptions({
   breaks: true,
@@ -281,6 +291,21 @@ watch(
 )
 
 const isArrayContents = computed(() => Array.isArray(contents.value))
+
+/** 检测 message 内容是否包含 ppt_data（嵌入在 JSON 字符串内） */
+const hasPptData = computed(() => {
+  try {
+    const parsed = JSON.parse(props.msg.message || '{}')
+    return !!(parsed && typeof parsed === 'object' && parsed.ppt_data && (parsed.ppt_data as unknown[]).length > 0)
+  } catch {
+    return false
+  }
+})
+
+/** 处理 PPT 预览事件：写入 streamState，打开右侧预览区 */
+const handlePreviewPpt = (payload: PptPreviewModel) => {
+  sessionStore.streamState?.setPreviewPpt(payload)
+}
 
 const getUserInfo = (content: unknown) => {
   try {

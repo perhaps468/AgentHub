@@ -814,6 +814,7 @@ const closePreview = () => {
   isCollapsed.value = false
   previewState.value = { type: 'empty', title: '' }
   sessionStore.streamState?.clearPreviewDiff()
+  sessionStore.streamState?.clearPreviewPpt()
 }
 
 // M6: 监听预览 diff 状态变化，更新右侧预览面板
@@ -830,6 +831,26 @@ watch(
         operation: previewDiff.operation,
         path: previewDiff.path,
         unified_diff: previewDiff.unified_diff,
+      }
+    } else {
+      previewState.value = { type: 'empty', title: '' }
+    }
+  },
+  { immediate: true, deep: true },
+)
+
+// 监听 PPT 预览状态变化，打开 / 关闭右侧预览区
+watch(
+  () => sessionStore.streamState?.previewPpt,
+  (previewPpt) => {
+    if (previewPpt) {
+      isCollapsed.value = true
+      previewState.value = {
+        type: 'ppt',
+        title: previewPpt.title,
+        agentRole: previewPpt.agentRole,
+        createdAt: previewPpt.createdAt,
+        slides: previewPpt.slides,
       }
     } else {
       previewState.value = { type: 'empty', title: '' }
@@ -859,7 +880,8 @@ onMounted(async () => {
     const resolvedSessionId = sessionId || msg.message?.session_id || msg.session_id || currentSessionId
 
     if (!resolvedSessionId) return
-
+    console.log('msg', msg);
+    
     if (msg.type === 'message_start') {
       sessionStore.streamState.handleMessageStart(msg, resolvedSessionId)
     } else if (msg.type === 'message_delta') {
@@ -908,26 +930,30 @@ onMounted(async () => {
         url: msg.preview_url || '',
         description: msg.status || 'ready',
       }
+    } else if (msg.type === 'ppt_data') {
+      // M6-EXT: HTML 幻灯片 / 结构化 PPT 数据 → PPT 预览链路
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sessionStore.streamState.handlePptDataFromTool(msg as any, resolvedSessionId)
     } else if (msg.type === 'repair_state') {
       sessionStore.streamState.handleRepairState(msg)
-      } else if (msg.type === 'session_member_status') {
-        const current = sessionStore.currentSession
-        if (current?.id === resolvedSessionId && current.members?.length) {
-          const nextMembers = current.members.map((member) =>
-            member.id === msg.member_id || member.member_id === msg.agent_id
-              ? {
-                  ...member,
-                  status: (msg.status as any) || member.status,
-                  health_status: msg.status || member.health_status,
-                }
-              : member,
-          )
-          sessionStore.currentSession = {
-            ...current,
-            members: nextMembers,
-          }
+    } else if (msg.type === 'session_member_status') {
+      const current = sessionStore.currentSession
+      if (current?.id === resolvedSessionId && current.members?.length) {
+        const nextMembers = current.members.map((member) =>
+          member.id === msg.member_id || member.member_id === msg.agent_id
+            ? {
+                ...member,
+                status: (msg.status as any) || member.status,
+                health_status: msg.status || member.health_status,
+              }
+            : member,
+        )
+        sessionStore.currentSession = {
+          ...current,
+          members: nextMembers,
         }
-      } else if (msg.type === 'orchestration_run_started') {
+      }
+    } else if (msg.type === 'orchestration_run_started') {
       // M6: Handle orchestration run started event - initialize run and tasks
       const runId = msg.run_id
       const taskCount = msg.task_count

@@ -5,24 +5,22 @@
       :class="{ 'is-own': props.right }"
       @contextmenu.prevent="handleContextMenu"
     >
-      <!-- 引用消息标注 -->
       <div v-if="referenceInfo" class="msg-reference">
         <span class="msg-reference-icon">"</span>
         <span class="msg-reference-text">引用: {{ referenceInfo }}</span>
       </div>
 
-      <div v-if="props.msg.type === MessageType.Text">
-        <text-msg :msg="props.msg" :right="right" />
-      </div>
-      <div v-else-if="props.msg.type === MessageType.Emoji">
-        <emoji-msg :src="props.msg.message" />
-      </div>
-      <div v-else-if="props.msg.type === MessageType.Call">
-        <call_msg :msg="props.msg" :right="right" />
-      </div>
+      <TextMsg v-if="props.msg.type === MessageType.Text" :msg="props.msg" :right="props.right" />
+      <EmojiMsg v-else-if="props.msg.type === MessageType.Emoji" :src="props.msg.message" />
+      <call_msg v-else-if="props.msg.type === MessageType.Call" :msg="props.msg" :right="props.right" />
+      <PptMsg
+        v-else-if="props.msg.type === MessageType.PptData"
+        :msg="props.msg"
+        :right="props.right"
+        @preview="handlePreviewPpt"
+      />
     </div>
 
-    <!-- Context Menu -->
     <teleport to="body">
       <transition name="menu-fade">
         <div
@@ -46,22 +44,29 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 
 import { useChatMsgStore } from '../../store/module/useChatMsgStore'
+import { useSessionStore } from '../../store/module/useSessionStore'
+import type { PptPreviewModel } from '../../types/agenthub'
 import type { MessageRecord } from '../../types/message'
 import { MessageType } from '../../types/messageType'
 import { TextContentType } from '../../types/textContentType'
 import call_msg from '../message-content/callMsg.vue'
 import EmojiMsg from '../message-content/emoji-msg.vue'
+import PptMsg from '../message-content/PptMsg.vue'
 import TextMsg from '../message-content/text-msg.vue'
 
 const msgStore = useChatMsgStore()
+const sessionStore = useSessionStore()
 
 type ContextMessage = Partial<MessageRecord> & {
   id: string
   type: string
   message: string
+  payload?: Record<string, unknown>
+  content?: string
+  metadata?: Record<string, unknown>
 }
 
 const props = withDefaults(
@@ -74,25 +79,22 @@ const props = withDefaults(
   },
 )
 
-const right = props.right
-
 const referenceInfo = computed(() => {
-  const meta = (props.msg as MessageRecord)?.metadata as Record<string, unknown> | undefined
-  const ref = meta?.reference as { content?: string; sender?: string } | undefined
+  const ref = props.msg.metadata?.reference as { content?: unknown; sender?: string } | undefined
   if (!ref) return null
+
   const raw = ref.content
-  const text = typeof raw === 'string' ? raw : (raw != null ? JSON.stringify(raw) : '')
+  const text = typeof raw === 'string' ? raw : raw != null ? JSON.stringify(raw) : ''
   const display = text.slice(0, 60) + (text.length > 60 ? '...' : '')
   return display || null
 })
+
 const menuVisible = ref(false)
 const menuStyle = ref<Record<string, string>>({})
 
 let closeMenuHandler: (() => void) | null = null
 
 const handleContextMenu = (e: MouseEvent) => {
-  const target = e.currentTarget as HTMLElement
-
   menuStyle.value = {
     position: 'fixed',
     left: `${e.clientX}px`,
@@ -159,6 +161,10 @@ const handlerCopy = () => {
   }
   navigator.clipboard.writeText(msg)
   menuVisible.value = false
+}
+
+const handlePreviewPpt = (payload: PptPreviewModel) => {
+  sessionStore.streamState.setPreviewPpt(payload)
 }
 
 onBeforeUnmount(() => {

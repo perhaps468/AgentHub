@@ -174,6 +174,121 @@ class PendingChange:
 
         return "\n".join(lines)
 
+    # --------------------------------------------------------------------------
+    # PPT 转换：HTML 幻灯片 -> 结构化 PPT JSON
+    # --------------------------------------------------------------------------
+
+    def _extract_slide_title(self, slide_html: str) -> str:
+        """从单张幻灯片 HTML 中提取标题文字。"""
+        import re
+        # 优先取 h1/h2，其次取 title 标签
+        for tag in ("h1", "h2", "h3"):
+            m = re.search(rf"<{tag}[^>]*>(.*?)</{tag}>", slide_html, re.DOTALL)
+            if m:
+                return re.sub(r"<[^>]+>", "", m.group(1)).strip()[:20]
+        m = re.search(r"<title[^>]*>(.*?)</title>", slide_html, re.DOTALL)
+        if m:
+            return re.sub(r"<[^>]+>", "", m.group(1)).strip()[:20]
+        return "无标题"
+
+    def _extract_bullets(self, slide_html: str) -> list[str]:
+        """从单张幻灯片 HTML 中提取要点列表文字。"""
+        import re
+        bullets: list[str] = []
+        # 找所有 <li> 标签文字
+        for m in re.finditer(r"<li[^>]*>(.*?)</li>", slide_html, re.DOTALL):
+            text = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+            if text:
+                bullets.append(text[:50])
+        # 找 <p> 标签（排除标题段落）
+        if not bullets:
+            for m in re.finditer(r"<p[^>]*>(.*?)</p>", slide_html, re.DOTALL):
+                text = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+                # 跳过只含图片或空白的 p
+                if text and len(text) > 4:
+                    bullets.append(text[:50])
+        return bullets[:5]  # 最多 5 条
+
+    def _guess_img_tag(self, slide_html: str) -> str:
+        """根据幻灯片内容猜测 imgTag 主题词。"""
+        import re
+        text = re.sub(r"<[^>]+>", " ", slide_html).lower()
+        if any(k in text for k in ("金融", "银行", "投资", "风控", "财务", "stock", "finance")):
+            return "金融"
+        if any(k in text for k in ("教育", "学校", "课程", "学习", "课堂", "edu")):
+            return "教育"
+        if any(k in text for k in ("科技", "ai", "人工智能", "智能", "tech", "code", "算法")):
+            return "科技"
+        if any(k in text for k in ("医疗", "健康", "医院", "med", "health")):
+            return "医疗"
+        if any(k in text for k in ("商务", "企业", "公司", "汇报", "business", "meeting")):
+            return "商务"
+        if any(k in text for k in ("创意", "设计", "艺术", "creative", "design", "color")):
+            return "创意"
+        if any(k in text for k in ("自然", "环保", "户外", "nature", "green")):
+            return "自然"
+        return "简约"
+
+    def to_ppt_json(self) -> dict | None:
+        """将 HTML 幻灯片内容转换为前端 PptPreviewModel 结构。
+
+        仅当 path 结尾是 .html / .htm 且内容看起来像幻灯片时才转换。
+        解析成功返回 dict，失败返回 None（不抛出异常）。
+        """
+        import re
+
+        if self.is_error():
+            return None
+
+        path = (self.path or "").lower()
+        if not (path.endswith(".html") or path.endswith(".htm")):
+            return None
+
+        content = self.proposed_content or ""
+        if not content or len(content) < 200:
+            return None
+
+        # 提取各张幻灯片
+        slide_pattern = re.compile(
+            r'<div\s+class=["\']?slide["\']?[^>]*>(.*?)</div>',
+            re.DOTALL | re.IGNORECASE,
+        )
+        slides = slide_pattern.findall(content)
+        if not slides:
+            # 兜底：按 <div ...> 分段（不含 class 的 div）
+            parts = re.split(r"<div(?:\s[^>]*)?>(?=[\s\S]*?<(?:h1|h2|p|ul|li))", content)
+            slides = [p for p in parts if re.search(r"<h[123]|<li|<p[^>]*>", p)]
+
+        if not slides:
+            return None
+
+        ppt_data: list[dict] = []
+        for idx, slide_html in enumerate(slides):
+            title = self._extract_slide_title(slide_html)
+            if not title or title == "无标题":
+                title = f"第 {idx + 1} 页"
+            bullets = self._extract_bullets(slide_html)
+            img_tag = self._guess_img_tag(slide_html)
+            ppt_data.append({
+                "pageTitle": title,
+                "pageContent": bullets or ["本页无要点"],
+                "imgTag": img_tag,
+            })
+
+        if not ppt_data:
+            return None
+
+        # 提取文档标题（用于 PPT title）
+        doc_title = "演示文稿"
+        m = re.search(r"<title[^>]*>(.*?)</title>", content, re.DOTALL)
+        if m:
+            doc_title = re.sub(r"<[^>]+>", "", m.group(1)).strip()[:30] or doc_title
+
+        return {
+            "title": doc_title,
+            "slides": ppt_data,
+        }
+
     def apply(self) -> bool:
         """Apply the pending change to disk.
 
