@@ -1,7 +1,7 @@
 <template>
   <BaseDialog
     v-model="visible"
-    title="缂栬緫璧勬枡"
+    title="用户资料"
     @confirm="handleConfirm"
   >
     <div class="dialog-content">
@@ -15,7 +15,7 @@
                 <el-icon :size="32" class="upload-icon">
                   <PictureRounded />
                 </el-icon>
-                <span class="upload-text">鏇存崲澶村儚</span>
+                <span class="upload-text">上传头像</span>
               </div>
             </label>
           </div>
@@ -29,11 +29,11 @@
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          鐢ㄦ埛鍚?
+          用户名
         </label>
         <el-input
           v-model="formData.name"
-          placeholder="璇疯緭鍏ョ敤鎴峰悕"
+          placeholder="请输入用户名"
           clearable
         />
       </div>
@@ -46,13 +46,13 @@
             <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          涓汉绠€浠?
+          个人简介
         </label>
         <el-input
           v-model="formData.bio"
           type="textarea"
           :rows="3"
-          placeholder="AgentHub 鐢ㄦ埛"
+          placeholder="请输入个人简介"
           maxlength="200"
           show-word-limit
         />
