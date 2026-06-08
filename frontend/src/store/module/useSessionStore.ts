@@ -31,8 +31,8 @@ export interface InFlightStream {
   sender_role: string | null
   content: string
   accumulated_content: string
-  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
-  payload: { text: string }
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy' | 'ppt_data'
+  payload: { text: string } | Record<string, unknown>
   metadata: Record<string, unknown>
   ui_status: 'thinking' | 'streaming' | 'done' | 'syncing_interrupted'
   created_at: string
@@ -190,7 +190,22 @@ export const useSessionStore = defineStore(
       }
 
       const res = await fetchPendingChanges(sessionId)
-      streamState.restorePendingChanges(res.items, sessionId)
+      streamState.restorePendingChanges(
+        res.items.map((item) => ({
+          ...item,
+          message_id: item.message_id ?? undefined,
+          stream_id: item.stream_id ?? undefined,
+          run_id: item.run_id ?? null,
+          task_id: item.task_id ?? null,
+          agent_id: item.agent_id ?? null,
+          batch_id: item.batch_id ?? null,
+          original_content: item.original_content ?? undefined,
+          proposed_content: item.proposed_content ?? undefined,
+          created_at: item.created_at ?? undefined,
+          applied_at: item.applied_at ?? undefined,
+        })),
+        sessionId,
+      )
       return res
     }
 
@@ -366,24 +381,25 @@ export const useSessionStore = defineStore(
     }
 
     function mergeOrUpdateMessage(sessionId: string, msg: ChatMessage) {
-      const existing = messageMap.value[sessionId] ?? []
+      const sessionKey = sessionId as string
+      const existing = messageMap.value[sessionKey] ?? []
       const existingIndex = existing.findIndex((m) => m.id === msg.id)
       if (existingIndex !== -1) {
         const updated = [...existing]
         updated[existingIndex] = msg
         messageMap.value = {
           ...messageMap.value,
-          [sessionId]: updated,
+          [sessionKey]: updated,
         }
         return
       }
-      appendMessage(sessionId, msg)
+      appendMessage(sessionKey, msg)
     }
 
     function upsertMessage(messageId: string, msg: ChatMessage) {
       const sessionId = currentSessionId.value
       const list = sessionId ? messageMap.value[sessionId] : undefined
-      if (!list) return
+      if (!list || !sessionId) return
       const idx = list.findIndex((m) => m.id === messageId)
       if (idx !== -1) {
         const updated = [...list]

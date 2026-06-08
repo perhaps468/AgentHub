@@ -98,6 +98,7 @@ class ToolEvent:
         status: str = "started",
         stream_id: str = "",
         message_id: str = "",
+        agent_role: str = "",
     ) -> None:
         self.type = "tool_event"
         self.tool_name = tool_name
@@ -106,6 +107,7 @@ class ToolEvent:
         self.status = status  # "started" | "finished"
         self.stream_id = stream_id
         self.message_id = message_id
+        self.agent_role = agent_role
 
 
 class RuntimeStateEvent:

@@ -5,8 +5,10 @@ import type {
   RuntimeProcessNode,
   ChangePreviewEvent,
   PendingChange,
+  PptPreviewModel,
 } from '@/types/agenthub'
 import type { AgentRole } from '@shared/index'
+import { resolvePptImage } from '../constants/ppt-image-map'
 
 interface InFlightStream {
   stream_id: string
@@ -15,8 +17,8 @@ interface InFlightStream {
   sender_role: AgentRole
   content: string
   accumulated_content: string
-  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
-  payload: { text: string }
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy' | 'ppt_data'
+  payload: { text: string } | Record<string, unknown>
   metadata: Record<string, unknown>
   ui_status: 'thinking' | 'streaming' | 'done' | 'syncing_interrupted'
   created_at: string
@@ -61,6 +63,20 @@ interface RepairStateEventData {
   attempt: number
   max_attempts: number
   message: string
+}
+
+// M6-EXT: ppt_data 事件（来自 tool_event HTML→PPT 拦截）
+interface PptDataFromToolEvent {
+  type: 'ppt_data'
+  ppt_data: Array<{
+    pageTitle: string
+    pageContent: string[] | string
+    imgTag: string
+  }>
+  agent_role?: string
+  stream_id?: string
+  message_id?: string
+  timestamp?: string
 }
 
 // M6: Change preview as message - for rendering confirmation buttons inline in chat
@@ -750,6 +766,80 @@ ${formatDiffForDisplay(unified_diff)}
     repairState.value = null
   }
 
+  // M6-EXT: 从 tool_event 拦截到的 HTML 幻灯片数据，转换为 PPT 预览模型
+  function handlePptDataFromTool(event: PptDataFromToolEvent, sessionId: string) {
+    const { ppt_data, agent_role, stream_id, message_id, timestamp } = event
+    if (!ppt_data || !ppt_data.length) return
+
+    console.log('[StreamState] ppt_data from tool:', stream_id, 'slides:', ppt_data.length)
+
+    const normalizedPptData = ppt_data.map((page) => ({
+      pageTitle: page.pageTitle || '',
+      pageContent: Array.isArray(page.pageContent) ? page.pageContent : [String(page.pageContent || '')],
+      imgTag: page.imgTag || '',
+    }))
+
+    // 构造 PPT 预览模型，写入 previewPpt，触发右侧预览区打开
+    const model: PptPreviewModel = {
+      title: '演示文稿',
+      agentRole: agent_role || 'PM',
+      createdAt: timestamp || new Date().toISOString(),
+      slides: normalizedPptData.map((page, idx) => ({
+        id: `tool-slide-${idx}`,
+        title: page.pageTitle || `第 ${idx + 1} 页`,
+        bullets: page.pageContent,
+        imgTag: page.imgTag || '',
+        imageUrl: resolvePptImage(page.imgTag || '', idx),
+      })),
+    }
+    // previewPpt.value = model
+
+    const pptPayload = {
+      agent_role: agent_role || 'PM',
+      timestamp: timestamp || new Date().toISOString(),
+      stream_id: stream_id || '',
+      message_id: message_id || stream_id || '',
+      ppt_data: normalizedPptData,
+    }
+
+    // 同步更新 stream：让聊天区按真正的 ppt_data 消息渲染 PPT 卡片
+    const stream = streams.value.get(stream_id || '')
+    if (stream) {
+      const updated = { ...stream }
+      updated.type = 'ppt_data'
+      updated.content = JSON.stringify(pptPayload)
+      updated.accumulated_content = JSON.stringify(pptPayload)
+      updated.payload = pptPayload
+      updated.metadata = {
+        ...(updated.metadata || {}),
+        ppt_data: normalizedPptData,
+        agent_role: agent_role || 'PM',
+      }
+      updated.ui_status = 'done'
+      replaceStream(stream_id || '', updated)
+    } else if (stream_id) {
+      // 若无对应 stream，创建一个临时流条目用于展示 PPT 卡片
+      const newStream: InFlightStream = {
+        stream_id,
+        message_id: message_id || stream_id,
+        session_id: sessionId,
+        sender_role: (agent_role as AgentRole) || 'PM',
+        content: JSON.stringify(pptPayload),
+        accumulated_content: JSON.stringify(pptPayload),
+        type: 'ppt_data',
+        payload: pptPayload,
+        metadata: {
+          ppt_data: normalizedPptData,
+          agent_role: agent_role || 'PM',
+        },
+        ui_status: 'done',
+        created_at: timestamp || new Date().toISOString(),
+        runtime_nodes: [],
+      }
+      replaceStream(stream_id, newStream)
+    }
+  }
+
   function restorePendingChanges(
     items: Array<{
       change_id: string
@@ -832,6 +922,19 @@ ${formatDiffForDisplay(unified_diff)}
     previewDiff.value = null
   }
 
+  // PPT 预览状态：存储当前要预览的 PPT 模型
+  const previewPpt = ref<PptPreviewModel | null>(null)
+
+  /** 设置 PPT 预览模型，打开右侧预览区 */
+  function setPreviewPpt(ppt: PptPreviewModel | null) {
+    previewPpt.value = ppt
+  }
+
+  /** 清空 PPT 预览状态，关闭右侧预览区 */
+  function clearPreviewPpt() {
+    previewPpt.value = null
+  }
+
   return {
     streams,
     getStreamingMessages,
@@ -873,5 +976,10 @@ ${formatDiffForDisplay(unified_diff)}
     previewDiff,
     setPreviewDiff,
     clearPreviewDiff,
+    // PPT 预览状态
+    previewPpt,
+    setPreviewPpt,
+    clearPreviewPpt,
+    handlePptDataFromTool,
   }
 }

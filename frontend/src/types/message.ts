@@ -59,3 +59,23 @@ export interface MessageResponse {
     msg: string
     data: MessageRecord[]
 }
+
+/**
+ * PPT 单页数据结构，对应后端 ppt_data 中的每一页
+ */
+export interface PptPageItem {
+  pageTitle: string
+  pageContent: string[]
+  imgTag: string
+}
+
+/**
+ * PPT 消息完整载荷，后端推送 message.type === 'ppt_data' 时的数据结构
+ */
+export interface PptMessageData {
+  agent_role?: string
+  timestamp?: string
+  stream_id?: string
+  message_id?: string
+  ppt_data: PptPageItem[]
+}

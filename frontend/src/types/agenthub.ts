@@ -68,8 +68,8 @@ export interface StreamingMessage {
   ui_status: 'thinking' | 'streaming' | 'done' | 'syncing_interrupted'
   is_ephemeral: boolean
   created_at: string
-  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
-  payload: { text: string }
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy' | 'ppt_data'
+  payload: { text: string } | Record<string, unknown>
   metadata: Record<string, unknown>
 }
 
@@ -214,6 +214,28 @@ export interface SendMessagePayload {
   mentions?: ComposerMention[]
 }
 
+/**
+ * PPT 单页标准化视图模型：经过解析层处理后的前端可用数据结构
+ */
+export interface PptSlideViewModel {
+  id: string
+  title: string
+  bullets: string[]
+  imgTag: string
+  imageUrl: string
+}
+
+/**
+ * PPT 预览模型：标准化解析后的完整 PPT 数据
+ * 由 ppt-data.ts 的 buildPptPreviewModel() 产出
+ */
+export interface PptPreviewModel {
+  title: string
+  agentRole: string
+  createdAt: string
+  slides: PptSlideViewModel[]
+}
+
 export type PreviewState =
   | { type: 'empty'; title?: string }
   | { type: 'code'; title?: string; code: string }
@@ -225,6 +247,14 @@ export type PreviewState =
       operation: 'create' | 'update' | 'delete'
       path: string
       unified_diff: string
+    }
+  | {
+      // PPT 预览状态：复用右侧统一预览区，携带标准化后的幻灯片数据
+      type: 'ppt'
+      title?: string
+      agentRole?: string
+      createdAt?: string
+      slides: PptSlideViewModel[]
     }
 
 export interface PaginatedResponse<T> {
@@ -241,7 +271,7 @@ export interface ChatMessage {
   sender_type: 'agent' | 'human'
   sender_role: string | null
   content: string
-  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy'
+  type: 'text' | 'code' | 'diff' | 'artifact' | 'deploy' | 'ppt_data'
   payload: Record<string, unknown>
   metadata: Record<string, unknown>
   status: string

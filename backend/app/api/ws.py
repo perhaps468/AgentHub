@@ -902,8 +902,55 @@ def _is_orchestration_request(content: str) -> bool:
 
 
 def _is_ppt_request(content: str) -> bool:
-    """检测用户是否请求生成 PPT"""
-    return "ppt" in content.lower()
+    """检测用户是否请求生成 PPT 或演示文稿"""
+    text = content.lower()
+    return any(keyword in text for keyword in (
+        "ppt",
+        "演示文稿",
+        "幻灯片",
+        "slides",
+        "powerpoint",
+    ))
+
+
+def _should_use_orchestration(
+    session_mode: str,
+    content: str,
+    target_agent_ids: list[str],
+    mentions: list[dict[str, str]],
+) -> bool:
+    # PPT 请求优先走结构化 JSON 链路，避免被误判成"创建文件"任务
+    if _is_ppt_request(content):
+        return False
+    if session_mode != "group":
+        return False
+    if target_agent_ids or mentions:
+        return True
+    return _is_orchestration_request(content)
+
+
+def _build_ppt_runtime_prompt(user_message: str) -> str:
+    """为运行时 Agent 构造强约束的 PPT 生成提示词。"""
+    return (
+        "你正在为前端 PPT 预览功能生成结构化数据。\n"
+        "请严格遵守以下规则：\n"
+        "1. 只输出合法 JSON，不要输出任何解释、Markdown、代码块、前后缀文本。\n"
+        "2. 禁止调用任何工具，尤其不要创建、写入或修改 HTML / Markdown / 文件。\n"
+        "3. JSON 必须使用如下结构：\n"
+        "{\n"
+        "  \"ppt_data\": [\n"
+        "    {\n"
+        "      \"pageTitle\": \"页面标题\",\n"
+        "      \"pageContent\": [\"要点1\", \"要点2\", \"要点3\"],\n"
+        "      \"imgTag\": \"图片风格描述\"\n"
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "4. 生成 3-5 页内容；每页标题最多 20 个字；每页 3-5 个要点；全部使用简体中文。\n"
+        "5. imgTag 使用主题词，如：科技、商务、教育、金融、医疗、创意、简约、自然、架构。\n"
+        "\n"
+        f"用户请求：{user_message}"
+    )
 
 
 def _try_parse_ppt_json(content: str | None) -> dict | None:
@@ -1000,6 +1047,118 @@ def _get_session_agent_members(db, session_id: str) -> list[dict]:
 def _get_run_metadata(run: OrchestrationRun) -> dict:
     metadata = getattr(run, "run_metadata", None)
     return metadata if isinstance(metadata, dict) else {}
+
+
+# ---------------------------------------------------------------------------
+# PPT 链路：当 write_file 工具写的是 HTML 幻灯片时，
+# 拦截并转换为 ppt_data 事件推送给前端
+# ---------------------------------------------------------------------------
+
+def _is_html_slide_path(path: str) -> bool:
+    """判断路径是否为 HTML 幻灯片文件。"""
+    p = (path or "").lower()
+    return p.endswith(".html") or p.endswith(".htm")
+
+
+def _parse_pending_change_from_response(response: Any) -> Any | None:
+    """从 tool_event response 字段中提取 PendingChange 对象。"""
+    if response is None:
+        return None
+    if hasattr(response, "to_ppt_json"):
+        return response
+    return None
+
+
+async def _maybe_send_ppt_data_from_tool(
+    websocket: WebSocket,
+    tool_name: str,
+    arguments: dict,
+    response: Any,
+    status: str,
+    stream_id: str,
+    message_id: str,
+    agent_role: str,
+    db,
+) -> bool:
+    """检查 write_file 结果，如果是 HTML 幻灯片则推送 ppt_data 事件。
+
+    Returns True if PPT data was sent (no further WS event needed).
+    Returns False if normal WS event should be sent.
+    """
+    from loguru import logger
+    logger.info(
+        f"[PPT-DEBUG] tool_event: tool={tool_name}, status={status}, "
+        f"stream_id={stream_id}, msg_id={message_id}"
+    )
+
+    if tool_name != "write_file":
+        return False
+    if status != "finished":
+        return False
+
+    path = arguments.get("path", "") if isinstance(arguments, dict) else ""
+    logger.info(f"[PPT-DEBUG] path={path}, is_html={_is_html_slide_path(path)}")
+    if not _is_html_slide_path(path):
+        return False
+
+    # 尝试提取 PendingChange 对象
+    pending_change = _parse_pending_change_from_response(response)
+    logger.info(f"[PPT-DEBUG] pending_change type={type(pending_change)}")
+
+    if pending_change is not None and hasattr(pending_change, "to_ppt_json"):
+        ppt_json = pending_change.to_ppt_json()
+        logger.info(f"[PPT-DEBUG] to_ppt_json() result={ppt_json is not None}")
+        if ppt_json:
+            await _send_ws_ppt_data(
+                websocket,
+                agent_role=agent_role,
+                stream_id=stream_id,
+                message_id=message_id,
+                ppt_data=ppt_json.get("slides", []),
+            )
+            logger.info(f"[PPT-DEBUG] ✅ ppt_data sent, slides={len(ppt_json.get('slides', []))}")
+            return True
+
+    # 兜底：从 unified_diff 提取 HTML 内容
+    unified_diff = ""
+    if pending_change is not None and hasattr(pending_change, "unified_diff"):
+        unified_diff = getattr(pending_change, "unified_diff", "") or ""
+
+    html_content = ""
+    if unified_diff:
+        for line in unified_diff.split("\n"):
+            if line.startswith("+") and len(line) > 1:
+                html_content += line[1:] + "\n"
+            elif not line.startswith(("---", "+++", "diff", "index", "@@")) and not line.startswith("-"):
+                html_content += line + "\n"
+
+    logger.info(f"[PPT-DEBUG] fallback html len={len(html_content)}")
+
+    if html_content:
+        try:
+            from app.runtime.pending_change import PendingChange, ChangeOperation
+            tmp = PendingChange(
+                change_id="",
+                path=path,
+                operation=getattr(pending_change, "operation", "create") if pending_change else "create",
+                proposed_content=html_content,
+            )
+            ppt_json = tmp.to_ppt_json()
+            logger.info(f"[PPT-DEBUG] fallback to_ppt_json() result={ppt_json is not None}")
+            if ppt_json:
+                await _send_ws_ppt_data(
+                    websocket,
+                    agent_role=agent_role,
+                    stream_id=stream_id,
+                    message_id=message_id,
+                    ppt_data=ppt_json.get("slides", []),
+                )
+                logger.info(f"[PPT-DEBUG] ✅ fallback ppt_data sent, slides={len(ppt_json.get('slides', []))}")
+                return True
+        except Exception as e:
+            logger.error(f"[PPT-DEBUG] fallback exception: {e}")
+
+    return False
 
 
 def _resolve_host_display_name(agent: Agent | None) -> str:
@@ -1903,7 +2062,8 @@ async def _execute_orchestration_tasks(
                         error_message=event.error_message,
                     )
                 elif event.type == "tool_event":
-                    await ws_send_tool_event(
+                    # M6-EXT: HTML 幻灯片写文件 → 拦截并推送 ppt_data
+                    ppt_sent = await _maybe_send_ppt_data_from_tool(
                         websocket,
                         tool_name=event.tool_name,
                         arguments=event.arguments,
@@ -1911,10 +2071,22 @@ async def _execute_orchestration_tasks(
                         status=event.status,
                         stream_id=event.stream_id,
                         message_id=event.message_id,
-                        run_id=event.run_id,
-                        task_id=event.task_id,
-                        agent_id=event.agent_id,
+                        agent_role=getattr(event, "agent_role", ""),
+                        db=db,
                     )
+                    if not ppt_sent:
+                        await ws_send_tool_event(
+                            websocket,
+                            tool_name=event.tool_name,
+                            arguments=event.arguments,
+                            response=event.response,
+                            status=event.status,
+                            stream_id=event.stream_id,
+                            message_id=event.message_id,
+                            run_id=getattr(event, "run_id", None),
+                            task_id=getattr(event, "task_id", None),
+                            agent_id=getattr(event, "agent_id", None),
+                        )
                 elif event.type == "runtime_state":
                     await ws_send_runtime_state(
                         websocket,
@@ -1992,6 +2164,7 @@ async def _handle_streaming_response(
     active_error_code = "unknown"
     use_runtime = runtime_use_runtime_agent() and isinstance(selected_agent, Agent)
     stream_output_enabled = chat_stream_output_enabled() if use_runtime else True
+    runtime_content = _build_ppt_runtime_prompt(content) if _is_ppt_request(content) else content
 
     try:
         if use_runtime:
@@ -2004,7 +2177,7 @@ async def _handle_streaming_response(
             session_history = load_session_history(db, session_id)
             event_source = RuntimeAgentService(
                 session_id=session_id,
-                user_message=content,
+                user_message=runtime_content,
                 agent_role=agent_role,
                 llm_adapter=llm_adapter,
                 db=db,
@@ -2014,7 +2187,7 @@ async def _handle_streaming_response(
         else:
             event_source = FixedAgentResponder(
                 session_id=session_id,
-                user_message=content,
+                user_message=runtime_content,
                 agent_role=agent_role,
                 db=db,
                 stream_id=stream_id,
@@ -2058,7 +2231,28 @@ async def _handle_streaming_response(
                 active_error_code = getattr(event, "error_code", active_error_code)
                 await ws_send_message_error(websocket, agent_role=event.agent_role, stream_id=event.stream_id, message_id=event.message_id, error_code=event.error_code, error_message=event.error_message)
             elif event.type == "tool_event":
-                await ws_send_tool_event(websocket, tool_name=event.tool_name, arguments=event.arguments, response=event.response, status=event.status, stream_id=event.stream_id, message_id=event.message_id)
+                # M6-EXT: HTML 幻灯片写文件 → 拦截并推送 ppt_data
+                ppt_sent = await _maybe_send_ppt_data_from_tool(
+                    websocket,
+                    tool_name=event.tool_name,
+                    arguments=event.arguments,
+                    response=event.response,
+                    status=event.status,
+                    stream_id=event.stream_id,
+                    message_id=event.message_id,
+                    agent_role=event.agent_role,
+                    db=db,
+                )
+                if not ppt_sent:
+                    await ws_send_tool_event(
+                        websocket,
+                        tool_name=event.tool_name,
+                        arguments=event.arguments,
+                        response=event.response,
+                        status=event.status,
+                        stream_id=event.stream_id,
+                        message_id=event.message_id,
+                    )
             elif event.type == "runtime_state":
                 await ws_send_runtime_state(websocket, stream_id=event.stream_id, message_id=event.message_id, state=event.state, timestamp=event.timestamp)
             elif event.type == "change_preview":

@@ -458,6 +458,10 @@ class OrchestrationExecutor:
         setattr(event, "task_id", task.id)
         setattr(event, "agent_id", task.assigned_agent_id)
         setattr(event, "stream_id", stream_id)
+        # agent_role may already exist (RuntimeAgentService sets it); enrich if not
+        if not hasattr(event, "agent_role") or not getattr(event, "agent_role", None):
+            agent = self.get_agent(task.assigned_agent_id)
+            setattr(event, "agent_role", getattr(agent, "role", None) or task.assigned_agent_id)
 
     def _merge_message_metadata(self, message: Message, task: OrchestrationTask, stream_id: str) -> None:
         metadata = dict(message.msg_metadata or {})

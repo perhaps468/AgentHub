@@ -32,6 +32,13 @@
         :operation="previewState.operation"
         :unified-diff="previewState.unified_diff"
       />
+      <PptPreview
+        v-else-if="previewState.type === 'ppt'"
+        :title="previewState.title"
+        :agent-role="previewState.agentRole"
+        :created-at="previewState.createdAt"
+        :slides="previewState.slides"
+      />
       <div v-else class="preview-placeholder">
         <p>{{ previewState.description || '该类型预览待接入。' }}</p>
         <a v-if="previewState.url" :href="previewState.url" target="_blank" rel="noreferrer">在新窗口打开</a>
@@ -43,6 +50,7 @@
 <script lang="ts" setup>
 import type { PreviewState } from '../../types/agenthub'
 import DiffPagePreview from './DiffPagePreview.vue'
+import PptPreview from './PptPreview.vue'
 
 defineProps<{
   previewState: PreviewState

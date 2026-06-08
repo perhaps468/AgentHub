@@ -765,6 +765,7 @@ class RuntimeAgentService:
                 status=data.get("status", "started"),
                 stream_id=self.stream_id,
                 message_id=self._message_id,
+                agent_role=self.agent_role,
             )
         elif event_type == "runtime_state":  # Task A: runtime state events
             return RuntimeStateEvent(

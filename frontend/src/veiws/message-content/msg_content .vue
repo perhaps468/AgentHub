@@ -5,15 +5,10 @@
       :class="{ 'is-own': props.right }"
       @contextmenu.prevent="handleContextMenu"
     >
-      <div v-if="props.msg.type === MessageType.Text">
-        <text-msg :msg="props.msg" :right="right" />
-      </div>
-      <div v-else-if="props.msg.type === MessageType.Emoji">
-        <emoji-msg :src="props.msg.message" />
-      </div>
-      <div v-else-if="props.msg.type === MessageType.Call">
-        <call_msg :msg="props.msg" :right="right" />
-      </div>
+      <text-msg v-if="props.msg.type === MessageType.Text" :msg="props.msg" :right="props.right" />
+      <emoji-msg v-else-if="props.msg.type === MessageType.Emoji" :src="props.msg.message" />
+      <call_msg v-else-if="props.msg.type === MessageType.Call" :msg="props.msg" :right="props.right" />
+      <PptMsg v-else-if="props.msg.type === MessageType.PptData" :msg="props.msg" :right="props.right" @preview="handlePreviewPpt" />
     </div>
 
     <!-- Context Menu -->
@@ -43,14 +38,18 @@
 import { nextTick, onBeforeUnmount, ref } from 'vue'
 
 import { useChatMsgStore } from '../../store/module/useChatMsgStore'
+import { useSessionStore } from '../../store/module/useSessionStore'
 import type { MessageRecord } from '../../types/message'
+import type { PptPreviewModel } from '../../types/agenthub'
 import { MessageType } from '../../types/messageType'
 import { TextContentType } from '../../types/textContentType'
 import call_msg from '../message-content/callMsg.vue'
 import EmojiMsg from '../message-content/emoji-msg.vue'
+import PptMsg from '../message-content/PptMsg.vue'
 import TextMsg from '../message-content/text-msg.vue'
 
 const msgStore = useChatMsgStore()
+const sessionStore = useSessionStore()
 
 type ContextMessage = Partial<MessageRecord> & {
   id: string
@@ -60,7 +59,10 @@ type ContextMessage = Partial<MessageRecord> & {
 
 const props = withDefaults(
   defineProps<{
-    msg: ContextMessage
+    msg: ContextMessage & {
+      payload?: Record<string, unknown>
+      content?: string
+    }
     right?: boolean
   }>(),
   {
@@ -68,7 +70,6 @@ const props = withDefaults(
   },
 )
 
-const right = props.right
 const menuVisible = ref(false)
 const menuStyle = ref<Record<string, string>>({})
 
@@ -151,6 +152,14 @@ onBeforeUnmount(() => {
     document.removeEventListener('contextmenu', closeMenuHandler)
   }
 })
+
+/**
+ * 处理 PPT 预览事件：将标准化 PPT 模型向上传递给父组件
+ * 父组件负责写入 zhu.vue 的 previewState，从而打开右侧预览区
+ */
+const handlePreviewPpt = (payload: PptPreviewModel) => {
+  sessionStore.streamState.setPreviewPpt(payload)
+}
 </script>
 
 <style scoped>
