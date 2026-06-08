@@ -23,7 +23,7 @@
               <span class="streaming-dot"></span>
             </div>
           </div>
-          <div class="msg-bubble-wrap">
+          <div class="msg-bubble-wrap" :class="{ 'is-own': isOwn }">
             <msg_content :right="isOwn" :msg="props.msg" />
             <div class="msg-hover-actions">
               <button class="msg-hover-action" type="button" aria-label="引用" @click="handleQuote">
@@ -185,6 +185,10 @@ const handleCopy = async () => {
   min-width: 0;
 }
 
+.is-own .msg-box-info {
+  align-items: flex-end;
+}
+
 .msg-user-row {
   display: flex;
   align-items: center;
@@ -251,6 +255,8 @@ const handleCopy = async () => {
 .msg-bubble-wrap {
   position: relative;
   display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
   overflow: visible;
 }
 
@@ -263,7 +269,7 @@ const handleCopy = async () => {
 
 .msg-hover-actions {
   position: absolute;
-  right: -12px;
+  left: 0;
   bottom: -31px;
   display: inline-flex;
   align-items: center;
@@ -283,9 +289,12 @@ const handleCopy = async () => {
   z-index: 4;
 }
 
-.is-own .msg-hover-actions {
-  right: -12px;
+.msg-bubble-wrap.is-own .msg-hover-actions {
   left: auto;
+  right: 0;
+}
+.msg-bubble-wrap.is-own{
+  flex-direction: row-reverse;
 }
 
 .msg-hover-action {

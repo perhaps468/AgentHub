@@ -33,7 +33,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useAgentStore } from '../store/module/useAgentStore'
 import { useSessionStore } from '../store/module/useSessionStore'
 import { useUserInfoStore } from '../store/module/useUserStore'
-import type { ChatMessage } from '../types/agenthub'
+import type { ChatMessage, SidebarAgent } from '../types/agenthub'
 import Msg from './message-content/msg.vue'
 import loading from './message-content/loading.vue'
 
@@ -66,7 +66,7 @@ function resolveAgentName(metadata: Record<string, unknown> | undefined, senderR
   }
 
   if (resolvedAgentId) {
-    const matchedAgent = agentStore.agents.find((agent) => agent.id === resolvedAgentId)
+    const matchedAgent = agentStore.agents.find((agent: SidebarAgent) => agent.id === resolvedAgentId)
     if (matchedAgent?.name) return matchedAgent.name
   }
 
@@ -83,7 +83,7 @@ function resolveAgentAvatar(metadata: Record<string, unknown> | undefined, sende
   }
 
   if (resolvedAgentId) {
-    const matchedAgent = agentStore.agents.find((agent) => agent.id === resolvedAgentId)
+    const matchedAgent = agentStore.agents.find((agent: SidebarAgent) => agent.id === resolvedAgentId)
     if (matchedAgent?.avatar) return matchedAgent.avatar
   }
 
@@ -238,19 +238,39 @@ const scrollToBottom = () => {
   })
 }
 
-watch(() => sessionStore.messageMap[props.targetId]?.length ?? 0, (newLen, oldLen) => {
-  if (newLen > oldLen && isFirstLoad.value) {
-    isFirstLoad.value = false
-    scrollToBottom()
-  }
-})
+watch(
+  () => msgRecord.value.length,
+  (newLen, oldLen) => {
+    if (newLen > oldLen && isFirstLoad.value) {
+      isFirstLoad.value = false
+      scrollToBottom()
+    }
+  },
+)
 
-watch(() => sessionStore.currentStreamingMessages, () => {
-  const container = chatShowAreaRef.value
-  if (container && sessionStore.currentStreamingMessages.length > 0) {
-    container.scrollTop = container.scrollHeight
-  }
-})
+watch(
+  () => msgRecord.value.map((item) => `${item.id}:${item.message ?? ''}:${item.isStreaming ? (('streamStatus' in item && item.streamStatus) || '') : 'done'}`).join('|'),
+  () => {
+    const container = chatShowAreaRef.value
+    if (!container) return
+
+    const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 120
+    const hasStreaming = msgRecord.value.some((item) => item.isStreaming)
+
+    if (hasStreaming || isNearBottom) {
+      scrollToBottom()
+    }
+  },
+)
+
+watch(
+  () => props.isComplete,
+  (isComplete) => {
+    if (isComplete) {
+      scrollToBottom()
+    }
+  },
+)
 
 const handleScroll = () => {
   const container = chatShowAreaRef.value
@@ -305,5 +325,10 @@ onUnmounted(() => {
   &::-webkit-scrollbar-thumb:hover {
     background: #2563eb;       /* 深一点的蓝 */
   }
+}
+.load-more-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 </style>
