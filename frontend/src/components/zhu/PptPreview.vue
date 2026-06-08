@@ -56,6 +56,30 @@
             class="slide-cover-img"
             @error="handleImgError"
           />
+          <button
+            class="slide-switch-btn slide-switch-btn-prev"
+            type="button"
+            :disabled="!hasPrevSlide"
+            title="上一页"
+            aria-label="上一页"
+            @click="goPrev"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <button
+            class="slide-switch-btn slide-switch-btn-next"
+            type="button"
+            :disabled="!hasNextSlide"
+            title="下一页"
+            aria-label="下一页"
+            @click="goNext"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
           <!-- 图片上的标题遮罩 -->
           <div class="slide-title-overlay">
             <span class="slide-page-num">第 {{ currentIndex + 1 }} / {{ slides.length }} 页</span>
@@ -122,6 +146,19 @@ const currentIndex = ref(0)
 
 /** 导出按钮加载状态，防止重复点击 */
 const isExporting = ref(false)
+
+const hasPrevSlide = computed(() => currentIndex.value > 0)
+const hasNextSlide = computed(() => currentIndex.value < props.slides.length - 1)
+
+const goPrev = () => {
+  if (!hasPrevSlide.value) return
+  currentIndex.value -= 1
+}
+
+const goNext = () => {
+  if (!hasNextSlide.value) return
+  currentIndex.value += 1
+}
 
 /**
  * 点击"导出 PPT"按钮，将当前 PPT 数据生成为 .pptx 文件并下载
@@ -293,6 +330,52 @@ const handleImgError = (e: Event) => {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.slide-switch-btn {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.2);
+  transform: translateY(-50%);
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease, opacity 0.18s ease;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  &:hover:not(:disabled) {
+    background: rgba(37, 99, 235, 0.8);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(-50%) scale(0.96);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+}
+
+.slide-switch-btn-prev {
+  left: 12px;
+}
+
+.slide-switch-btn-next {
+  right: 12px;
 }
 
 .slide-title-overlay {

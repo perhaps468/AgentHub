@@ -1002,19 +1002,6 @@ async def _send_ws_ppt_data(
     await _safe_send_json(websocket, payload)
 
 
-def _should_use_orchestration(
-    session_mode: str,
-    content: str,
-    target_agent_ids: list[str],
-    mentions: list[dict[str, str]],
-) -> bool:
-    if session_mode != "group":
-        return False
-    if target_agent_ids or mentions:
-        return True
-    return _is_orchestration_request(content)
-
-
 def _get_session_agent_members(db, session_id: str) -> list[dict]:
     """获取session中的agent成员列表
 
