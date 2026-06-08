@@ -487,6 +487,7 @@ document.addEventListener('click', () => {
   cursor: pointer;
   position: relative;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border-bottom: 1px solid rgb(var(--border-color));
 }
 
 .conversation-item:hover {
@@ -526,8 +527,6 @@ document.addEventListener('click', () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 110px;
-  overflow: hidden;
 }
 
 /* 置顶图标 */

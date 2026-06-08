@@ -15,26 +15,6 @@
         @preview="handlePreviewPpt"
       />
     </div>
-
-    <teleport to="body">
-      <transition name="menu-fade">
-        <div
-          v-if="menuVisible"
-          class="ctx-menu"
-          :style="menuStyle"
-          @click.stop
-        >
-          <button class="ctx-menu-item" type="button" @click="handlerSetReference">
-            <span class="ctx-icon">"</span>
-            <span>引用</span>
-          </button>
-          <button class="ctx-menu-item" type="button" @click="handlerCopy">
-            <span class="ctx-icon">⧉</span>
-            <span>复制</span>
-          </button>
-        </div>
-      </transition>
-    </teleport>
   </div>
 </template>
 

@@ -31,8 +31,8 @@ const props = defineProps({
 }
 
 .loading-bounce-image {
-  width: 100px;
-  height: 100px;
+  width: 70px;
+  height: 70px;
   object-fit: contain;
   animation: image-bounce 0.9s ease-in-out infinite;
   will-change: transform;

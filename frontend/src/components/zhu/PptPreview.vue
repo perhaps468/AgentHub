@@ -7,18 +7,8 @@
   <div class="ppt-preview">
     <!-- 顶部信息栏 -->
     <div class="preview-topbar">
-      <div class="ppt-title-row">
-        <!-- PPT 图标 -->
-        <svg class="ppt-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-          <rect x="2" y="3" width="20" height="14" rx="2" />
-          <path d="M8 21h8M12 17v4" />
-          <path d="M6 8h2M6 11h5" stroke-linecap="round" />
-        </svg>
-        <h3 class="preview-title">{{ title }}</h3>
-      </div>
       <!-- 元信息行 -->
       <div v-if="agentRole || createdAt" class="meta-row">
-        <span v-if="agentRole" class="meta-tag">{{ agentRole }}</span>
         <span v-if="createdAt" class="meta-time">{{ formatTime(createdAt) }}</span>
       </div>
       <!-- 操作按钮行：导出 PPT -->
@@ -268,16 +258,6 @@ const handleImgError = (e: Event) => {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.meta-tag {
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(59, 130, 246, 0.85);
-  background: rgba(59, 130, 246, 0.08);
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(59, 130, 246, 0.18);
 }
 
 .meta-time {
