@@ -407,6 +407,7 @@ async def ws_send_runtime_state(
     run_id: str | None = None,
     task_id: str | None = None,
     agent_id: str | None = None,
+    agent_role: str | None = None,
 ) -> None:
     payload = {
         "type": "runtime_state",
@@ -421,6 +422,8 @@ async def ws_send_runtime_state(
         payload["task_id"] = task_id
     if agent_id is not None:
         payload["agent_id"] = agent_id
+    if agent_role is not None:
+        payload["agent_role"] = agent_role
     await _safe_send_json(websocket, payload)
 
 
@@ -2433,6 +2436,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         message_id=thinking_msg_id,
                         state="thinking",
                         timestamp=utcnow().isoformat(),
+                        agent_role=agent_name,
                     )
                     asyncio.create_task(
                         _run_orchestration_in_background(
