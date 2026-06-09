@@ -38,6 +38,7 @@
         :agent-role="previewState.agentRole"
         :created-at="previewState.createdAt"
         :slides="previewState.slides"
+        :workspace-id="previewState.workspaceId"
       />
       <div v-else class="preview-placeholder">
         <p>{{ previewState.description || '该类型预览待接入。' }}</p>

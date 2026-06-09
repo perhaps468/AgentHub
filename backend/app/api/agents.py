@@ -60,6 +60,7 @@ def _provider_model_pairs() -> list[tuple[str, str]]:
             explicit_pairs.append((matched_provider, model))
         return explicit_pairs
     candidates = [
+        ("openai", settings.openai_model, settings.openai_api_key),
         ("qwen_openai_compatible", settings.qwen_model, settings.qwen_api_key),
         ("doubao", settings.doubao_model, settings.doubao_api_key),
         ("glm", settings.glm_model, settings.glm_api_key),
@@ -80,6 +81,7 @@ def _available_models() -> list[str]:
 def _infer_provider_for_model(model: str) -> str:
     settings = get_settings()
     provider_by_model = {
+        settings.openai_model: "openai",
         settings.qwen_model: "qwen_openai_compatible",
         settings.doubao_model: "doubao",
         settings.glm_model: "glm",
@@ -87,6 +89,8 @@ def _infer_provider_for_model(model: str) -> str:
     if model in provider_by_model:
         return provider_by_model[model]
     lowered = model.lower()
+    if lowered.startswith("gpt") or lowered.startswith("o1") or lowered.startswith("o3") or lowered.startswith("o4"):
+        return "openai"
     if lowered.startswith("glm"):
         return "glm"
     if lowered.startswith("doubao"):

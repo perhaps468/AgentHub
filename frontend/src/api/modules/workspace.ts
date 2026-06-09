@@ -15,3 +15,18 @@ export const fetchWorkspace = async (workspaceId: string) => {
   const { data } = await agenthubRequest.get<Workspace>(`/workspaces/${workspaceId}`)
   return data
 }
+
+export const savePptToWorkspace = async (
+  workspaceId: string,
+  fileName: string,
+  blob: Blob,
+): Promise<{ saved: boolean; path: string; name: string }> => {
+  const formData = new FormData()
+  formData.append("file", blob, `${fileName}.pptx`)
+  const { data } = await agenthubRequest.post(
+    `/workspaces/${workspaceId}/ppt`,
+    formData,
+    { params: { file_name: fileName } },
+  )
+  return data
+}

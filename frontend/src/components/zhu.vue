@@ -792,6 +792,7 @@ async function restoreCurrentSession() {
   const sessionId = sessionStore.currentSessionId
   if (!sessionId) return
   await sessionStore.fetchSessionDetail(sessionId)
+  await loadSessionWorkspace(sessionStore.currentSession)
   await sessionStore.fetchMessages(sessionId, { page: 1, page_size: 20 })
   await sessionStore.fetchLatestRun(sessionId)
   await restorePendingChangesForCurrentSession(sessionId)
@@ -851,6 +852,7 @@ watch(
         agentRole: previewPpt.agentRole,
         createdAt: previewPpt.createdAt,
         slides: previewPpt.slides,
+        workspaceId: currentWorkspace.value?.id,
       }
     } else {
       previewState.value = { type: 'empty', title: '' }

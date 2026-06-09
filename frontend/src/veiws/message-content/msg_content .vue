@@ -74,9 +74,10 @@ const handlePreviewPpt = (payload: PptPreviewModel) => {
 <style scoped>
 .msg {
   position: relative;
-  display: flex;
+  display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
+  width: fit-content;
   max-width: min(680px, 100%);
 }
 

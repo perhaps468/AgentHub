@@ -260,6 +260,7 @@ export type PreviewState =
       agentRole?: string
       createdAt?: string
       slides: PptSlideViewModel[]
+      workspaceId?: string
     }
 
 export interface PaginatedResponse<T> {

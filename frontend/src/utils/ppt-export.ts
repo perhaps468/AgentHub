@@ -38,10 +38,11 @@ const EMPTY_OVERLAY_H = 2.2
 /** 底图：与页面预览兜底图一致 */
 const FALLBACK_IMAGE = '/PPT/动漫.jpg'
 
-export async function exportPpt(
-  model: PptPreviewModel,
-  fileName = 'presentation',
-): Promise<void> {
+/**
+ * 将 PPT 模型生成为 .pptx Blob。
+ * 供直接下载和上传到工作区两用。
+ */
+export async function exportPptToBlob(model: PptPreviewModel): Promise<Blob> {
   const pptx = new PptxGenJS({ units: 'cm' })
   pptx.defineLayout({ name: 'CUSTOM', width: SLIDE_W, height: SLIDE_H })
   pptx.layout = 'CUSTOM'
@@ -61,7 +62,25 @@ export async function exportPpt(
     renderBottomOverlay(slide, slideData)
   }
 
-  await pptx.writeFile({ fileName: `${fileName}.pptx` })
+  return await pptx.write('blob')
+}
+
+/**
+ * 将 PPT 模型生成为 .pptx 文件并触发浏览器下载（原有行为保留）
+ */
+export async function exportPpt(
+  model: PptPreviewModel,
+  fileName = 'presentation',
+): Promise<void> {
+  const blob = await exportPptToBlob(model)
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${fileName}.pptx`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 function renderSlideBackground(
