@@ -523,6 +523,7 @@ document.addEventListener('click', () => {
   color: #1e293b;
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

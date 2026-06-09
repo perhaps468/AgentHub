@@ -428,25 +428,26 @@ const handleImgError = (e: Event) => {
 }
 
 .slide-bullet {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   font-size: 30px;
-  color: rgba(255, 255, 255, 0.94);
+  color: rgba(51, 65, 85, 0.68);
   line-height: 1.65;
-  padding-left: 14px;
-  position: relative;
+  padding-left: 0;
   letter-spacing: 5px; 
   font-weight: 600;
   font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.18);
 
   &::before {
     content: '';
-    position: absolute;
-    left: 0;
-    top: 8px;
+    flex: 0 0 auto;
+    margin-top: 0.78em;
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(71, 85, 105, 0.48);
   }
 }
 
@@ -461,7 +462,7 @@ const handleImgError = (e: Event) => {
   background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(51, 65, 85, 0.64);
   font-size: 12px;
   text-align: center;
 }

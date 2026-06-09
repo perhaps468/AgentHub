@@ -22,11 +22,33 @@ from app.providers.base import (
 )
 
 
-class QwenProvider(BaseProvider):
-    def __init__(self, settings: Any) -> None:
-        self._api_key = settings.qwen_api_key
-        self._base_url = settings.qwen_base_url
-        self._model = settings.qwen_model
+class _OpenAICompatibleProvider(BaseProvider):
+    provider_name = "openai_compatible"
+    api_key_env_name = "API_KEY"
+
+    def __init__(self, api_key: str | None, base_url: str, model: str) -> None:
+        self._api_key = api_key
+        self._base_url = base_url
+        self._model = model
+
+    def _missing_api_key_message(self) -> str:
+        return f"{self.api_key_env_name} is not configured. Please set it in .env"
+
+    def _parse_json_response(self, response: httpx.Response) -> dict[str, Any]:
+        try:
+            data = response.json()
+        except ValueError as exc:
+            body_preview = response.text[:500].strip() or "<empty body>"
+            raise ProviderResponseInvalidError(
+                "Upstream response is not valid JSON. "
+                f"status={response.status_code}, content_type={response.headers.get('content-type', '<missing>')}, "
+                f"body_preview={body_preview}"
+            ) from exc
+        if not isinstance(data, dict):
+            raise ProviderResponseInvalidError(
+                f"Upstream JSON response is not an object: {type(data).__name__}"
+            )
+        return data
 
     def _extract_text(self, value: Any) -> str:
         if isinstance(value, str):
@@ -59,9 +81,7 @@ class QwenProvider(BaseProvider):
 
     async def chat(self, input: ProviderInput) -> Output:
         if not self._api_key:
-            raise ProviderNotConfiguredError(
-                "QWEN_API_KEY is not configured. Please set it in .env"
-            )
+            raise ProviderNotConfiguredError(self._missing_api_key_message())
 
         messages = [
             {"role": "system", "content": input.system_prompt},
@@ -71,7 +91,7 @@ class QwenProvider(BaseProvider):
         # Record LLM request
         recorder = get_audit_recorder()
         recorder.record_llm_request(
-            provider="qwen",
+            provider=self.provider_name,
             model=self._model,
             request_kind="chat",
             messages=messages,
@@ -107,7 +127,7 @@ class QwenProvider(BaseProvider):
                 )
                 raise ProviderRequestError(f"Upstream request failed: {e}")
 
-        data = response.json()
+        data = self._parse_json_response(response)
         choices = data.get("choices")
         if not choices:
             recorder.record_llm_error(
@@ -152,9 +172,7 @@ class QwenProvider(BaseProvider):
 
     async def stream_chat(self, input: ProviderInput) -> AsyncIterator[ProviderStreamEvent]:
         if not self._api_key:
-            raise ProviderNotConfiguredError(
-                "QWEN_API_KEY is not configured. Please set it in .env"
-            )
+            raise ProviderNotConfiguredError(self._missing_api_key_message())
 
         messages = [
             {"role": "system", "content": input.system_prompt},
@@ -164,7 +182,7 @@ class QwenProvider(BaseProvider):
         # Record LLM request
         recorder = get_audit_recorder()
         recorder.record_llm_request(
-            provider="qwen",
+            provider=self.provider_name,
             model=self._model,
             request_kind="stream_chat",
             messages=messages,
@@ -270,9 +288,7 @@ class QwenProvider(BaseProvider):
         receives multi-turn context natively.
         """
         if not self._api_key:
-            raise ProviderNotConfiguredError(
-                "QWEN_API_KEY is not configured. Please set it in .env"
-            )
+            raise ProviderNotConfiguredError(self._missing_api_key_message())
 
         messages = [
             {"role": msg.role, "content": msg.content}
@@ -282,7 +298,7 @@ class QwenProvider(BaseProvider):
         # Record LLM request
         recorder = get_audit_recorder()
         recorder.record_llm_request(
-            provider="qwen",
+            provider=self.provider_name,
             model=input.model or self._model,
             request_kind="chat_with_messages",
             messages=messages,
@@ -320,7 +336,7 @@ class QwenProvider(BaseProvider):
                 )
                 raise ProviderRequestError(f"Upstream request failed: {e}")
 
-        data = response.json()
+        data = self._parse_json_response(response)
         choices = data.get("choices")
         if not choices:
             recorder.record_llm_error(
@@ -378,9 +394,7 @@ class QwenProvider(BaseProvider):
         raw text deltas to the caller.
         """
         if not self._api_key:
-            raise ProviderNotConfiguredError(
-                "QWEN_API_KEY is not configured. Please set it in .env"
-            )
+            raise ProviderNotConfiguredError(self._missing_api_key_message())
 
         messages = [
             {"role": msg.role, "content": msg.content}
@@ -390,7 +404,7 @@ class QwenProvider(BaseProvider):
         # Record LLM request
         recorder = get_audit_recorder()
         recorder.record_llm_request(
-            provider="qwen",
+            provider=self.provider_name,
             model=input.model or self._model,
             request_kind="stream_chat_with_messages",
             messages=messages,
@@ -488,3 +502,27 @@ class QwenProvider(BaseProvider):
                 error_message=f"Upstream request failed: {e}",
             )
             raise ProviderRequestError(f"Upstream request failed: {e}")
+
+
+class QwenProvider(_OpenAICompatibleProvider):
+    provider_name = "qwen"
+    api_key_env_name = "QWEN_API_KEY"
+
+    def __init__(self, settings: Any) -> None:
+        super().__init__(
+            api_key=settings.qwen_api_key,
+            base_url=settings.qwen_base_url,
+            model=settings.qwen_model,
+        )
+
+
+class OpenAIProvider(_OpenAICompatibleProvider):
+    provider_name = "openai"
+    api_key_env_name = "OPENAI_API_KEY"
+
+    def __init__(self, settings: Any) -> None:
+        super().__init__(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            model=settings.openai_model,
+        )

@@ -25,6 +25,9 @@ class Settings:
     database_url: str
     host: str
     port: int
+    openai_api_key: str | None
+    openai_base_url: str
+    openai_model: str
     qwen_api_key: str | None
     qwen_base_url: str
     qwen_model: str
@@ -50,6 +53,9 @@ def get_settings() -> Settings:
         ),
         host=os.getenv("HOST", "127.0.0.1"),
         port=int(os.getenv("PORT", "8088")),
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         qwen_api_key=os.getenv("QWEN_API_KEY"),
         qwen_base_url=os.getenv(
             "QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"

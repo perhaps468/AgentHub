@@ -8,6 +8,7 @@ from app.providers.base import BaseProvider
 
 
 _PROVIDER_REGISTRY = {
+    "openai": "openai_compatible.OpenAIProvider",
     "qwen_openai_compatible": "openai_compatible.QwenProvider",
     "doubao": "doubao.DoubaoProvider",
     "glm": "glm.GlmProvider",
