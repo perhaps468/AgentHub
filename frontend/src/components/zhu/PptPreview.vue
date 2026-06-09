@@ -13,19 +13,45 @@
       </div>
       <!-- 操作按钮行：导出 PPT -->
       <div class="topbar-actions">
-        <button
-          class="export-btn"
-          type="button"
-          :disabled="isExporting"
-          :title="isExporting ? '导出中...' : '导出为 PPT 文件'"
-          @click="handleExport"
-        >
-          <svg v-if="!isExporting" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          <span v-if="isExporting" class="export-spinner"></span>
-          {{ isExporting ? '导出中...' : '导出 PPT' }}
-        </button>
+        <div class="export-dropdown" v-click-outside="() => showDropdown = false">
+          <button
+            class="export-btn"
+            type="button"
+            :disabled="isExporting"
+            :title="isExporting ? '导出中...' : '导出为 PPT 文件'"
+            @click="showDropdown = !showDropdown"
+          >
+            <svg v-if="!isExporting" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span v-if="isExporting" class="export-spinner"></span>
+            {{ isExporting ? '导出中...' : '导出 PPT' }}
+            <svg v-if="!isExporting" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11" height="11" class="dropdown-arrow">
+              <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <div class="dropdown-menu" v-show="showDropdown">
+            <button class="dropdown-item" type="button" @click="handleExportLocal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              下载到本地
+            </button>
+            <button
+              class="dropdown-item"
+              type="button"
+              :disabled="!workspaceId"
+              :title="workspaceId ? '保存到当前工作区' : '当前会话未绑定工作区'"
+              @click="handleExportToWorkspace"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              保存到工作区
+              <span v-if="!workspaceId" class="item-badge">无工作区</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -121,7 +147,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { PptSlideViewModel } from '../../types/agenthub'
-import { exportPpt } from '../../utils/ppt-export'
+import { exportPpt, exportPptToBlob } from '../../utils/ppt-export'
+import { savePptToWorkspace } from '../../api/modules/workspace'
 
 /** 从 previewState 注入的 props */
 const props = defineProps<{
@@ -129,6 +156,7 @@ const props = defineProps<{
   agentRole?: string
   createdAt?: string
   slides: PptSlideViewModel[]
+  workspaceId?: string
 }>()
 
 /** 当前页索引（从 0 开始） */
@@ -137,6 +165,25 @@ const currentIndex = ref(0)
 /** 导出按钮加载状态，防止重复点击 */
 const isExporting = ref(false)
 
+/** 下拉菜单显示状态 */
+const showDropdown = ref(false)
+
+/** 点击下拉外部关闭菜单 */
+const vClickOutside = {
+  mounted(el: HTMLElement, binding: { value: () => void }) {
+    el._clickOutsideHandler = (event: MouseEvent) => {
+      if (!el.contains(event.target as Node)) {
+        binding.value()
+      }
+    }
+    document.addEventListener('click', el._clickOutsideHandler)
+  },
+  unmounted(el: HTMLElement) {
+    document.removeEventListener('click', el._clickOutsideHandler)
+  },
+}
+
+/** 翻页逻辑 */
 const hasPrevSlide = computed(() => currentIndex.value > 0)
 const hasNextSlide = computed(() => currentIndex.value < props.slides.length - 1)
 
@@ -150,32 +197,62 @@ const goNext = () => {
   currentIndex.value += 1
 }
 
-/**
- * 点击"导出 PPT"按钮，将当前 PPT 数据生成为 .pptx 文件并下载
- * 捕获导出异常，避免打断用户操作
- */
-async function handleExport() {
+/** 构建 PptPreviewModel */
+function buildModel() {
+  return {
+    title: props.title ?? '汇报 PPT',
+    agentRole: props.agentRole ?? '',
+    createdAt: props.createdAt ?? '',
+    slides: props.slides,
+  }
+}
+
+/** 获取规范化的文件名（无扩展名） */
+function getFileName() {
+  return (props.title ?? '汇报PPT')
+    .replace(/[^\w\u4e00-\u9fa5]/g, '')
+    .slice(0, 30)
+}
+
+/** 下载到本地 */
+async function handleExportLocal() {
+  showDropdown.value = false
   if (isExporting.value || !props.slides?.length) return
   isExporting.value = true
   try {
-    // 从 props 构建 PptPreviewModel，与渲染用的是同一份数据
-    const model = {
-      title: props.title ?? '汇报 PPT',
-      agentRole: props.agentRole ?? '',
-      createdAt: props.createdAt ?? '',
-      slides: props.slides,
-    }
-    // 文件名取标题，去掉空格和特殊字符，最多 30 字符
-    const fileName = (props.title ?? '汇报PPT')
-      .replace(/[^\w\u4e00-\u9fa5]/g, '')
-      .slice(0, 30)
-    await exportPpt(model, fileName)
+    await exportPpt(buildModel(), getFileName())
   } catch (err) {
-    console.error('[ppt-export] 导出失败:', err)
-    alert('导出失败，请重试')
+    console.error('[ppt-export] 下载失败:', err)
+    alert('下载失败，请重试')
   } finally {
     isExporting.value = false
   }
+}
+
+/** 保存到工作区 */
+async function handleExportToWorkspace() {
+  showDropdown.value = false
+  if (!props.workspaceId) {
+    alert('当前会话未绑定工作区，无法保存')
+    return
+  }
+  if (isExporting.value || !props.slides?.length) return
+  isExporting.value = true
+  try {
+    const blob = await exportPptToBlob(buildModel())
+    const result = await savePptToWorkspace(props.workspaceId, getFileName(), blob)
+    alert(`已保存到工作区：${result.name}`)
+  } catch (err) {
+    console.error('[ppt-export] 保存失败:', err)
+    alert('保存失败，请重试')
+  } finally {
+    isExporting.value = false
+  }
+}
+
+/** 兼容原有按钮（改为下载到本地） */
+async function handleExport() {
+  await handleExportLocal()
 }
 
 /** 当前页数据 */
@@ -415,25 +492,26 @@ const handleImgError = (e: Event) => {
 }
 
 .slide-bullet {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   font-size: 30px;
-  color: rgba(255, 255, 255, 0.94);
+  color: rgba(51, 65, 85, 0.68);
   line-height: 1.65;
-  padding-left: 14px;
-  position: relative;
+  padding-left: 0;
   letter-spacing: 5px; 
   font-weight: 600;
   font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.18);
 
   &::before {
     content: '';
-    position: absolute;
-    left: 0;
-    top: 8px;
+    flex: 0 0 auto;
+    margin-top: 0.78em;
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(71, 85, 105, 0.48);
   }
 }
 
@@ -448,7 +526,7 @@ const handleImgError = (e: Event) => {
   background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(51, 65, 85, 0.64);
   font-size: 12px;
   text-align: center;
 }
@@ -516,13 +594,17 @@ const handleImgError = (e: Event) => {
   line-height: 1.3;
 }
 
-/* ==================== 导出按钮 ==================== */
+/* ==================== 导出按钮 & 下拉菜单 ==================== */
 .topbar-actions {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 6px;
   margin-top: 4px;
+}
+
+.export-dropdown {
+  position: relative;
 }
 
 .export-btn {
@@ -554,6 +636,62 @@ const handleImgError = (e: Event) => {
     opacity: 0.55;
     cursor: not-allowed;
   }
+}
+
+.dropdown-arrow {
+  margin-left: 1px;
+  opacity: 0.7;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  min-width: 148px;
+  background: #fff;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: rgba(59, 130, 246, 0.08);
+    color: rgba(59, 130, 246, 0.9);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.item-badge {
+  margin-left: auto;
+  font-size: 10px;
+  color: rgba(100, 116, 139, 0.7);
+  font-weight: 400;
 }
 
 .export-spinner {

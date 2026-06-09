@@ -272,30 +272,33 @@ class RunCommandTool(Tool):
         try:
             cmd_list = self._parse_command(command)
 
+            # Prepare environment with UTF-8 encoding for Java commands
+            import os
+            env = os.environ.copy()
+            self._setup_encoding_env(command, env)
+
+            # Use bytes mode and decode manually for better encoding handling
             proc = subprocess.Popen(
                 cmd_list,
                 shell=False,
                 cwd=cwd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                env=env,
             )
 
             try:
-                stdout, stderr = proc.communicate(timeout=timeout)
+                stdout_bytes, stderr_bytes = proc.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.communicate()  # drain
                 raise
 
-            exit_code = proc.returncode
+            # Decode output with smart encoding detection
+            stdout = self._decode_output(stdout_bytes, command)
+            stderr = self._decode_output(stderr_bytes, command)
 
-            # On Windows, some commands produce CRLF; normalize to LF
-            if sys.platform == "win32":
-                stdout = stdout.replace("\r\n", "\n")
-                stderr = stderr.replace("\r\n", "\n")
+            exit_code = proc.returncode
 
             return self._format_result(
                 command=command,
@@ -318,3 +321,71 @@ class RunCommandTool(Tool):
                 timed_out=False,
                 success=False,
             )
+
+    def _setup_encoding_env(self, command: str, env: dict) -> None:
+        """Set up environment variables to force UTF-8 encoding for certain commands.
+
+        Java on Windows defaults to system encoding (GBK/CP936), which causes
+        garbled output for UTF-8 source files. We inject JAVA_TOOL_OPTIONS to
+        force UTF-8 encoding for Java commands.
+        """
+        cmd_lower = command.lower().strip()
+        # Check if this is a Java-related command
+        if any(cmd_lower.startswith(prefix) for prefix in ["java ", "javac ", "jshell "]):
+            # Prepend UTF-8 encoding setting to existing JAVA_TOOL_OPTIONS
+            existing = env.get("JAVA_TOOL_OPTIONS", "")
+            utf8_option = "-Dfile.encoding=UTF-8"
+            if utf8_option not in existing:
+                if existing:
+                    env["JAVA_TOOL_OPTIONS"] = f'{utf8_option} {existing}'
+                else:
+                    env["JAVA_TOOL_OPTIONS"] = utf8_option
+
+    def _decode_output(self, data: bytes | None, command: str = "") -> str:
+        """Decode bytes output with smart encoding detection.
+
+        Strategy:
+        1. If JAVA_TOOL_OPTIONS with UTF-8 was set for this command, use UTF-8
+        2. Try UTF-8 first (modern tools, cross-platform)
+        3. Try GBK/CP936 (Windows console default for legacy tools)
+        4. Replace errors (last resort)
+
+        On Windows, CRLF is normalized to LF.
+        """
+        if data is None:
+            return ""
+
+        # If this is a Java command with UTF-8 forced, decode as UTF-8
+        cmd_lower = command.lower().strip()
+        if any(cmd_lower.startswith(prefix) for prefix in ["java ", "javac ", "jshell "]):
+            # Check if we already set UTF-8 in the environment
+            try:
+                decoded = data.decode("utf-8")
+                decoded = decoded.replace("\r\n", "\n")
+                return decoded
+            except UnicodeDecodeError:
+                pass
+
+        # Try UTF-8 first (Java with UTF-8 source, Node.js, Python, etc.)
+        try:
+            decoded = data.decode("utf-8")
+            if sys.platform == "win32":
+                decoded = decoded.replace("\r\n", "\n")
+            return decoded
+        except UnicodeDecodeError:
+            pass
+
+        # Try GBK (Windows javac default and some legacy console tools)
+        if sys.platform == "win32":
+            try:
+                decoded = data.decode("gbk")
+                decoded = decoded.replace("\r\n", "\n")
+                return decoded
+            except UnicodeDecodeError:
+                pass
+
+        # Last resort: replace undecodable bytes
+        decoded = data.decode("utf-8", errors="replace")
+        if sys.platform == "win32":
+            decoded = decoded.replace("\r\n", "\n")
+        return decoded

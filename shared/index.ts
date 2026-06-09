@@ -7,7 +7,7 @@
 
 // ========== 枚举类型 ==========
 
-export type AgentRole = 'Human' | 'PM' | 'Planner' | 'Coder' | 'Reviewer' | 'System';
+export type AgentRole = 'Human' | 'PM' | 'Planner' | 'Coder' | 'Reviewer' | 'System' | string;
 
 // P1-3 统一协议消息类型 (替代旧 chat_stream/agent_typing/error)
 export type UnifiedMessageType =

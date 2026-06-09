@@ -6,9 +6,11 @@ Provides CRUD for workspaces with owner boundary enforcement.
 from __future__ import annotations
 
 import os
+import re
+import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -159,3 +161,52 @@ def get_workspace(
     db: Session = Depends(get_db),
 ) -> Workspace:
     return get_workspace_with_ownership_check(db, workspace_id, current_user)
+
+
+
+@router.post(
+    "/{workspace_id}/ppt",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        201: {"description": "PPT file saved successfully"},
+        400: {"description": "Invalid request"},
+        403: {"description": "Access denied"},
+        404: {"description": "Workspace not found"},
+    },
+)
+def save_ppt_to_workspace(
+    workspace_id: str,
+    current_user: CurrentUser,
+    file_name: str = Query(..., description="PPT file name without extension"),
+    file: UploadFile = File(..., description="PPTX file binary"),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Save a PPTX file to the workspace root directory.
+
+    If a file with the same name exists, appends a numeric suffix before saving.
+    The file is saved directly under workspace.root_path with the given name.
+    """
+    ws = get_workspace_with_ownership_check(db, workspace_id, current_user)
+
+    root = Path(ws.root_path).expanduser().resolve()
+    if not root.exists():
+        raise HTTPException(status_code=400, detail="Workspace root path does not exist")
+
+    safe_name = re.sub(r"[^\w\u4e00-\u9fa5._-]", "_", file_name)
+    dest_path = root / f"{safe_name}.pptx"
+
+    if dest_path.exists():
+        stem = safe_name
+        counter = 1
+        while (root / f"{stem}_{counter}.pptx").exists():
+            counter += 1
+        dest_path = root / f"{stem}_{counter}.pptx"
+
+    with dest_path.open("wb") as dest:
+        shutil.copyfileobj(file.file, dest)
+
+    return {
+        "saved": True,
+        "path": str(dest_path),
+        "name": dest_path.name,
+    }

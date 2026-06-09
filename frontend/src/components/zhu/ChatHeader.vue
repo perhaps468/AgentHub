@@ -345,7 +345,7 @@ function handlePickAgent(agent: HeaderAgentSummaryItem) {
   font-size: 17px;
   font-weight: 700;
   color: #1e293b;
-  line-height: 1.15;
+  line-height: 1.3;
   letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
