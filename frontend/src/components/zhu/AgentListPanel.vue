@@ -40,8 +40,8 @@
           <div class="agent-info">
             <div class="agent-title-row">
               <span class="agent-name">{{ agent.name }}</span>
-              <span class="agent-badge" :class="agent.isCustom ? 'custom' : 'builtin'">
-                {{ agent.isCustom ? '自建' : '内置' }}
+              <span class="agent-badge" :class="getAgentBadgeClass(agent)">
+                {{ getAgentBadgeLabel(agent) }}
               </span>
             </div>
             <span class="agent-desc">{{ agent.description || getAgentPlatformLabel(agent) }}</span>
@@ -120,6 +120,12 @@ const visibleAgents = computed(() =>
 )
 
 const getVisibleCapabilityTags = (tags: string[]) => tags.slice(0, 3)
+
+const isGroupHostAgent = (agent: SidebarAgent) => agent.id.startsWith('group_host_') || agent.name === '群聊主Agent'
+
+const getAgentBadgeLabel = (agent: SidebarAgent) => (isGroupHostAgent(agent) || !agent.isCustom ? '内置' : '自建')
+
+const getAgentBadgeClass = (agent: SidebarAgent) => (isGroupHostAgent(agent) || !agent.isCustom ? 'builtin' : 'custom')
 
 const getAgentPlatformLabel = (agent: SidebarAgent) => {
   const labels: Record<string, string> = {

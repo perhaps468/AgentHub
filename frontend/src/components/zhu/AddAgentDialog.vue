@@ -51,7 +51,7 @@
         </el-checkbox-group>
       </el-form-item>
 
-      <el-form-item label="简介（可选）">
+      <el-form-item label="提示词（可选）">
         <el-input
           v-model="form.description"
           type="textarea"
@@ -62,7 +62,7 @@
       </el-form-item>
 
       <div class="prompt-hint">
-        系统提示词会根据名称、标签和简介自动生成，默认可使用全部工具。
+        系统提示词会根据名称、标签和提示词自动生成，默认可使用全部工具。
       </div>
     </el-form>
   </BaseDialog>
