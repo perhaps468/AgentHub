@@ -58,6 +58,13 @@ class CommandResult:
 # Only specific safe command patterns remain.
 
 ALLOWED_COMMAND_PREFIXES: tuple[str, ...] = (
+    # Java compilation and runtime (T5: safe, restricted entry points)
+    "javac",
+    "java",
+    "jar",
+    # Go compilation and runtime (T5: safe, restricted entry points)
+    "go build",
+    "go run",
     # Python test runners (T5: safe, restricted entry points)
     "pytest",
     "python -m pytest",
